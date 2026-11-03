@@ -20,6 +20,7 @@ T.MenuItem {
     property alias inactiveBackgroundColor: appearance.inactiveBackgroundColor
     property alias inactiveForegroundColor: appearance.inactiveForegroundColor
     property alias borderColor: appearance.borderColor
+    property alias disabledBorderColor: appearance.disabledBorderColor
     property alias focusColor: appearance.focusColor
     property alias controlRadius: appearance.controlRadius
     property alias fontFamily: appearance.fontFamily
@@ -132,7 +133,7 @@ T.MenuItem {
         down: control.down
         hovered: control.hovered
         selected: control.highlighted
-        active: surface.Window.active
+        active: control.Window.active
         focused: control.visualFocus
         outlined: false
         focusInset: IA.Appearance.metrics.borderWidth

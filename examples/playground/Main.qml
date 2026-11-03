@@ -64,14 +64,12 @@ Window {
                         fontPixelSize: IA.Appearance.typography.headingSize
                         fontWeight: IA.Appearance.typography.emphasisWeight
                         foregroundColor: IA.Appearance.colors.inverseText
-                        wrapMode: Text.Wrap
                     }
                     IALabel {
                         Layout.fillWidth: true
                         text: "Control workbench"
                         foregroundColor: IA.Appearance.colors.inverseSecondary
                         fontPixelSize: IA.Appearance.typography.supportingSize
-                        wrapMode: Text.Wrap
                     }
                     IAItemDelegate {
                         Layout.fillWidth: true
@@ -87,26 +85,7 @@ Window {
                         backgroundColor: IA.Appearance.colors.inverseSurface
                         fontWeight: IA.Appearance.typography.emphasisWeight
                     }
-                    Repeater {
-                        model: ["Actions", "Forms", "Values", "Lists", "Overlays"]
-                        IAItemDelegate {
-                            required property string modelData
-                            Layout.fillWidth: true
-                            text: modelData
-                            enabled: false
-                            backgroundColor: IA.Appearance.colors.inverseSurface
-                            disabledBackgroundColor: IA.Appearance.colors.inverseSurface
-                            disabledForegroundColor: IA.Appearance.colors.inverseSecondary
-                        }
-                    }
                     Item { Layout.fillHeight: true }
-                    IALabel {
-                        Layout.fillWidth: true
-                        text: "First overview\nOther pages unavailable until visual review."
-                        foregroundColor: IA.Appearance.colors.inverseSecondary
-                        fontPixelSize: IA.Appearance.typography.supportingSize
-                        wrapMode: Text.Wrap
-                    }
                 }
             }
             ColumnLayout {

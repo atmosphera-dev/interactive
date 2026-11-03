@@ -27,7 +27,7 @@ Item {
     property bool synchronizing: false
     signal colorSelected(color value)
     signal resetRequested()
-    implicitWidth: pickerButton.implicitWidth + resetButton.implicitWidth + itemSpacing
+    implicitWidth: pickerButton.implicitWidth + (resetButton.visible ? resetButton.implicitWidth + itemSpacing : 0)
     implicitHeight: pair.implicitHeight
     width: Math.min(implicitWidth, maximumWidth)
     height: implicitHeight
@@ -136,7 +136,6 @@ Item {
                     Layout.fillWidth: true
                     Layout.alignment: Qt.AlignVCenter
                     text: root.displayName + " " + String(root.resolvedColor).toUpperCase()
-                    wrapMode: Text.WrapAnywhere
                     foregroundColor: root.readoutForeground
                     fontFamily: pickerButton.fontFamily
                     fontPixelSize: pickerButton.fontPixelSize
@@ -159,7 +158,7 @@ Item {
             objectName: "reset" + root.namePrefix.charAt(0).toUpperCase() + root.namePrefix.slice(1) + "Button"
             text: "Reset " + root.label.toLowerCase()
             width: Math.min(implicitWidth, pair.width)
-            enabled: root.resetEnabled
+            visible: root.resetEnabled
             onClicked: root.resetRequested()
         }
     }

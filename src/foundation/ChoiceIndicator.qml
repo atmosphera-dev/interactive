@@ -49,7 +49,8 @@ Rectangle {
         width: Appearance.metrics.thumbSize
         height: width
         radius: width / 2
-        x: root.border.width + root.visualPosition * Math.max(0, root.width - width - 2 * root.border.width)
+        // Square slot of the track height: equal gap on every facing edge.
+        x: (root.height - height) / 2 + root.visualPosition * Math.max(0, root.width - root.height)
         color: root.markColor
     }
 }

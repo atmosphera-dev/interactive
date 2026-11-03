@@ -7,6 +7,7 @@ T.ScrollView {
     id: control
     property alias backgroundColor: appearance.backgroundColor
     property alias borderColor: appearance.borderColor
+    property alias disabledBorderColor: appearance.disabledBorderColor
     property alias controlRadius: appearance.controlRadius
     readonly property alias appearanceDiagnostics: appearance.diagnostics
     function resetAppearance(): void { appearance.resetOverrides(); }

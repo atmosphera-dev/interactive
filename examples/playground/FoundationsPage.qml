@@ -66,14 +66,6 @@ Item {
                         foregroundColor: IA.Appearance.colors.secondaryText
                         wrapMode: Text.Wrap
                     }
-                    IALabel {
-                        Layout.fillWidth: true
-                        visible: root.width < 824
-                        text: "Actions, Forms, Values, Lists and Overlays pages are unavailable at this checkpoint."
-                        fontPixelSize: IA.Appearance.typography.supportingSize
-                        foregroundColor: IA.Appearance.colors.secondaryText
-                        wrapMode: Text.Wrap
-                    }
                 }
                 GridLayout {
                     Layout.fillWidth: true
@@ -528,8 +520,7 @@ Item {
         }
         IAMenuItem {
             objectName: "menuEditProfile"
-            text: "Edit profile..."
-            shortcutText: "Ctrl+E"
+            text: "Edit profile…"
             onTriggered: root.openDialog()
         }
         IAMenuItem {

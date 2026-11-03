@@ -7,6 +7,7 @@ T.TabBar {
     id: control
     property alias backgroundColor: appearance.backgroundColor
     property alias borderColor: appearance.borderColor
+    property alias disabledBorderColor: appearance.disabledBorderColor
     property alias controlRadius: appearance.controlRadius
     property alias fontFamily: appearance.fontFamily
     property alias fontPixelSize: appearance.fontPixelSize

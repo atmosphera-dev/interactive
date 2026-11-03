@@ -8,6 +8,7 @@ T.Dialog {
     property alias backgroundColor: appearance.backgroundColor
     property alias foregroundColor: appearance.foregroundColor
     property alias borderColor: appearance.borderColor
+    property alias disabledBorderColor: appearance.disabledBorderColor
     property alias focusColor: appearance.focusColor
     property alias controlRadius: appearance.controlRadius
     property alias fontFamily: appearance.fontFamily

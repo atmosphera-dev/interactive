@@ -18,12 +18,11 @@ T.ToolSeparator {
         implicitHeight: control.vertical ? IA.Appearance.metrics.toolHeight : line.thickness
         IA.Separator {
             id: line
-            objectName: "iaIndicator"
+            objectName: "iaSeparator"
             anchors.centerIn: parent
             width: control.vertical ? thickness : parent.width
             height: control.vertical ? parent.height : thickness
             orientation: control.orientation
-            color: control.foregroundColor
         }
     }
 }

@@ -12,6 +12,7 @@ T.Slider {
     property alias disabledBackgroundColor: appearance.disabledBackgroundColor
     property alias disabledForegroundColor: appearance.disabledForegroundColor
     property alias borderColor: appearance.borderColor
+    property alias disabledBorderColor: appearance.disabledBorderColor
     property alias focusColor: appearance.focusColor
     property alias controlRadius: appearance.controlRadius
     property alias minimumHeight: appearance.minimumHeight

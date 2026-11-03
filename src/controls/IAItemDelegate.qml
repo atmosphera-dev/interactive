@@ -17,6 +17,7 @@ T.ItemDelegate {
     property alias inactiveBackgroundColor: appearance.inactiveBackgroundColor
     property alias inactiveForegroundColor: appearance.inactiveForegroundColor
     property alias borderColor: appearance.borderColor
+    property alias disabledBorderColor: appearance.disabledBorderColor
     property alias focusColor: appearance.focusColor
     property alias controlRadius: appearance.controlRadius
     property alias fontFamily: appearance.fontFamily

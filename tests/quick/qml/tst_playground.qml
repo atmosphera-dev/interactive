@@ -797,7 +797,7 @@ Item {
             verify(opener !== null && reset !== null && dialog !== null);
             const defaultAccent = IA.Appearance.colors.accent;
             compare(PlaygroundState.hasAccentOverride, false);
-            compare(reset.enabled, false);
+            compare(reset.visible, false);
             openCustomAccent();
             compare(dialog.modality, Qt.NonModal);
             compare(dialog.options, Dialogs.ColorDialog.NoButtons | Dialogs.ColorDialog.ShowAlphaChannel
@@ -811,12 +811,12 @@ Item {
 
             verify(PlaygroundState.setAppearanceToken("colors", "accent", String(defaultAccent)));
             compare(PlaygroundState.hasAccentOverride, true, "Presence, not inequality, enables Reset accent");
-            compare(reset.enabled, true);
+            compare(reset.visible, true);
             click(reset);
             compare(JSON.stringify(PlaygroundState.appearanceInput), "{}",
                     "Removing the sole token prunes both empty containers");
             compare(PlaygroundState.hasAccentOverride, false);
-            compare(reset.enabled, false);
+            compare(reset.visible, false);
             assertAccentConsumers(defaultAccent);
             verify(PlaygroundState.setAppearance({tokens: {
                 metrics: {controlRadius: 9}, colors: {accent: String(defaultAccent)}}}));
@@ -986,7 +986,7 @@ Item {
             verify(PlaygroundState.setSemanticCorrection("warning", Qt.rgba(1, 0.5, 0.1, 1)));
             verify(PlaygroundState.setSemanticCorrection("error", Qt.rgba(1, 0.2, 0.2, 1)));
             const reset = findChild(editor, "resetAccentButton") as IAToolButton;
-            verify(reset.enabled);
+            verify(reset.visible);
             verify(TestProbe.activate(editor));
             click(reset);
             assertPickerColor(accent, IA.Appearance.colors.accent);
@@ -1065,6 +1065,7 @@ Item {
                                 "dangerPickerButton", "resetDangerButton", "savePaletteButton"]) {
                 const item = findChild(specimen, name) as Item;
                 verify(item !== null);
+                if (!item.visible) continue;
                 const point = item.mapToItem(flick.contentItem, 0, 0);
                 verify(point.x >= -0.5 && point.x + item.width <= data.width + 0.5, name + " fits width");
                 verify(item.width > 0 && item.height > 0);
@@ -1343,7 +1344,7 @@ Item {
             assertAccentConsumers(defaultAccent);
             compare(PlaygroundState.appearanceInput, input, "Reset accent retains all siblings and envelope fields");
             compare(PlaygroundState.hasAccentOverride, false);
-            compare(reset.enabled, false);
+            compare(reset.visible, false);
             compare(editor.accentDraft, undefined);
             compare(hex.text.toLowerCase(), String(defaultAccent).toLowerCase());
             compare(editor.jsonDraft, pendingJson);

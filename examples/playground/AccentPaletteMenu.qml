@@ -92,7 +92,6 @@ IAMenu {
                     Layout.minimumWidth: 0
                     Layout.alignment: Qt.AlignVCenter
                     text: row.modelData.name
-                    wrapMode: Text.Wrap
                     foregroundColor: row.rowTextColor
                     fontFamily: row.fontFamily
                     fontPixelSize: row.fontPixelSize
@@ -101,10 +100,8 @@ IAMenu {
                 }
                 IALabel {
                     objectName: "accentPresetHex"
-                    Layout.minimumWidth: 0
                     Layout.alignment: Qt.AlignVCenter
                     text: row.modelData.hex
-                    wrapMode: Text.WrapAnywhere
                     foregroundColor: row.rowTextColor
                     fontFamily: row.fontFamily
                     fontPixelSize: row.fontPixelSize

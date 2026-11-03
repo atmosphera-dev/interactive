@@ -24,6 +24,7 @@ T.Label {
     color: enabled ? foregroundColor : disabledForegroundColor
     linkColor: IA.Appearance.colors.link
     font: appearance.resolvedFont
+    elide: Text.ElideRight
     background: Rectangle {
         objectName: "iaBackground"
         color: control.backgroundColor

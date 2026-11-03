@@ -20,7 +20,6 @@ IAPane {
             visible: text.length > 0
             text: root.title
             fontWeight: IA.Appearance.typography.emphasisWeight
-            wrapMode: Text.Wrap
         }
         IALabel {
             Layout.fillWidth: true

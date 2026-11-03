@@ -25,7 +25,6 @@ Item {
             IALabel {
                 Layout.fillWidth: true
                 text: root.label
-                wrapMode: Text.Wrap
             }
             IALabel {
                 Layout.fillWidth: true

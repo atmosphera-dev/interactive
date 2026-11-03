@@ -17,11 +17,10 @@ T.MenuSeparator {
         implicitHeight: line.thickness
         IA.Separator {
             id: line
-            objectName: "iaIndicator"
+            objectName: "iaSeparator"
             anchors.verticalCenter: parent.verticalCenter
             anchors.left: parent.left
             anchors.right: parent.right
-            color: control.foregroundColor
         }
     }
 }

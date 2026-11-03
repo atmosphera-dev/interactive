@@ -22,7 +22,6 @@ Item {
             Layout.fillWidth: true
             text: root.label
             fontWeight: IA.Appearance.typography.emphasisWeight
-            wrapMode: Text.Wrap
         }
         RowLayout {
             id: editorLane
