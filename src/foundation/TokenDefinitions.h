@@ -88,6 +88,8 @@ inline constexpr double LabelContrastTarget = 7;
     X(sliderThumbSize, 16, 1, 256) \
     X(borderWidth, 1, 0, 16) \
     X(focusWidth, 2, 0, 16) \
+    X(pressInsetDepth, 8, 0, 64) \
+    X(pressContentShift, 1, 0, 8) \
     X(rowHeight, 30, 0, 512) \
     X(popupPadding, 8, 0, 128) \
     X(menuMinWidth, 180, 0, 2048) \
@@ -126,6 +128,7 @@ inline constexpr double LabelContrastTarget = 7;
 #define IA_MOTION_REAL_TOKENS(X) \
     X(hoverBlend, 0.08, 0, 1) \
     X(pressedBlend, 0.16, 0, 1) \
+    X(pressInsetOpacity, 0.28, 0, 1) \
     X(semanticBlend, 0.08, 0, 1) \
     X(disabledOpacity, 1, 0, 1)
 

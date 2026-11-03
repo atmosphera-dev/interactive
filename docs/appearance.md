@@ -390,6 +390,8 @@ unscaled by `fontScale`; controls grow from actual font metrics instead.
 | 15 | `progressHeight`, `busySize` | 4, 20 | `[1, 128]`, `[1, 256]` |
 | 16 | `shadowRadius`, `shadowOffset` | 12, 2 | `[0, 128]` |
 | 17 | `hairlineWidth` | 1 | `[0, 8]` physical pixels |
+| 18 | `pressInsetDepth` | 8 | `[0, 64]` |
+| 19 | `pressContentShift` | 1 | `[0, 8]` |
 
 `hairlineWidth` is the one exception to logical-pixel dimensions: a decorative
 separator divides it by the effective DPR. Structural alignment and slider-value
@@ -447,8 +449,9 @@ is separate from color-only updates; IA does not introduce a workaround for it.
 | 4 | `motion.hoverBlend`, `pressedBlend` | 0.08, 0.16 | qreal `[0, 1]` |
 | 5 | `motion.semanticBlend` | 0.08 light / 0.12 dark | qreal `[0, 1]` |
 | 6 | `motion.disabledOpacity` | 1 | qreal `[0, 1]` |
-| 7 | `icons.strokeWidth` | 1.5 logical px | qreal `[0.25, 16]` |
-| 8 | `icons.check`, `minus`, `chevronDown`, `chevronRight`, `close`, `search` | QUrl values below | Absolute asset URL |
+| 7 | `motion.pressInsetOpacity` | 0.28 | qreal `[0, 1]` |
+| 8 | `icons.strokeWidth` | 1.5 logical px | qreal `[0.25, 16]` |
+| 9 | `icons.check`, `minus`, `chevronDown`, `chevronRight`, `close`, `search` | QUrl values below | Absolute asset URL |
 
 Icon URLs default to `qrc:/qt/qml/InterActive/Foundation/icons/` followed by
 `check.svg`, `minus.svg`, `chevron-down.svg`, `chevron-right.svg`, `close.svg`,
@@ -477,6 +480,23 @@ cannot meet the selected 5:1 or 7:1 diagnostic floor, they remain unchanged and
 produce `low-contrast` diagnostics.
 Applications must supply accessible override colors rather than rely on the
 library to silently rewrite their inputs.
+
+## Press Feedback
+
+`IAButton` and `IAToolButton` signal press with a shared inner shadow along the
+inside top edge and a downward content shift, keeping their resting/hover fill
+(or selected/inactive fill when checked). `metrics.pressInsetDepth`,
+`metrics.pressContentShift`, and `motion.pressInsetOpacity` size this inset;
+their defaults are the same in light/dark schemes and compact/touch densities.
+The shift is visual only: implicit size, baseline and layout do not change.
+Release removes the inset and shift, and disabled controls never show them.
+There is no press animation, including with reduced motion.
+
+Other controls retain their pressed fills. The `*Pressed` palette roles and
+`motion.pressedBlend` remain available for those controls, selection and shared
+label derivation. `IAButton` and `IAToolButton` no longer expose a local
+`pressedBackgroundColor` override; the property remains on `ControlAppearance`
+and controls that consume pressed fills.
 
 ## Local Appearance
 

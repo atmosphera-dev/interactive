@@ -168,7 +168,13 @@ Item {
             compare(background.border.color, button.enabled ? button.borderColor : IA.Appearance.colors.outline);
             if (button === solid && button.enabled)
                 compare(background.border.color, label.color, "Semantic border matches rendered text");
-            compare(geometry(button), expectedGeometry, "Theme and state preserve rendered geometry");
+            const pressed = button.enabled && button.down;
+            const inset = findChild(background, "iaPressInset") as Rectangle;
+            verify(inset !== null);
+            compare(inset.visible, pressed);
+            const translatedGeometry = expectedGeometry.slice();
+            translatedGeometry[15] += pressed ? IA.Appearance.metrics.pressContentShift : 0;
+            compare(geometry(button), translatedGeometry, "Only the rendered content shifts during press; layout stays fixed");
         }
 
         function test_renderedStates_data(): var {
@@ -279,7 +285,7 @@ Item {
                 verify(TestProbe.press(solid, solid.width / 2, solid.height / 2));
                 try {
                     tryCompare(solid, "down", true);
-                    verifyVisual(solid, pressed, text, originalGeometry);
+                    verifyVisual(solid, hover, text, originalGeometry);
                 } finally {
                     verify(TestProbe.release(solid, solid.width / 2, solid.height / 2));
                 }
@@ -295,7 +301,7 @@ Item {
                 verify(TestProbe.press(neutral, neutral.width / 2, neutral.height / 2));
                 try {
                     tryCompare(neutral, "down", true);
-                    verifyVisual(neutral, colors.controlPressed, colors.text, originalGeometry);
+                    verifyVisual(neutral, colors.controlHover, colors.text, originalGeometry);
                 } finally {
                     verify(TestProbe.release(neutral, neutral.width / 2, neutral.height / 2));
                 }

@@ -306,6 +306,7 @@ class AppearanceTests : public QObject
 private slots:
     void defaultsAndSchemaCompleteness();
     void numericSchemaBounds();
+    void pressInsetTokens();
     void partialInputReplacesSnapshot();
     void invalidFields_data();
     void invalidFields();
@@ -1448,6 +1449,58 @@ void AppearanceTests::numericSchemaBounds()
             if (type == QLatin1String("integer"))
                 QVERIFY(!TokenSchema::validate(group.key(), field.key(), minimum + 0.5, &normalized, nullptr));
         }
+    }
+}
+
+void AppearanceTests::pressInsetTokens()
+{
+    Appearance appearance;
+    for (const auto *scheme : {"light", "dark"}) {
+        for (const auto *density : {"compact", "touch"}) {
+            appearance.setInput({{QStringLiteral("scheme"), QString::fromLatin1(scheme)},
+                                 {QStringLiteral("density"), QString::fromLatin1(density)}});
+            QCOMPARE(appearance.metrics()->pressInsetDepth(), 8.0);
+            QCOMPARE(appearance.metrics()->pressContentShift(), 1.0);
+            QCOMPARE(appearance.motion()->pressInsetOpacity(), 0.28);
+        }
+    }
+
+    struct Token {
+        QString group;
+        QString name;
+        qreal defaultValue;
+        qreal maximum;
+        TokenGroup *output;
+    };
+    const QList<Token> tokens{
+        {QStringLiteral("metrics"), QStringLiteral("pressInsetDepth"), 8, 64, appearance.metrics()},
+        {QStringLiteral("metrics"), QStringLiteral("pressContentShift"), 1, 8, appearance.metrics()},
+        {QStringLiteral("motion"), QStringLiteral("pressInsetOpacity"), 0.28, 1, appearance.motion()}};
+    const auto schema = TokenSchema::definitions();
+    for (const auto &token : tokens) {
+        const auto spec = schema.value(token.group).toMap().value(token.name).toMap();
+        QCOMPARE(spec.value(QStringLiteral("type")).toString(), QStringLiteral("real"));
+        QCOMPARE(spec.value(QStringLiteral("minimum")).toDouble(), 0.0);
+        QCOMPARE(spec.value(QStringLiteral("maximum")).toDouble(), token.maximum);
+        const auto name = token.name.toUtf8();
+        const int signalIndex = token.output->metaObject()->indexOfSignal((name + "Changed()").constData());
+        QVERIFY(signalIndex >= 0);
+        QSignalSpy changed(token.output, token.output->metaObject()->method(signalIndex));
+        QVERIFY(changed.isValid());
+        for (const qreal value : {qreal(0), token.maximum, token.maximum / 2}) {
+            appearance.setInput(tokenInput(token.group, {{token.name, value}}));
+            QCOMPARE(token.output->property(name.constData()).toDouble(), value);
+            QVERIFY(!hasDiagnostic(appearance.diagnostics(), QStringLiteral("invalid-value")));
+        }
+        QCOMPARE(changed.count(), 3);
+        for (const qreal value : {qreal(-0.01), token.maximum + 0.01}) {
+            appearance.setInput(tokenInput(token.group, {{token.name, value}}));
+            QCOMPARE(token.output->property(name.constData()).toDouble(), token.defaultValue);
+            QVERIFY(hasDiagnostic(appearance.diagnostics(), QStringLiteral("invalid-value"),
+                                  QStringLiteral("tokens.") + token.group + QLatin1Char('.') + token.name));
+        }
+        appearance.setInput({});
+        QCOMPARE(token.output->property(name.constData()).toDouble(), token.defaultValue);
     }
 }
 

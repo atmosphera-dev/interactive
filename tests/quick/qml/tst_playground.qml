@@ -771,8 +771,8 @@ Item {
                 const background = button.background as Rectangle;
                 const readout = findChild(page, "opencode-color-" + reference.key) as IALabel;
                 verify(button !== null && label !== null && background !== null && readout !== null);
-                compare(background.color, button.down ? IA.Appearance.colors[reference.role + "Pressed"]
-                    : button.hovered ? IA.Appearance.colors[reference.role + "Hover"] : IA.Appearance.colors[reference.role + "Surface"]);
+                compare(background.color, button.hovered ? IA.Appearance.colors[reference.role + "Hover"]
+                    : IA.Appearance.colors[reference.role + "Surface"]);
                 compare(label.color, IA.Appearance.colors[reference.role + "Text"]);
                 compare(background.border.color, label.color);
                 compare(readout.text.toLowerCase(), String(button.backgroundColor).toLowerCase());
@@ -1429,8 +1429,12 @@ Item {
                     }
                     verify(TestProbe.render(button));
                     verify(background.visible && label.visible);
-                    compare(background.color, state === "pressed" ? button.pressedBackgroundColor
-                        : state === "hover" ? button.hoverBackgroundColor : button.backgroundColor);
+                    compare(background.color, button.hovered ? button.hoverBackgroundColor : button.backgroundColor);
+                    const inset = findChild(background, "iaPressInset") as Rectangle;
+                    const content = button.contentItem as IA.IconLabel;
+                    verify(inset !== null && content !== null);
+                    compare(inset.visible, state === "pressed");
+                    compare(content.contentShift, state === "pressed" ? IA.Appearance.metrics.pressContentShift : 0);
                     compare(label.color, button.foregroundColor);
                     const ratio = contrastRatio(label.color, background.color);
                     verify(ratio >= data.target, data.tag + "/" + state + " rendered text contrast: " + ratio);
@@ -1441,7 +1445,7 @@ Item {
                     verify(roundedRatio >= data.target, data.tag + "/" + state + " 8-bit text contrast: " + roundedRatio);
                     if (state !== "normal" && data.name !== "menuButton") {
                         const endpoint = contrastRatio(fg, "white") > contrastRatio(fg, "black") ? 1 : 0;
-                        const amount = state === "hover" ? IA.Appearance.motion.hoverBlend : IA.Appearance.motion.pressedBlend;
+                        const amount = IA.Appearance.motion.hoverBlend;
                         const base = button.backgroundColor;
                         for (const channel of ["r", "g", "b"])
                             fuzzyCompare(bg[channel], base[channel] + (endpoint - base[channel]) * amount,

@@ -15,6 +15,7 @@ Item {
     property int display: T.AbstractButton.TextBesideIcon
     property bool mirrored: false
     property real spacing: Appearance.metrics.spacing
+    property real contentShift: 0
     property font font: Qt.font({ family: Appearance.typography.family,
                                   pixelSize: Appearance.typography.controlSize,
                                   weight: Appearance.typography.controlWeight })
@@ -32,6 +33,7 @@ Item {
     implicitWidth: layout.implicitWidth
     implicitHeight: layout.implicitHeight
     baselineOffset: label.y + layout.y + label.baselineOffset
+    transform: Translate { y: root.contentShift }
 
     GridLayout {
         id: layout

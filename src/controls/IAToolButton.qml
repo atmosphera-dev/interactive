@@ -9,7 +9,6 @@ T.ToolButton {
     property alias backgroundColor: appearance.backgroundColor
     property alias foregroundColor: appearance.foregroundColor
     property alias hoverBackgroundColor: appearance.hoverBackgroundColor
-    property alias pressedBackgroundColor: appearance.pressedBackgroundColor
     property alias disabledBackgroundColor: appearance.disabledBackgroundColor
     property alias disabledForegroundColor: appearance.disabledForegroundColor
     property alias selectedBackgroundColor: appearance.selectedBackgroundColor
@@ -45,6 +44,7 @@ T.ToolButton {
     icon.height: IA.Appearance.metrics.iconSize
     icon.color: surface.foregroundColor
     contentItem: IA.IconLabel {
+        contentShift: surface.contentShift
         text: control.text
         font: control.font
         color: surface.foregroundColor
@@ -60,6 +60,7 @@ T.ToolButton {
     }
     background: IA.ControlBackground {
         id: surface
+        pressInset: true
         resolvedAppearance: appearance
         controlEnabled: control.enabled
         down: control.down
