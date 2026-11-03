@@ -86,7 +86,8 @@ struct PaletteState {
     QVariantMap values;
     QVariantList diagnostics;
     QColor backdrop;
-    qreal target = 5;
+    qreal target = 5; // Readability/diagnostic floor, independent of label derivation.
+    qreal labelTarget = LabelContrastTarget;
     qreal hoverBlend = 0.08;
     qreal pressedBlend = 0.16;
     QList<DiagnosticPair> pairs;

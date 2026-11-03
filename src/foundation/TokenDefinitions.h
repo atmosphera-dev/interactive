@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 #pragma once
 
+namespace InterActive {
+inline constexpr double LabelContrastTarget = 7;
+}
+
 // Shared by the typed output groups, profiles, and validator. Numeric bounds
 // apply to application and component inputs, not to structural layout math.
 #define IA_COLOR_TOKENS(X) \

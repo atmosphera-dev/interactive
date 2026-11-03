@@ -81,11 +81,6 @@ public:
     bool paletteHistoryAvailable() const { return m_paletteHistoryAvailable; }
     Q_INVOKABLE void refreshSavedAccents();
     Q_INVOKABLE QString opaqueAccentKey(const QColor &color) const;
-    // Temporary label contrast trial: rule "A" or "B"; returns {label, ratio},
-    // or an empty map for an unknown rule.
-    Q_INVOKABLE QVariantMap trialLabel(const QString &rule, const QColor &fill,
-                                       const QColor &hover, const QColor &pressed,
-                                       qreal target) const;
 
     QString draftName() const { return m_draft.name; }
     QString draftEmail() const { return m_draft.email; }

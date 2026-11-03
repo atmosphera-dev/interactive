@@ -159,8 +159,10 @@ caution/warning and success companions derive from that accent's visible tone an
 intensity, with the profile's rose, amber and green colors used as **hue seeds**.
 Their resolved RGB outputs are not fixed profile literals. Neutral chrome,
 ordinary text, disabled treatment and noncolor groups do not follow accent edits.
-Normal targets 5:1 enabled text; high targets 7:1 and retains its existing neutral
-adjustments. This is a bounded visual trial, not a finalized whole-palette design.
+Derived labels target 7:1 in both modes, using the strongest available result when
+7:1 is impossible. The readability floor is 5:1 in normal mode and 7:1 in high
+mode; high retains its existing neutral adjustments. This is a bounded visual
+trial, not a finalized whole-palette design.
 
 | # | Role | Light | Dark |
 |---|---|---|---|
@@ -325,19 +327,28 @@ colors, including assignments equal to defaults, win; the resolver does not
 rewrite them to hide a contrast failure.
 
 For an opaque, library-owned resting semantic fill that still cannot meet the
-selected target, the same solver finds a nearby fill against the best derived
-text. This adjustment requests the target plus 0.1, leaving room to re-derive a
-hue-related label rather than stopping at the pure-black limit. It is not a fixed
+readability floor (5:1 normal / 7:1 high), the same solver finds a nearby fill
+against the best derived text. This adjustment requests the floor plus 0.1,
+leaving room to re-derive a hue-related label rather than stopping at the
+pure-black limit. It is not a fixed
 tone or blanket lightening, and never rewrites an explicit application color or
 alpha input. State feedback is derived from that resting pair, then the common
 label is resolved across all actual state surfaces.
 
-Enabled text pairs are checked against a 5:1 normal design target, giving margin
-above WCAG AA's 4.5:1 requirement for normal-sized text. High contrast is an opt-in
-7:1 target, corresponding to the AAA normal-text contrast requirement, not a
-whole-application conformance claim. The generic `contrastingText` and
-`checkContrast` helpers retain their optional 4.5 default for direct callers;
-appearance resolvers pass the selected 5:1 or 7:1 target explicitly. Checks cover
+Derived labels (`onAccent`/`onError`/`onWarning`, action `Text`, semantic message
+`Text`, `accentText` and local-override foregrounds) aim for **7:1 in both contrast
+modes**. Among passing proposals the label closest to the seed's actual tone wins;
+when none passes, the strongest tested result is used. This target does not move
+fills: fill adjustment and companion acceptance keep their existing 5:1 normal /
+7:1 high readability floor, and explicit caller colors remain exact.
+
+Enabled text diagnostics use that same floor: 5:1 normal gives margin above
+WCAG AA's 4.5:1 requirement for normal-sized text; 7:1 high corresponds to the AAA
+normal-text contrast requirement, not a whole-application conformance claim. A
+best-effort label below 7:1 but at least 5:1 therefore does not produce a normal-mode
+`low-contrast` warning. The generic `contrastingText` and `checkContrast` helpers
+retain their optional 4.5 default for direct callers; appearance resolvers pass
+the label target or diagnostic floor explicitly. Checks cover
 main text on normal, hovered, pressed and selected surfaces; secondary,
 placeholder, link and semantic text on content; semantic text on message surfaces;
 accent/error/warning paired text through hover and press; action text through all
@@ -455,15 +466,15 @@ and must not interpret zero as a request for a zero-duration infinite loop.
 High contrast starts from the selected profile, strengthens main/secondary/
 placeholder text and outlines to black (light) or white (dark), makes selection
 opaque, and imposes border/focus width floors of 2/3. Its accent remains exact;
-missing semantic companions use the same accent-derived recipe and are finalized
-for the selected text target. Shared foreground derivation covers normal, hover
-and pressed states, and semantic borders still follow text. Explicit colors win
-in both contrast modes.
+missing semantic companions use the same accent-derived recipe and the selected
+readability floor. Labels target 7:1 in both modes. Shared foreground derivation
+covers normal, hover and pressed states, and semantic borders still follow text.
+Explicit colors win in both contrast modes.
 
 This profile is a text-contrast preview, not a whole-application WCAG AAA claim.
 Explicit application and local colors still win: if their fill/state combinations
-cannot meet the selected 5:1 or 7:1 target, they remain unchanged and produce
-`low-contrast` diagnostics.
+cannot meet the selected 5:1 or 7:1 diagnostic floor, they remain unchanged and
+produce `low-contrast` diagnostics.
 Applications must supply accessible override colors rather than rely on the
 library to silently rewrite their inputs.
 

@@ -313,6 +313,7 @@ private slots:
     void rejectedEnvelope_data();
     void rejectedEnvelope();
     void accentRelationships();
+    void derivedLabelTarget();
     void contrastingText_data();
     void contrastingText();
     void multipleBackgrounds();
@@ -490,10 +491,13 @@ void AppearanceTests::localDependencyChanges()
     QVERIFY(work.count("local-derivation") >= 3);
     assertPairs(5);
     work.clear();
+    const QList<QColor> normalLabels{facade.foregroundColor(), facade.selectedForegroundColor(), facade.inactiveForegroundColor()};
     auto input = appearance.input();
     input.insert(QStringLiteral("contrast"), QStringLiteral("high"));
     appearance.setInput(input);
-    QVERIFY(work.count("local-derivation") >= 3);
+    QCOMPARE(work.count("local-derivation"), 0); // Label target remains 7; only the diagnostic floor changes.
+    QCOMPARE((QList<QColor>{facade.foregroundColor(), facade.selectedForegroundColor(), facade.inactiveForegroundColor()}), normalLabels);
+    QVERIFY(work.count("local-pair-measurement") >= 3);
     assertPairs(7);
     work.clear();
     const QColor selected = facade.selectedForegroundColor();
@@ -1591,11 +1595,11 @@ void AppearanceTests::accentRelationships()
     QVERIFY(rgbContrast(appearance.colors()->focus(), appearance.colors()->content()) >= 3);
     QVERIFY(rgbContrast(appearance.colors()->link(), appearance.colors()->content()) >= 5);
     const QColor baseText = TokenSchema::contrastingText(appearance.colors()->accent(), {appearance.colors()->accent()},
-                                                       appearance.colors()->content(), 5);
+                                                       appearance.colors()->content(), 7);
     QCOMPARE(appearance.colors()->accentHover(), rgbFeedback(appearance.colors()->accent(), baseText, 0.08));
     QCOMPARE(appearance.colors()->accentPressed(), rgbFeedback(appearance.colors()->accent(), baseText, 0.16));
     for (const auto &background : {appearance.colors()->accent(), appearance.colors()->accentHover(), appearance.colors()->accentPressed()})
-        verifyReadableContrast(appearance.colors()->onAccent(), background, appearance.colors()->content(), 5);
+        verifyReadableContrast(appearance.colors()->onAccent(), background, appearance.colors()->content(), 7);
     appearance.setInput(tokenInput(QStringLiteral("colors"), {{QStringLiteral("accent"), QColor("#101020")}}));
     QVERIFY(rgbContrast(appearance.colors()->onAccent(), appearance.colors()->accent()) >= 5);
     QVERIFY(appearance.colors()->onAccent().blue() > appearance.colors()->onAccent().red());
@@ -1604,6 +1608,70 @@ void AppearanceTests::accentRelationships()
     QCOMPARE(appearance.colors()->onAccent(), QColor(Qt::white));
     QCOMPARE(appearance.colors()->accentHover(), QColor("#aabbcc"));
     QVERIFY(hasDiagnostic(appearance.diagnostics(), QStringLiteral("low-contrast"), QStringLiteral("tokens.colors.onAccent/accent")));
+}
+
+void AppearanceTests::derivedLabelTarget()
+{
+    const QColor black(Qt::black), white(Qt::white);
+    for (const auto &scheme : {QStringLiteral("light"), QStringLiteral("dark")}) {
+        for (const QColor fill : {QColor("#ffed00"), QColor("#101020"), QColor("#808080")}) {
+            QList<QColor> normalLabels;
+            for (const auto &contrast : {QStringLiteral("normal"), QStringLiteral("high")}) {
+                Appearance appearance;
+                // Pin identical state surfaces to isolate label derivation from
+                // the mode-dependent companion floor and feedback recipe.
+                QVariantMap supplied;
+                for (const auto *role : {"accent", "error", "warning"}) {
+                    const QString name = QString::fromLatin1(role);
+                    for (const auto &state : {QString(), QStringLiteral("Hover"), QStringLiteral("Pressed")})
+                        supplied.insert(name + state, fill);
+                }
+                appearance.setInput(paletteInput(scheme, contrast, supplied));
+                ControlAppearance local;
+                local.setSource(&appearance);
+                local.setBackgroundColor(fill);
+                const qreal floor = contrast == QLatin1String("high") ? 7 : 5;
+                const QColor previousResting = TokenSchema::contrastingText(fill, {fill}, appearance.colors()->content(), floor);
+                QCOMPARE(local.hoverBackgroundColor(), rgbFeedback(fill, previousResting, appearance.motion()->hoverBlend()));
+                QCOMPARE(local.pressedBackgroundColor(), rgbFeedback(fill, previousResting, appearance.motion()->pressedBlend()));
+                local.setHoverBackgroundColor(fill);
+                local.setPressedBackgroundColor(fill);
+                local.setSelectedBackgroundColor(fill);
+                local.setInactiveBackgroundColor(fill);
+                const auto *colors = appearance.colors();
+                const QList<QColor> labels{colors->onAccent(), colors->onError(), colors->onWarning(),
+                    colors->primaryText(), colors->destructiveText(), colors->cautionText(),
+                    local.foregroundColor(), local.selectedForegroundColor(), local.inactiveForegroundColor()};
+                QCOMPARE(colors->accent(), fill);
+                QCOMPARE(colors->primarySurface(), fill);
+                QCOMPARE(colors->primaryHover(), fill);
+                QCOMPARE(colors->primaryPressed(), fill);
+                QCOMPARE(local.backgroundColor(), fill);
+                const qreal strongest = std::max(rgbContrast(black, fill), rgbContrast(white, fill));
+                for (const QColor &label : labels) {
+                    QCOMPARE(label, TokenSchema::contrastingText(fill, {fill}, colors->content(), 7));
+                    if (fill == QColor("#808080")) {
+                        QVERIFY(strongest < 7);
+                        QVERIFY(std::abs(rgbContrast(label, fill) - strongest) < 0.001);
+                        QCOMPARE(label, black);
+                    } else {
+                        verifyReadableContrast(label, fill, colors->content(), 7);
+                        // Closest passing retains a hue-related proposal where
+                        // one passes; strongest-only would choose an endpoint.
+                        QVERIFY(label != black && label != white);
+                    }
+                }
+                verifyContrastDiagnostic(appearance.diagnostics(), QStringLiteral("tokens.colors.primaryText/primarySurface"),
+                    colors->primaryText(), fill, colors->content(), floor);
+                verifyContrastDiagnostic(local.diagnostics(), QStringLiteral("foregroundColor/backgroundColor"),
+                    local.foregroundColor(), fill, colors->content(), floor);
+                if (contrast == QLatin1String("normal"))
+                    normalLabels = labels;
+                else
+                    QCOMPARE(labels, normalLabels);
+            }
+        }
+    }
 }
 
 void AppearanceTests::contrastingText_data()
@@ -1736,15 +1804,19 @@ void AppearanceTests::semanticTextRoles()
                 QVERIFY(text != QColor(Qt::black) && text != QColor(Qt::white));
                 QVERIFY(rgbContrast(text, colors->content(), colors->canvas()) >= target);
                 QVERIFY(seed.blue() > seed.red() ? text.blue() > text.red() : text.red() > text.blue());
+                QList<QColor> backgrounds{colors->content()};
                 verifyContrastDiagnostic(appearance.diagnostics(), QStringLiteral("tokens.colors.") + textRole + QStringLiteral("/content"),
                                          text, colors->content(), colors->canvas(), target);
                 if (name != QLatin1String("accent")) {
                     const QString surfaceRole = name + QStringLiteral("Surface");
                     const QColor surface = colors->values().value(surfaceRole).value<QColor>();
+                    backgrounds.append(surface);
                     QVERIFY(rgbContrast(text, surface, colors->canvas()) >= target);
                     verifyContrastDiagnostic(appearance.diagnostics(), QStringLiteral("tokens.colors.") + textRole + QLatin1Char('/') + surfaceRole,
                                              text, surface, colors->canvas(), target);
                 }
+                QCOMPARE(text, TokenSchema::contrastingText(seed, backgrounds, colors->canvas(), 7));
+                verifyDerivedContrast(text, backgrounds, colors->canvas(), 7, textRole);
             }
             label.setTone(Presentation::Primary);
             QCOMPARE(label.foregroundColor(), colors->accentText());
@@ -2145,7 +2217,7 @@ void AppearanceTests::localDerivationAndDiagnostics()
     for (const auto &background : {control.backgroundColor(), control.hoverBackgroundColor(), control.pressedBackgroundColor()})
         verifyReadableContrast(control.foregroundColor(), background, appearance.colors()->content(), 5);
     const QColor baseText = TokenSchema::contrastingText(control.backgroundColor(), {control.backgroundColor()},
-                                                       appearance.colors()->content(), 5);
+                                                       appearance.colors()->content(), 7);
     QCOMPARE(control.hoverBackgroundColor(), rgbFeedback(control.backgroundColor(), baseText, 0.08));
     QCOMPARE(control.pressedBackgroundColor(), rgbFeedback(control.backgroundColor(), baseText, 0.16));
     QCOMPARE(control.disabledBackgroundColor(), appearance.colors()->disabledSurface());
@@ -2194,7 +2266,7 @@ void AppearanceTests::localPurple()
             control.setSource(&appearance);
             sibling.setSource(&appearance);
             const QColor backdrop = opaqueOver(appearance.colors()->content(), opaqueOver(appearance.colors()->canvas(), QColor(Qt::white)));
-            const QColor baseText = TokenSchema::contrastingText(purple, {purple}, backdrop, target);
+            const QColor baseText = TokenSchema::contrastingText(purple, {purple}, backdrop, 7);
             control.setBackgroundColor(purple);
             QCOMPARE(control.backgroundColor(), purple);
             QCOMPARE(control.hoverBackgroundColor(), rgbFeedback(purple, baseText, appearance.motion()->hoverBlend()));
@@ -2213,7 +2285,7 @@ void AppearanceTests::localPurple()
                                          control.foregroundColor(), background, backdrop, target);
             }
             QCOMPARE(control.foregroundColor(), TokenSchema::contrastingText(purple,
-                {purple, control.hoverBackgroundColor(), control.pressedBackgroundColor()}, backdrop, target));
+                {purple, control.hoverBackgroundColor(), control.pressedBackgroundColor()}, backdrop, 7));
             QVERIFY(control.diagnostics().isEmpty());
             QCOMPARE(control.resolvedFont(), sibling.resolvedFont());
             for (const auto *property : {"controlRadius", "minimumHeight", "horizontalPadding", "verticalPadding", "spacing"})
@@ -2364,14 +2436,17 @@ void AppearanceTests::solidRecipes()
     }
     verifyPaletteSeparation(colors->values(), QStringLiteral("solid recipe"));
     QCOMPARE(surface, semantic);
-    const QColor baseText = TokenSchema::contrastingText(semantic, {surface}, backdrop, target);
+    const QColor baseText = TokenSchema::contrastingText(semantic, {surface}, backdrop, 7);
     QCOMPARE(hover, rgbFeedback(surface, baseText, motion->hoverBlend()));
     QCOMPARE(pressed, rgbFeedback(surface, baseText, motion->pressedBlend()));
+    const QColor previousResting = TokenSchema::contrastingText(semantic, {surface}, backdrop, target);
+    QCOMPARE(hover, rgbFeedback(surface, previousResting, motion->hoverBlend()));
+    QCOMPARE(pressed, rgbFeedback(surface, previousResting, motion->pressedBlend()));
     QVERIFY(rgbContrast(baseText, pressed, backdrop) > rgbContrast(baseText, hover, backdrop));
     QVERIFY(rgbContrast(baseText, hover, backdrop) > rgbContrast(baseText, surface, backdrop));
     QCOMPARE(color(semanticRole + QStringLiteral("Hover")), hover);
     QCOMPARE(color(semanticRole + QStringLiteral("Pressed")), pressed);
-    QCOMPARE(text, TokenSchema::contrastingText(semantic, {surface, hover, pressed}, backdrop, target));
+    QCOMPARE(text, TokenSchema::contrastingText(semantic, {surface, hover, pressed}, backdrop, 7));
     QCOMPARE(text.spec(), QColor::Rgb);
     QCOMPARE(text.alpha(), 255);
     QCOMPARE(color(onRole).spec(), QColor::Rgb);
@@ -2397,8 +2472,13 @@ void AppearanceTests::solidRecipes()
                              outline, surface, backdrop, 3);
     QVERIFY(!hasDiagnostic(appearance.diagnostics(), QStringLiteral("low-contrast"),
                            QStringLiteral("tokens.colors.") + prefix + QStringLiteral("Outline/content")));
-    QVERIFY(text != QColor(Qt::black) && text != QColor(Qt::white));
-    QVERIFY(primary ? text.blue() > text.red() : text.red() > text.blue());
+    verifyDerivedContrast(text, {surface, hover, pressed}, backdrop, 7, prefix + QStringLiteral(" label target"));
+    if (high)
+        QVERIFY(text != QColor(Qt::black) && text != QColor(Qt::white));
+    // Normal-mode fills are not moved to reach 7; their strongest label may
+    // therefore be an endpoint instead of the old 5:1 hue-related proposal.
+    if (text != QColor(Qt::black) && text != QColor(Qt::white))
+        QVERIFY(primary ? text.blue() > text.red() : text.red() > text.blue());
     QVERIFY(appearance.diagnostics().isEmpty());
 
     ControlAppearance control, neutral;
@@ -2620,13 +2700,16 @@ void AppearanceTests::solidOverrides()
                 QCOMPARE(colors->primaryText().alpha(), 255);
                 const qreal target = contrast == QLatin1String("high") ? 7 : 5;
                 const QColor backdrop = opaqueOver(colors->content(), opaqueOver(colors->canvas(), QColor(Qt::white)));
-                const QColor baseText = TokenSchema::contrastingText(accent, {accent}, backdrop, target);
+                const QColor baseText = TokenSchema::contrastingText(accent, {accent}, backdrop, 7);
                 QCOMPARE(colors->primaryHover(), rgbFeedback(accent, baseText, appearance.motion()->hoverBlend()));
                 QCOMPARE(colors->primaryPressed(), rgbFeedback(accent, baseText, appearance.motion()->pressedBlend()));
+                const QColor previousResting = TokenSchema::contrastingText(accent, {accent}, backdrop, target);
+                QCOMPARE(colors->primaryHover(), rgbFeedback(accent, previousResting, appearance.motion()->hoverBlend()));
+                QCOMPARE(colors->primaryPressed(), rgbFeedback(accent, previousResting, appearance.motion()->pressedBlend()));
                 const QString context = QStringLiteral("primaryText scheme=%1 contrast=%2 seed=%3 content=%4 canvas=%5")
                     .arg(scheme, contrast, accent.name(QColor::HexArgb), colors->content().name(QColor::HexArgb), colors->canvas().name(QColor::HexArgb));
                 verifyDerivedContrast(colors->primaryText(), {colors->primarySurface(), colors->primaryHover(), colors->primaryPressed()},
-                                      backdrop, target, context);
+                                      backdrop, 7, context);
                 for (const auto *state : {"Surface", "Hover", "Pressed"}) {
                     const QString role = QStringLiteral("primary") + QLatin1String(state);
                     const QColor background = colors->values().value(role).value<QColor>();
@@ -2713,11 +2796,11 @@ void AppearanceTests::solidBackdropConsistency()
         QCOMPARE(surfaces.first(), seed);
         const QColor derived = colors->values().value(prefix + QStringLiteral("Text")).value<QColor>();
         QCOMPARE(control.foregroundColor(), derived);
-        QCOMPARE(derived, TokenSchema::contrastingText(seed, surfaces, TokenSchema::composite(colors->content(), colors->canvas()), target));
+        QCOMPARE(derived, TokenSchema::contrastingText(seed, surfaces, TokenSchema::composite(colors->content(), colors->canvas()), 7));
         // Force the local derivation path, not merely consumption of the shared text role.
         control.setBackgroundColor(seed);
         QCOMPARE(control.foregroundColor(), derived);
-        verifyDerivedContrast(derived, surfaces, backdrop, target, context);
+        verifyDerivedContrast(derived, surfaces, backdrop, 7, context);
         QCOMPARE(hasDiagnostic(appearance.diagnostics(), QStringLiteral("translucent-canvas"), QStringLiteral("tokens.colors.canvas")),
                  colors->canvas().alphaF() < 1);
 
@@ -2801,7 +2884,7 @@ void AppearanceTests::applicationStateOverrides()
                     QCOMPARE(values.value(missingRole), defaults.value(missingRole));
                 } else {
                     const QColor base = values.value(seedRole).value<QColor>();
-                    const QColor resting = TokenSchema::contrastingText(base, {base}, appearance.colors()->content(), 5);
+                    const QColor resting = TokenSchema::contrastingText(base, {base}, appearance.colors()->content(), 7);
                     QCOMPARE(values.value(prefix + QStringLiteral("Surface")).value<QColor>(), base);
                     QCOMPARE(values.value(missingRole).value<QColor>(), rgbFeedback(base, resting,
                         missingRole.endsWith(QLatin1String("Hover")) ? appearance.motion()->hoverBlend() : appearance.motion()->pressedBlend()));
@@ -2810,8 +2893,8 @@ void AppearanceTests::applicationStateOverrides()
                 const QList<QColor> backgrounds{values.value(prefix + QStringLiteral("Surface")).value<QColor>(),
                     values.value(prefix + QStringLiteral("Hover")).value<QColor>(), values.value(prefix + QStringLiteral("Pressed")).value<QColor>()};
                 const QColor backdrop = opaqueOver(appearance.colors()->content(), opaqueOver(appearance.colors()->canvas(), QColor(Qt::white)));
-                QCOMPARE(text, TokenSchema::contrastingText(values.value(seedRole).value<QColor>(), backgrounds, backdrop, 5));
-                verifyDerivedContrast(text, backgrounds, backdrop, 5, QStringLiteral("state-only reselection"));
+                QCOMPARE(text, TokenSchema::contrastingText(values.value(seedRole).value<QColor>(), backgrounds, backdrop, 7));
+                verifyDerivedContrast(text, backgrounds, backdrop, 7, QStringLiteral("state-only reselection"));
                 for (const auto *checkedState : {"Surface", "Hover", "Pressed"}) {
                     const QString role = prefix + QLatin1String(checkedState);
                     verifyContrastDiagnostic(appearance.diagnostics(), QStringLiteral("tokens.colors.") + prefix + QStringLiteral("Text/") + role,

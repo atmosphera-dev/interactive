@@ -47,16 +47,17 @@ void LocalColorOverrides::install(const PaletteState &palette, const ControlColo
     const QColor base = effective(ControlColor::backgroundColor);
     const QColor backdrop = palette.backdrop;
     const qreal target = palette.target;
+    const qreal labelTarget = palette.labelTarget;
     const bool backgroundOwned = explicitLocal(ControlColor::backgroundColor);
     const bool foregroundOwned = explicitLocal(ControlColor::foregroundColor);
     if (backgroundOwned) {
         const QColor resting = foregroundOwned ? effective(ControlColor::foregroundColor)
-            : m_resting.evaluate({base, backdrop, target, true, false}, [&] {
-                return TokenSchema::contrastingText(base, {base}, backdrop, target);
+            : m_resting.evaluate({base, backdrop, labelTarget, true, false}, [&] {
+                return TokenSchema::contrastingText(base, {base}, backdrop, labelTarget);
             }, "resting-foreground", owner, revision);
         if (!explicitLocal(ControlColor::hoverBackgroundColor)) {
             put(ControlColor::hoverBackgroundColor, m_hover.evaluate({base, resting, palette.hoverBlend,
-                backdrop, target, foregroundOwned}, [&] {
+                backdrop, labelTarget, foregroundOwned}, [&] {
                     return TokenSchema::feedbackSurface(base, resting, palette.hoverBlend);
                 }, "hover-feedback", owner, revision));
         } else {
@@ -64,7 +65,7 @@ void LocalColorOverrides::install(const PaletteState &palette, const ControlColo
         }
         if (!explicitLocal(ControlColor::pressedBackgroundColor)) {
             put(ControlColor::pressedBackgroundColor, m_pressed.evaluate({base, resting, palette.pressedBlend,
-                backdrop, target, foregroundOwned}, [&] {
+                backdrop, labelTarget, foregroundOwned}, [&] {
                     return TokenSchema::feedbackSurface(base, resting, palette.pressedBlend);
                 }, "pressed-feedback", owner, revision));
         } else {
@@ -80,9 +81,9 @@ void LocalColorOverrides::install(const PaletteState &palette, const ControlColo
     if (!foregroundOwned && (backgroundOwned || hoverOwned || pressedOwned)) {
         const QColor hover = effective(ControlColor::hoverBackgroundColor);
         const QColor pressed = effective(ControlColor::pressedBackgroundColor);
-        put(ControlColor::foregroundColor, m_foreground.evaluate({base, hover, pressed, backdrop, target,
+        put(ControlColor::foregroundColor, m_foreground.evaluate({base, hover, pressed, backdrop, labelTarget,
             backgroundOwned, hoverOwned, pressedOwned}, [&] {
-                return TokenSchema::contrastingText(base, {base, hover, pressed}, backdrop, target);
+                return TokenSchema::contrastingText(base, {base, hover, pressed}, backdrop, labelTarget);
             }, "ordinary-foreground", owner, revision));
     } else {
         m_foreground.valid = false;
@@ -90,8 +91,8 @@ void LocalColorOverrides::install(const PaletteState &palette, const ControlColo
     const auto pairedText = [&](ControlColor background, ControlColor foreground, Branch &branch, const char *operation) {
         if (explicitLocal(background) && !explicitLocal(foreground)) {
             const QColor surface = effective(background);
-            put(foreground, branch.evaluate({surface, backdrop, target, true, false}, [&] {
-                return TokenSchema::contrastingText(surface, {surface}, backdrop, target);
+            put(foreground, branch.evaluate({surface, backdrop, labelTarget, true, false}, [&] {
+                return TokenSchema::contrastingText(surface, {surface}, backdrop, labelTarget);
             }, operation, owner, revision));
         } else {
             branch.valid = false;

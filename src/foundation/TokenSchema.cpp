@@ -83,7 +83,8 @@ struct SemanticGroup {
 // Dependency flags distinguish immutable pairs from pairs a candidate can repair.
 SemanticGroup finalizeGroup(const QVariantMap &input, const QSet<QString> &supplied,
                             const QVariantMap &motion, const QString &role, const QColor &seed,
-                            bool candidate, const QColor &canvas, const QColor &content, qreal target)
+                            bool candidate, const QColor &canvas, const QColor &content,
+                            qreal floor, qreal labelTarget)
 {
     const TraceAggregate aggregated(TraceScope::AggFinalizeGroup, 0);
     SemanticGroup group{role, {}, {}};
@@ -103,14 +104,14 @@ SemanticGroup finalizeGroup(const QVariantMap &input, const QSet<QString> &suppl
         foreground.prepend(QStringLiteral("on"));
         const bool explicitText = explicitColor(supplied, foreground);
         QColor restingText = explicitText ? color(foreground)
-            : TokenSchema::contrastingText(color(role), {color(role)}, content, target);
+            : TokenSchema::contrastingText(color(role), {color(role)}, content, labelTarget);
         // The primary accent is exact even when absent/equal-to-default. Only
         // library-owned semantic companions may have their resting fill adjusted.
         if (candidate && color(role).alphaF() == 1 && restingText.alphaF() == 1
-            && TokenSchema::contrastRatio(restingText, color(role)) < target) {
-            set(role, TokenSchema::contrastingText(color(role), {restingText}, content, target + 0.1), true);
+            && TokenSchema::contrastRatio(restingText, color(role)) < floor) {
+            set(role, TokenSchema::contrastingText(color(role), {restingText}, content, floor + 0.1), true);
             if (!explicitText)
-                restingText = TokenSchema::contrastingText(color(role), {color(role)}, content, target);
+                restingText = TokenSchema::contrastingText(color(role), {color(role)}, content, labelTarget);
         }
         for (const auto *state : {"Hover", "Pressed"}) {
             const QString strength = QLatin1String(state) == QLatin1String("Hover")
@@ -122,7 +123,7 @@ SemanticGroup finalizeGroup(const QVariantMap &input, const QSet<QString> &suppl
             set(foreground, color(foreground), false);
         else
             set(foreground, TokenSchema::contrastingText(color(role),
-                {color(role), color(role + QStringLiteral("Hover")), color(role + QStringLiteral("Pressed"))}, content, target), candidate);
+                {color(role), color(role + QStringLiteral("Hover")), color(role + QStringLiteral("Pressed"))}, content, labelTarget), candidate);
         set(action + QStringLiteral("Surface"), color(role), group.dependent.contains(role));
         for (const auto *state : {"Hover", "Pressed"}) {
             const QString semanticState = role + QLatin1String(state);
@@ -140,7 +141,7 @@ SemanticGroup finalizeGroup(const QVariantMap &input, const QSet<QString> &suppl
         } else {
             set(actionText, TokenSchema::contrastingText(color(role),
                 {color(action + QStringLiteral("Surface")), color(action + QStringLiteral("Hover")),
-                 color(action + QStringLiteral("Pressed"))}, content, target), candidate);
+                 color(action + QStringLiteral("Pressed"))}, content, labelTarget), candidate);
         }
         set(action + QStringLiteral("Outline"), color(action + QStringLiteral("Text")),
             group.dependent.contains(action + QStringLiteral("Text")));
@@ -153,7 +154,7 @@ SemanticGroup finalizeGroup(const QVariantMap &input, const QSet<QString> &suppl
             set(messageText, color(messageText), false);
         else
             set(messageText, TokenSchema::contrastingText(color(role),
-                {color(QStringLiteral("content")), color(role + QStringLiteral("Surface"))}, canvas, target), candidate);
+                {color(QStringLiteral("content")), color(role + QStringLiteral("Surface"))}, canvas, labelTarget), candidate);
     }
     return group;
 }
@@ -293,7 +294,7 @@ CandidateChecks checkCandidate(const SemanticGroup &group, const QSet<QString> &
 SemanticGroup selectGroup(const QVariantMap &colors, const QSet<QString> &supplied, const QVariantMap &motion,
                           const QString &role, const mcu::Hct &seed, qreal chroma, qreal anchor,
                           const QList<PaletteFill> &reserved, const QColor &canvas, const QColor &content,
-                          qreal target, QVariantList *diagnostics)
+                          qreal floor, qreal labelTarget, QVariantList *diagnostics)
 {
     const TraceSpan span(TraceScope::SelectGroup, nullptr);
     QElapsedTimer timer;
@@ -330,8 +331,8 @@ SemanticGroup selectGroup(const QVariantMap &colors, const QSet<QString> &suppli
         {
             const TraceAggregate proposal(TraceScope::AggPaletteProposal,
                                           quint16(roleTag * 2 + (neutral ? 1 : 0)));
-            attempt.group = finalizeGroup(colors, supplied, motion, role, base, true, canvas, content, target);
-            attempt.checks = checkCandidate(attempt.group, supplied, reserved, canvas, content, target, anchor, neutral);
+            attempt.group = finalizeGroup(colors, supplied, motion, role, base, true, canvas, content, floor, labelTarget);
+            attempt.checks = checkCandidate(attempt.group, supplied, reserved, canvas, content, floor, anchor, neutral);
         }
         ++proposals[neutral ? 1 : 0];
         const QColor finalBase = QColor::fromRgb(TokenSchema::composite(
@@ -888,6 +889,7 @@ ResolvedAppearance TokenSchema::calculatePalette(ResolvedAppearance result)
             colors.insert(name, value);
     };
     const qreal target = result.contrast == QLatin1String("high") ? 7 : 5;
+    const qreal labelTarget = LabelContrastTarget;
     const QColor canvas = color(QStringLiteral("canvas"));
     const QColor content = composite(color(QStringLiteral("content")), composite(canvas, QColor(Qt::white)));
     QMap<QString, SemanticGroup> finalGroups;
@@ -899,11 +901,11 @@ ResolvedAppearance TokenSchema::calculatePalette(ResolvedAppearance result)
         reserved.append(groupFills(group, result.explicitTokens, content));
     };
     install(finalizeGroup(colors, result.explicitTokens, motion, QStringLiteral("accent"),
-        color(QStringLiteral("accent")), false, canvas, content, target));
+        color(QStringLiteral("accent")), false, canvas, content, target, labelTarget));
     for (const auto *role : {"error", "warning", "success"}) {
         const QString name = QString::fromLatin1(role);
         if (explicitColor(result.explicitTokens, name))
-            install(finalizeGroup(colors, result.explicitTokens, motion, name, color(name), false, canvas, content, target));
+            install(finalizeGroup(colors, result.explicitTokens, motion, name, color(name), false, canvas, content, target, labelTarget));
     }
     // Reserve state-only inputs from all still-implicit groups before selecting
     // danger: even a later caution hover participates, without using its placeholder base.
@@ -927,7 +929,7 @@ ResolvedAppearance TokenSchema::calculatePalette(ResolvedAppearance result)
         if (!finalGroups.contains(name)) {
             const qreal anchor = mcu::Hct(semanticHueSeeds.value(name).value<QColor>().rgb()).get_hue();
             install(selectGroup(colors, result.explicitTokens, motion, name, paletteSeed, seedChroma,
-                anchor, reserved, canvas, content, target, &result.diagnostics));
+                anchor, reserved, canvas, content, target, labelTarget, &result.diagnostics));
         }
     }
     QList<PaletteFill> finalFills;
@@ -939,7 +941,7 @@ ResolvedAppearance TokenSchema::calculatePalette(ResolvedAppearance result)
         derive(QStringLiteral("controlPressed"), blend(color(QStringLiteral("control")), color(QStringLiteral("text")), motion.value(QStringLiteral("pressedBlend")).toDouble()));
     }
     derive(QStringLiteral("focus"), contrastingText(color(QStringLiteral("accent")), {color(QStringLiteral("content"))}, canvas, 3));
-    derive(QStringLiteral("accentText"), contrastingText(color(QStringLiteral("accent")), {color(QStringLiteral("content"))}, canvas, target));
+    derive(QStringLiteral("accentText"), contrastingText(color(QStringLiteral("accent")), {color(QStringLiteral("content"))}, canvas, labelTarget));
     derive(QStringLiteral("link"), color(QStringLiteral("accentText")));
     result.tokens.insert(QStringLiteral("colors"), colors);
 

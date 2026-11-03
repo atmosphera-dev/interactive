@@ -10,7 +10,6 @@ qt_add_qml_module(interactive_playground_scene SHARED
         TARGET interactive_components
     SOURCES PlaygroundState.h PlaygroundState.cpp AppearanceTraceController.h AppearanceTraceController.cpp
         PaletteSampleWriter.h PaletteSampleWriter.cpp PaletteSampleHistory.h PaletteSampleHistory.cpp
-        LabelContrastTrial.h LabelContrastTrial.cpp
     QML_FILES Main.qml FoundationsPage.qml AppearanceEditor.qml PaletteColorPicker.qml AccentPaletteMenu.qml Specimen.qml
 )
 include(GenerateExportHeader)
@@ -20,17 +19,6 @@ target_include_directories(interactive_playground_scene PUBLIC
 target_link_libraries(interactive_playground_scene PUBLIC
     Qt6::Quick InterActive::Foundation
     PRIVATE InterActive::Controls InterActive::Components Qt6::QuickDialogs2)
-# Temporary label contrast trial: the playground's own copy of the vendored
-# HCT/contrast math; Foundation's private vendor symbols remain hidden.
-set(playground_trial_math "${PROJECT_SOURCE_DIR}/third_party/material-color-utilities")
-target_sources(interactive_playground_scene PRIVATE
-    "${playground_trial_math}/cpp/cam/cam.cc"
-    "${playground_trial_math}/cpp/cam/hct_solver.cc"
-    "${playground_trial_math}/cpp/cam/hct.cc"
-    "${playground_trial_math}/cpp/contrast/contrast.cc"
-    "${playground_trial_math}/cpp/utils/utils.cc"
-)
-target_include_directories(interactive_playground_scene PRIVATE "${playground_trial_math}")
 
 qt_add_executable(interactive_playground main.cpp)
 target_link_libraries(interactive_playground PRIVATE

@@ -1531,21 +1531,28 @@ Item {
                             String(consumer.background.border.color)], consumer.normal,
                             "Returning to normal restores the prior consumer palette");
                     } else {
-                        verify(String(consumer.label.color) !== consumer.normal[1],
-                               "The preview reaches the existing consumer foreground");
                         if (button.objectName === "opencode-blue") {
                             compare(String(consumer.background.color), consumer.normal[0],
-                                     "Default blue stays exact in high mode");
+                                      "Default blue stays exact in high mode");
+                            compare(String(consumer.label.color), consumer.normal[1],
+                                      "The unchanged primary surfaces use the same 7:1 label target in both modes");
+                            compare(consumer.label.color, IA.Appearance.colors.primaryText);
                         } else if (button.objectName === "opencode-amber" || button.objectName === "opencode-rose") {
                             const reference = references.find(function(value) { return "opencode-" + value.key === button.objectName; });
                             compare(consumer.background.color, IA.Appearance.colors[reference.role + "Surface"]);
+                            compare(consumer.label.color, IA.Appearance.colors[reference.role + "Text"]);
                             verify(contrastRatio(consumer.label.color, consumer.background.color) >= 7);
                         } else if (button.objectName === "customPurpleButton") {
                             verify(String(consumer.background.color) !== consumer.normal[0],
-                                    "The caller-owned high purple fill changes");
+                                     "The caller-owned high purple fill changes");
+                            verify(String(consumer.label.color) !== consumer.normal[1],
+                                     "The changed purple fill reaches the existing consumer foreground");
                         } else {
                             compare(consumer.background.color, IA.Appearance.colors.control,
-                                    "The neutral control retains its selected scheme's fill");
+                                     "The neutral control retains its selected scheme's fill");
+                            compare(consumer.label.color, IA.Appearance.colors.text);
+                            verify(String(consumer.label.color) !== consumer.normal[1],
+                                     "The high profile still strengthens neutral text");
                         }
                     }
                 }

@@ -3,7 +3,6 @@
 #include "PaletteSampleHistory.h"
 #include "AppearanceTraceController.h"
 #include "AirmailProfiles.h"
-#include "LabelContrastTrial.h"
 #include "TokenSchema.h"
 #include <QDateTime>
 #include <QJsonArray>
@@ -364,22 +363,6 @@ QString PlaygroundState::paletteSamplePath() const
 QString PlaygroundState::opaqueAccentKey(const QColor &color) const
 {
     return PaletteSampleHistory::opaqueAccentKey(color);
-}
-
-QVariantMap PlaygroundState::trialLabel(const QString &rule, const QColor &fill, const QColor &hover,
-                                        const QColor &pressed, qreal target) const
-{
-    using InterActivePlayground::TrialRule;
-    TrialRule trialRule;
-    if (rule == QLatin1String("A"))
-        trialRule = TrialRule::StrongestHue;
-    else if (rule == QLatin1String("B"))
-        trialRule = TrialRule::ClosestPassing;
-    else
-        return {};
-    const auto result = InterActivePlayground::trialLabel(trialRule, fill, {fill, hover, pressed}, target);
-    return {{QStringLiteral("label"), QVariant::fromValue(result.label)},
-            {QStringLiteral("ratio"), QVariant(result.minimumRatio)}};
 }
 
 void PlaygroundState::refreshSavedAccents()

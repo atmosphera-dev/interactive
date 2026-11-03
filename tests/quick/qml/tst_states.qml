@@ -32,7 +32,7 @@ Item {
                 const luminance = channel <= 0.04045 ? channel / 12.92
                     : Math.pow((channel + 0.055) / 1.055, 2.4);
                 const ratio = (luminance + 0.05) / 0.05;
-                verify(ratio >= 5, "Rendered selected foreground/black contrast (full/RGB8): " + ratio);
+                verify(ratio >= 7, "Rendered selected foreground/black meets the label target (full/RGB8): " + ratio);
             }
         }
 
