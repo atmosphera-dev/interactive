@@ -1,0 +1,7 @@
+/build/
+/stage/
+/artifacts/
+/.envrc
+/token
+*.local.toml
+*.bak
