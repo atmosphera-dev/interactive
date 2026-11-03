@@ -416,6 +416,47 @@ Item {
                         }
                         Specimen {
                             Layout.fillWidth: true
+                            objectName: "pressedLookTrial"
+                            title: "Pressed look trial"
+                            description: "Press and hold to compare. Hover is the same in both rows."
+                            Repeater {
+                                model: [
+                                    {key: "A", title: "A: inset and color", keep: true},
+                                    {key: "B", title: "B: inset only", keep: false}
+                                ]
+                                ColumnLayout {
+                                    id: pressRow
+                                    required property var modelData
+                                    Layout.fillWidth: true
+                                    spacing: IA.Appearance.metrics.spacingS
+                                    IALabel {
+                                        text: pressRow.modelData.title
+                                    }
+                                    Flow {
+                                        Layout.fillWidth: true
+                                        spacing: IA.Appearance.metrics.spacingS
+                                        Repeater {
+                                            model: [
+                                                {name: "Primary", tone: IA.Presentation.Primary},
+                                                {name: "Caution", tone: IA.Presentation.Caution},
+                                                {name: "Danger", tone: IA.Presentation.Destructive},
+                                                {name: "Neutral", tone: IA.Presentation.Neutral}
+                                            ]
+                                            PressTrialButton {
+                                                id: trial
+                                                required property var modelData
+                                                objectName: "press-" + pressRow.modelData.key + "-" + trial.modelData.name
+                                                text: trial.modelData.name
+                                                tone: trial.modelData.tone
+                                                keepPressedColor: pressRow.modelData.keep
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Specimen {
+                            Layout.fillWidth: true
                             title: "State shelf"
                             Flow {
                                 Layout.fillWidth: true
