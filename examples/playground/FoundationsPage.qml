@@ -414,6 +414,75 @@ Item {
                                 wrapMode: Text.Wrap
                             }
                         }
+                        // Temporary label contrast trial; removed once a label rule is chosen.
+                        Specimen {
+                            id: contrastTrial
+                            objectName: "labelContrastTrial"
+                            readonly property real floor: IA.Appearance.contrast === "high" ? 7 : 5
+                            Layout.fillWidth: true
+                            title: "Label contrast trial"
+                            description: "Same fills, different label rules. Lowest ratio across rest, hover and pressed."
+                            Repeater {
+                                model: [
+                                    {key: "A", title: "A: strongest hue label", target: contrastTrial.floor},
+                                    {key: "B", title: "B: closest passing at 7:1", target: 7}
+                                ]
+                                ColumnLayout {
+                                    id: trialRow
+                                    required property var modelData
+                                    Layout.fillWidth: true
+                                    spacing: IA.Appearance.metrics.spacingS
+                                    IALabel {
+                                        Layout.fillWidth: true
+                                        text: trialRow.modelData.title
+                                    }
+                                    Flow {
+                                        Layout.fillWidth: true
+                                        spacing: IA.Appearance.metrics.spacingS
+                                        Repeater {
+                                            model: [
+                                                {key: "primary", name: "Primary", tone: IA.Presentation.Primary,
+                                                 fill: "primarySurface", hover: "primaryHover", pressed: "primaryPressed"},
+                                                {key: "caution", name: "Caution", tone: IA.Presentation.Caution,
+                                                 fill: "cautionSurface", hover: "cautionHover", pressed: "cautionPressed"},
+                                                {key: "danger", name: "Danger", tone: IA.Presentation.Destructive,
+                                                 fill: "destructiveSurface", hover: "destructiveHover", pressed: "destructivePressed"}
+                                            ]
+                                            ColumnLayout {
+                                                id: trialSample
+                                                required property var modelData
+                                                readonly property color fill: IA.Appearance.colors[trialSample.modelData.fill]
+                                                readonly property color hover: IA.Appearance.colors[trialSample.modelData.hover]
+                                                readonly property color pressed: IA.Appearance.colors[trialSample.modelData.pressed]
+                                                readonly property var result: root.state.trialLabel(trialRow.modelData.key,
+                                                    trialSample.fill, trialSample.hover, trialSample.pressed, trialRow.modelData.target)
+                                                width: implicitWidth
+                                                height: implicitHeight
+                                                spacing: IA.Appearance.metrics.spacingXS
+                                                IAButton {
+                                                    objectName: "trial-" + trialRow.modelData.key + "-" + trialSample.modelData.key
+                                                    Layout.alignment: Qt.AlignHCenter
+                                                    text: trialSample.modelData.name
+                                                    tone: trialSample.modelData.tone
+                                                    backgroundColor: trialSample.fill
+                                                    hoverBackgroundColor: trialSample.hover
+                                                    pressedBackgroundColor: trialSample.pressed
+                                                    foregroundColor: trialSample.result.label
+                                                    borderColor: trialSample.result.label
+                                                }
+                                                IALabel {
+                                                    objectName: "trial-ratio-" + trialRow.modelData.key + "-" + trialSample.modelData.key
+                                                    Layout.alignment: Qt.AlignHCenter
+                                                    text: trialSample.result.ratio.toFixed(1) + ":1"
+                                                    fontPixelSize: IA.Appearance.typography.supportingSize
+                                                    foregroundColor: IA.Appearance.colors.secondaryText
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         Specimen {
                             Layout.fillWidth: true
                             title: "State shelf"
