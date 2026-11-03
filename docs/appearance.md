@@ -122,8 +122,7 @@ Envelope metadata and every typed token use a property-specific NOTIFY signal:
 `fontScaleChanged`, `accentChanged`, `controlRadiusChanged`, and the corresponding
 `<property>Changed` names. Only changed effective values notify. The aggregate
 signals retain the ordering described above; specific notifications follow complete
-installation and do not trigger a second resolution. This replaces the earlier
-blanket NOTIFY contract without changing property names or stable group identity.
+installation and do not trigger a second resolution.
 
 The finished color palette is immutable shared state owned by this Appearance.
 Normalized colors/presence, scheme/contrast and color-blend inputs determine when
@@ -374,11 +373,12 @@ unscaled by `fontScale`; controls grow from actual font metrics instead.
 | 9 | `borderWidth`, `focusWidth` | 1, 2 | `[0, 16]` |
 | 10 | `popupPadding` | 8 | `[0, 128]` |
 | 11 | `menuMinWidth` | 180 | `[0, 2048]` |
-| 12 | `horizontalPadding`, `verticalPadding`, `spacing` | 12, 6, 8 | `[0, 128]` |
-| 13 | `scrollBarWidth`, `scrollBarMinimumLength` | 8, 24 | `[1, 128]`, `[1, 512]` |
-| 14 | `progressHeight`, `busySize` | 4, 20 | `[1, 128]`, `[1, 256]` |
-| 15 | `shadowRadius`, `shadowOffset` | 12, 2 | `[0, 128]` |
-| 16 | `hairlineWidth` | 1 | `[0, 8]` physical pixels |
+| 12 | `fieldWidth`, `sliderLength`, `progressWidth` | 180, 180, 180 | `[0, 2048]` |
+| 13 | `horizontalPadding`, `verticalPadding`, `spacing` | 12, 6, 8 | `[0, 128]` |
+| 14 | `scrollBarWidth`, `scrollBarMinimumLength` | 8, 24 | `[1, 128]`, `[1, 512]` |
+| 15 | `progressHeight`, `busySize` | 4, 20 | `[1, 128]`, `[1, 256]` |
+| 16 | `shadowRadius`, `shadowOffset` | 12, 2 | `[0, 128]` |
+| 17 | `hairlineWidth` | 1 | `[0, 8]` physical pixels |
 
 `hairlineWidth` is the one exception to logical-pixel dimensions: a decorative
 separator divides it by the effective DPR. Structural alignment and slider-value
@@ -605,7 +605,7 @@ and label is `interactive-overview`. Its source covers schema/profile/type-surfa
 completeness, replacement/reset, strict validation and rejection, derivations,
 contrast, motion/density/scaling, notification snapshots, independent engines,
 QML creation/RESET, every local reset property, source lifetime, fonts and local
-precedence. These are test cases to execute, not recorded passing results.
+precedence.
 The semantic palette matrix independently measures final HCT/CAM16-UCS values,
 full/RGB8 contrast, neutral invariance, intensity response, exact input precedence,
 state-only reservations, immutable collisions, alpha compositing, determinism and

@@ -5,9 +5,9 @@ controls. Qt templates provide interaction semantics; IA owns the appearance
 resolution and visuals. It does not install a global Qt Controls style or require
 an IA window, portal, shell, or appearance root.
 
-This worktree implements the **first mixed Foundations overview**. It is not a
-completed six-page gallery or a stable public API. The remaining
-pages are explicitly unavailable until the first visual review.
+Status: pre-release, no stable public API yet. The playground currently has one
+page, Foundations; the planned controls and pages are listed in
+[control coverage](docs/control-coverage.md).
 
 ## Modules
 
@@ -55,17 +55,8 @@ and report an error. Field diagnostics remain visible in the input inspector.
 ## Playground
 
 The executable target is `interactive_playground`, output
-`<build>/bin/interactive-playground`. Only the following page is currently
-available:
-
-```text
-interactive-playground --page foundations
-  --appearance default|light|dark --density compact|touch
-  --text-scale <positive number> --rtl --popup item|window
-  --width <logical pixels> --height <logical pixels>
-  --scene default|menu|dialog|partial-profile --automation
-  --palette-samples-file <absolute-path>
-```
+`<build>/bin/interactive-playground`. The options are listed in
+[playground options](docs/playground.md#running-the-playground).
 
 The initial viewport is 1200x820. At narrow widths the same controls reflow and
 scroll; no second widget tree is created. Width and height must be at least 320.
@@ -183,7 +174,7 @@ commands are supported:
 {"command":"close"}
 ```
 
-Stdout contains only `IA_EVENT ` plus compact JSON records; Qt logs go to stderr.
+Stdout contains only `IA_EVENT ` plus compact JSON records (plus `IA_PROFILE` lines when an `--appearance-profile-*` option is set); Qt logs go to stderr.
 `ready` and `appearanceChanged` contain `protocolVersion:1`, `event`,
 `page:"foundations"`, `scene`, `input`, `resolvedScheme`,
 `viewport:{width,height}`, `dpr`, `qtVersion`, `renderer:"opengl"`, and
@@ -207,8 +198,7 @@ exit, not a silent fallback. Input is bounded to 1 MiB and 256 queued commands.
 Drivers wait for each appearance acknowledgement before sending the next command.
 Close/EOF cancel outstanding observations and queued input, so abandoning a wait
 does not depend on an obscured window rendering again.
-The launcher has a 15-second render deadline; the drivers bound render waits to
-15 seconds and close/exit to 5 seconds, cleaning up only their exact child PID.
+The launcher has a 15-second render deadline.
 
 ## Build And Test
 

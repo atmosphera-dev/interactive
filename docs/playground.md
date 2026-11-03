@@ -2,8 +2,7 @@
 
 The playground consumes the real InterActive library. Its first Foundations
 overview combines a form, choices, tabs, slider/progress, list selection, a state
-shelf, menus, and an editable dialog. The other five pages remain unavailable
-until the first visual review. This is not full library/gallery coverage.
+shelf, menus, and an editable dialog. Five further pages (Actions, Forms, Values, Lists, Overlays) are planned. This is not full library/gallery coverage.
 
 ## Build And Test
 
@@ -61,6 +60,7 @@ skipped, blacklisted, or expected-failure cases do not satisfy a required check.
 | 10 | `interactive.palette-state` | Actual global/facade/IAButton alias bindings across 1/100/1,000 ordinary consumers; relevant colors update while unchanged font, height and neutral bindings do not evaluate; nested updates and local-root reset reach existing consumers. |
 | 11 | `interactive.long-document` | A test-only editable TextEdit with 10,000 deterministic paragraphs and at least one million characters preserves document/editing/scroll/undo state across accent edits; foreground and font-size changes are positive controls. |
 | 12 | `interactive.playground-calibration` | Actual launcher startup, transactional correction ownership/rejection/reentrancy, full-precision append/readback, preserved fragments, contention/dead-owner recovery and injected I/O failures against the real playground writer. |
+| 13 | `interactive.trace` | Appearance trace recorder: nesting, outcomes, reentrancy, threads, overflow, stop semantics, export refusal and parseable output. |
 
 The long-document suite observes real QQuickTextDocument state and QML font binding
 evaluations. Equal document dimensions or absent size signals alone do not prove
@@ -85,7 +85,7 @@ schemes, retaining consumer identities. Only tests inspect Qt's fallback
 control tree; these checks do not claim IA styling or geometry for that dialog.
 
 The main outputs are `build/bin/interactive-playground`,
-`build/bin/interactive-appearance-tests`, and `build/bin/interactive-quick-tests`.
+`build/bin/interactive-appearance-tests`, `build/bin/interactive-appearance-trace-tests`, `build/bin/interactive-playground-calibration-tests`, and `build/bin/interactive-quick-tests`.
 These tests establish their asserted outcomes, not completion of the remaining
 control pool, installed-consumer proof, accessibility, or final visual review.
 

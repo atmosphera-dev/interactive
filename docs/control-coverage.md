@@ -1,6 +1,6 @@
 # Control Coverage
 
-This is the first mixed-control overview, not the complete library/gallery.
+Controls implemented so far.
 All listed controls use Qt templates and the shared IA appearance resolver.
 Ordinary Qt Controls are not an IA fallback.
 
@@ -17,15 +17,14 @@ Ordinary Qt Controls are not an IA fallback.
 Menu delegates, submenu arrows/checkmarks, dialog footer buttons, scroll bars,
 focus treatment, and source/name icons are supplied by the library rather than
 page-local replacements. Foundation owns the neutral SVG fixtures and rendering
-helpers. See the verification manifest for observed outcomes, not this inventory
-alone: implementation presence is not runtime proof.
+helpers. See [test coverage](playground.md#test-coverage) for observed outcomes:
+implementation presence is not runtime proof.
 
-The approved remaining pool includes IARoundButton, IATextArea, IAComboBox,
-IASpinBox, IASegmentedSelector, IACheckDelegate, IARadioDelegate,
-IASwitchDelegate, IAScrollIndicator, IARangeSlider, IABusyIndicator,
-IAApplicationWindow, IAPage, IAGroupBox, IAMenuBar, IAMenuBarItem, and the
-attached-tooltip helper. The five additional gallery pages, relocated installed
-consumer, current-Qt full verification, and accessibility gates also remain.
-Their scope has not been removed or downgraded. Work pauses for the first visual
-review before completing that pool. The current overview suites do not establish
-full library or gallery completion.
+Planned controls: IARoundButton, IATextArea, IAComboBox, IASpinBox,
+IASegmentedSelector, IACheckDelegate, IARadioDelegate, IASwitchDelegate,
+IAScrollIndicator, IARangeSlider, IABusyIndicator, IAApplicationWindow,
+IAPage, IAGroupBox, IAMenuBar, IAMenuBarItem and the attached-tooltip helper.
+Also planned: the five further gallery pages (Actions, Forms, Values, Lists,
+Overlays), a relocated installed-consumer proof, full verification on a current
+Qt release, and accessibility checks. The current suites do not establish full
+library or gallery completion.
