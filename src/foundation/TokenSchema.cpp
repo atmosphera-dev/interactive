@@ -629,7 +629,6 @@ qreal TokenSchema::contrastRatio(const QColor &foreground, const QColor &backgro
 QColor TokenSchema::contrastingText(const QColor &seed, const QList<QColor> &backgrounds,
                                    const QColor &canvas, qreal target)
 {
-    namespace mcu = material_color_utilities;
     const TraceAggregate aggregated(TraceScope::AggContrastingText, 0);
     if (!seed.isValid() || backgrounds.isEmpty() || !std::isfinite(target) || target < 1 || target > 21)
         return {};

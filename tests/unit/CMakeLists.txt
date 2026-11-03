@@ -5,7 +5,6 @@ target_link_libraries(interactive_appearance_tests PRIVATE
 )
 target_include_directories(interactive_appearance_tests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/../shared"
-    "${CMAKE_BINARY_DIR}/src/foundation"
 )
 # Independent final-output measurements; Foundation's private vendor symbols
 # remain hidden. No production palette-selection code is linked into the oracle.
@@ -20,11 +19,10 @@ target_sources(interactive_appearance_tests PRIVATE
 target_include_directories(interactive_appearance_tests PRIVATE "${appearance_test_math}")
 set_target_properties(interactive_appearance_tests PROPERTIES
     OUTPUT_NAME interactive-appearance-tests
-    RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin"
 )
 add_test(NAME interactive.appearance COMMAND interactive_appearance_tests)
 set_tests_properties(interactive.appearance PROPERTIES
-    LABELS interactive-overview
+    LABELS interactive-overview TIMEOUT 180
 )
 
 qt_add_executable(interactive_appearance_trace_tests tst_appearance_trace.cpp ../shared/TestTraceSetup.h ../shared/TestTraceSetup.cpp)
@@ -32,16 +30,14 @@ target_link_libraries(interactive_appearance_trace_tests PRIVATE
     InterActive::Foundation Qt6::Test Qt6::Gui Qt6::Qml
 )
 target_include_directories(interactive_appearance_trace_tests PRIVATE
-    "${CMAKE_BINARY_DIR}/src/foundation"
     "${CMAKE_CURRENT_SOURCE_DIR}/../shared"
 )
 set_target_properties(interactive_appearance_trace_tests PROPERTIES
     OUTPUT_NAME interactive-appearance-trace-tests
-    RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin"
 )
 add_test(NAME interactive.trace COMMAND interactive_appearance_trace_tests)
 set_tests_properties(interactive.trace PROPERTIES
-    LABELS interactive-overview
+    LABELS interactive-overview TIMEOUT 180
 )
 
 if(INTERACTIVE_BUILD_PLAYGROUND)
@@ -49,9 +45,9 @@ if(INTERACTIVE_BUILD_PLAYGROUND)
     target_link_libraries(interactive_playground_calibration_tests PRIVATE
         interactive_playground_scene InterActive::Foundation Qt6::Test Qt6::Gui Qt6::Qml)
     set_target_properties(interactive_playground_calibration_tests PROPERTIES
-        OUTPUT_NAME interactive-playground-calibration-tests
-        RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin")
+        OUTPUT_NAME interactive-playground-calibration-tests)
     add_test(NAME interactive.playground-calibration COMMAND interactive_playground_calibration_tests)
+    add_dependencies(interactive_playground_calibration_tests interactive_playground)
     set_tests_properties(interactive.playground-calibration PROPERTIES
         LABELS interactive-overview TIMEOUT 180)
 endif()

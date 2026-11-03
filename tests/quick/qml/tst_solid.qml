@@ -174,17 +174,17 @@ Item {
         function test_renderedStates_data(): var {
             return [
                 {tag: "light-primary", scheme: "light", tone: IA.Presentation.Primary,
-                    role: "primary", seed: "#5c9cf5", labelRole: "accentText"},
+                    role: "primary", labelRole: "accentText"},
                 {tag: "dark-primary", scheme: "dark", tone: IA.Presentation.Primary,
-                    role: "primary", seed: "#5c9cf5", labelRole: "accentText"},
+                    role: "primary", labelRole: "accentText"},
                 {tag: "light-caution", scheme: "light", tone: IA.Presentation.Caution,
-                    role: "caution", seed: "#f5a742", labelRole: "warningText"},
+                    role: "caution", labelRole: "warningText"},
                 {tag: "dark-caution", scheme: "dark", tone: IA.Presentation.Caution,
-                    role: "caution", seed: "#f5a742", labelRole: "warningText"},
+                    role: "caution", labelRole: "warningText"},
                 {tag: "light-destructive", scheme: "light", tone: IA.Presentation.Destructive,
-                    role: "destructive", seed: "#e06c75", labelRole: "errorText"},
+                    role: "destructive", labelRole: "errorText"},
                 {tag: "dark-destructive", scheme: "dark", tone: IA.Presentation.Destructive,
-                    role: "destructive", seed: "#e06c75", labelRole: "errorText"}
+                    role: "destructive", labelRole: "errorText"}
             ];
         }
 

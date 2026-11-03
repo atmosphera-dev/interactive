@@ -76,8 +76,7 @@ bool finalize()
         ? QStringLiteral("trace") : QStringLiteral("summary"));
     manifest.insert(QStringLiteral("recordsWritten"), QString::number(AppearanceTrace::recordsWritten()));
     manifest.insert(QStringLiteral("incomplete"), AppearanceTrace::sessionIncomplete());
-    if (!tracePath.isEmpty())
-        manifest.insert(QStringLiteral("trace"), tracePath);
+    manifest.insert(QStringLiteral("trace"), tracePath);
     QFile file(base + QStringLiteral(".manifest.json"));
     if (!file.open(QIODevice::WriteOnly | QIODevice::NewOnly)) {
         std::fprintf(stderr, "Test trace manifest path is not fresh.\n");

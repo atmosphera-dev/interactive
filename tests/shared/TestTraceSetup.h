@@ -5,7 +5,7 @@
 // IA_TEST_TRACE_DIR=<fresh directory>, activates the real recorder around the
 // test run, and exports per-process uniquely named evidence at teardown. Normal
 // application runs are unaffected: the environment variables are only honored in
-// binaries that call installTestTrace() explicitly.
+// binaries that call TestTrace::install() explicitly.
 namespace InterActive::TestTrace {
 
 // Call once at the top of a test main(), before any Appearance is constructed.

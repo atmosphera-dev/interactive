@@ -8,7 +8,7 @@ option(INTERACTIVE_BUILD_PLAYGROUND "Build the visual playground" ON)
 option(INTERACTIVE_BUILD_TESTS "Build the library verification suite" ON)
 set(INTERACTIVE_VERIFY_QT_VERSION "" CACHE STRING "Exact Qt version required by a verification lane")
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Svg)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Svg ShaderTools)
 if(INTERACTIVE_VERIFY_QT_VERSION AND NOT Qt6_VERSION VERSION_EQUAL INTERACTIVE_VERIFY_QT_VERSION)
     message(FATAL_ERROR "Expected Qt ${INTERACTIVE_VERIFY_QT_VERSION}, found ${Qt6_VERSION}")
 endif()

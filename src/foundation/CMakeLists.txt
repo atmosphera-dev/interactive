@@ -34,7 +34,6 @@ target_sources(interactive_foundation PRIVATE
 )
 target_include_directories(interactive_foundation PRIVATE "${material_color_utilities_dir}")
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS ShaderTools)
 qt_add_shaders(interactive_foundation ia_icon_shaders
     PREFIX "/qt/qml/InterActive/Foundation"
     FILES shaders/icon-tint.frag

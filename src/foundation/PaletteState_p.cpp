@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 #include "PaletteState_p.h"
 #include "AppearanceTrace_p.h"
-#include <QMetaProperty>
 #include <QPointer>
 #include <algorithm>
 

@@ -24,6 +24,5 @@ qt_add_executable(interactive_playground main.cpp)
 target_link_libraries(interactive_playground PRIVATE
     interactive_playground_scene InterActive::Foundation Qt6::Quick Qt6::Gui)
 set_target_properties(interactive_playground PROPERTIES
-    OUTPUT_NAME interactive-playground
-    RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin")
+    OUTPUT_NAME interactive-playground)
 # The gallery and its generated plugin are deliberately not installed.

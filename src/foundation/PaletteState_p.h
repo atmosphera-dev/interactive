@@ -5,7 +5,6 @@
 #include "TokenDefinitions.h"
 #include "TokenSchema.h"
 #include "Presentation.h"
-#include <QBitArray>
 #include <QLoggingCategory>
 #include <QElapsedTimer>
 #include <QMetaProperty>

@@ -577,7 +577,6 @@ void AppearanceTrace::attemptEnd(quint32 spanId, quint64 startNs, const void *ow
     const quint64 aux = (quint64(quint8(outcome)) << 56)
         | ((revisionBefore & 0xFFFFFFFull) << 28) | (revisionAfter & 0xFFFFFFFull);
     spanEndImpl(spanId, startNs, TraceScope::UpdateAttempt, owner, aux, updateId);
-    // (update stack popped above; nested outer attempt resumes automatically)
 }
 
 void AppearanceTrace::pushInput(quint32 inputId)

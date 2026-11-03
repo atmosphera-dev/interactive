@@ -29,7 +29,7 @@ signals:
     void colorChanged();
     void availableChanged();
 protected:
-    void geometryChange(const QRectF &newGeometry, const QRectF &oldGeometry) override;
+    void geometryChange(const QRectF &geometry, const QRectF &oldGeometry) override;
     void itemChange(ItemChange change, const ItemChangeData &data) override;
 private:
     void refresh();
