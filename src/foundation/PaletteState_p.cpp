@@ -68,23 +68,107 @@ void PropertyNotifications::drain(QObject *object)
     span.setAux(emitted);
 }
 
-ControlFamily controlFamily(const QString &family)
+MetricRecord MetricRecord::from(const QVariantMap &values)
 {
-    static const QStringList names{QStringLiteral("button"), QStringLiteral("tool"),
-        QStringLiteral("field"), QStringLiteral("surface"), QStringLiteral("popup"),
-        QStringLiteral("label"), QStringLiteral("delegate"), QStringLiteral("tab"),
-        QStringLiteral("choice"), QStringLiteral("tooltip")};
-    const int index = names.indexOf(family);
-    return index < 0 ? ControlFamily::Button : ControlFamily(index);
+    MetricRecord result;
+#define IA_READ_METRIC(name, ...) result.name = values.value(QStringLiteral(#name)).toDouble();
+    IA_METRIC_TOKENS(IA_READ_METRIC)
+#undef IA_READ_METRIC
+    return result;
+}
+
+bool MetricRecord::operator==(const MetricRecord &other) const
+{
+#define IA_COMPARE_METRIC(name, ...) if (name != other.name) return false;
+    IA_METRIC_TOKENS(IA_COMPARE_METRIC)
+#undef IA_COMPARE_METRIC
+    return true;
+}
+
+TypographyRecord TypographyRecord::from(const QVariantMap &values)
+{
+    TypographyRecord result;
+    result.family = values.value(QStringLiteral("family")).toString();
+#define IA_READ_SIZE(name, ...) result.name = values.value(QStringLiteral(#name)).toDouble();
+    IA_TYPE_SIZE_TOKENS(IA_READ_SIZE)
+#undef IA_READ_SIZE
+#define IA_READ_WEIGHT(name, ...) result.name = values.value(QStringLiteral(#name)).toInt();
+    IA_TYPE_WEIGHT_TOKENS(IA_READ_WEIGHT)
+#undef IA_READ_WEIGHT
+    return result;
+}
+
+bool TypographyRecord::operator==(const TypographyRecord &other) const
+{
+    if (family != other.family)
+        return false;
+#define IA_COMPARE_TYPE(name, ...) if (name != other.name) return false;
+    IA_TYPE_SIZE_TOKENS(IA_COMPARE_TYPE)
+    IA_TYPE_WEIGHT_TOKENS(IA_COMPARE_TYPE)
+#undef IA_COMPARE_TYPE
+    return true;
+}
+
+void AppearanceState::installNoncolors()
+{
+    metrics = MetricRecord::from(snapshot.tokens.value(QStringLiteral("metrics")).toMap());
+    typography = TypographyRecord::from(snapshot.tokens.value(QStringLiteral("typography")).toMap());
+}
+
+namespace {
+constexpr ControlColorMapping neutralRoles(ColorRole background,
+    ColorRole hover = ColorRole::controlHover, ColorRole pressed = ColorRole::controlPressed,
+    ColorRole foreground = ColorRole::text)
+{
+    return {background, ColorRole::accent, foreground, hover, pressed, ColorRole::disabledSurface,
+        ColorRole::disabledText, ColorRole::inactiveSelection, ColorRole::text,
+        ColorRole::selection, ColorRole::text, ColorRole::outline, ColorRole::outline, ColorRole::focus};
+}
+
+constexpr std::array<FamilyDescriptor, ControlFamilyCount> Families{{
+    {"button", neutralRoles(ColorRole::control), &MetricRecord::controlHeight, &MetricRecord::controlRadius,
+        &MetricRecord::horizontalPadding, &MetricRecord::verticalPadding, &TypographyRecord::controlSize, true, false},
+    {"tool", neutralRoles(ColorRole::transparent), &MetricRecord::toolHeight, &MetricRecord::controlRadius,
+        &MetricRecord::horizontalPadding, &MetricRecord::verticalPadding, &TypographyRecord::controlSize, true, false},
+    {"field", neutralRoles(ColorRole::content), &MetricRecord::controlHeight, &MetricRecord::controlRadius,
+        &MetricRecord::horizontalPadding, &MetricRecord::verticalPadding, &TypographyRecord::controlSize, true, false},
+    {"surface", neutralRoles(ColorRole::content), nullptr, &MetricRecord::controlRadius,
+        &MetricRecord::horizontalPadding, &MetricRecord::verticalPadding, &TypographyRecord::controlSize, false, false},
+    {"popup", neutralRoles(ColorRole::popup), nullptr, &MetricRecord::popupRadius,
+        &MetricRecord::popupPadding, &MetricRecord::popupPadding, &TypographyRecord::controlSize, false, false},
+    {"label", neutralRoles(ColorRole::transparent), nullptr, &MetricRecord::controlRadius,
+        &MetricRecord::horizontalPadding, &MetricRecord::verticalPadding, &TypographyRecord::controlSize, false, true},
+    {"delegate", neutralRoles(ColorRole::transparent), &MetricRecord::rowHeight, &MetricRecord::controlRadius,
+        &MetricRecord::horizontalPadding, &MetricRecord::verticalPadding, &TypographyRecord::controlSize, true, false},
+    {"tab", neutralRoles(ColorRole::transparent), &MetricRecord::rowHeight, &MetricRecord::controlRadius,
+        &MetricRecord::horizontalPadding, &MetricRecord::verticalPadding, &TypographyRecord::controlSize, true, false},
+    {"choice", neutralRoles(ColorRole::transparent), &MetricRecord::controlHeight, &MetricRecord::controlRadius,
+        &MetricRecord::horizontalPadding, &MetricRecord::verticalPadding, &TypographyRecord::controlSize, true, false},
+    {"tooltip", neutralRoles(ColorRole::tooltipBackground, ColorRole::tooltipBackground,
+        ColorRole::tooltipBackground, ColorRole::tooltipText), nullptr, &MetricRecord::controlRadius,
+        &MetricRecord::horizontalPadding, &MetricRecord::verticalPadding, &TypographyRecord::supportingSize, false, false}
+}};
+}
+
+const FamilyDescriptor &familyDescriptor(ControlFamily family)
+{
+    return Families[size_t(family)];
+}
+
+std::optional<ControlFamily> controlFamily(const QString &family)
+{
+    for (size_t i = 0; i < Families.size(); ++i) {
+        if (family == QLatin1String(Families[i].name))
+            return ControlFamily(i);
+    }
+    return std::nullopt;
 }
 
 const char *controlColorName(ControlColor color)
 {
-    static constexpr const char *names[]{"backgroundColor", "fillColor", "foregroundColor",
-        "hoverBackgroundColor", "pressedBackgroundColor", "disabledBackgroundColor",
-        "disabledForegroundColor", "inactiveBackgroundColor", "inactiveForegroundColor",
-        "selectedBackgroundColor", "selectedForegroundColor", "borderColor",
-        "disabledBorderColor", "focusColor"};
+#define IA_COLOR_NAME(type, name, upper, group, token) #name,
+    static constexpr const char *names[]{IA_CONTROL_COLOR_PROPERTIES(IA_COLOR_NAME)};
+#undef IA_COLOR_NAME
     return names[size_t(color)];
 }
 
@@ -104,37 +188,10 @@ ControlColorMapping controlColorMapping(ControlFamily family, Presentation::Tone
 {
     // Finite selectors only: the finished colors already belong to the palette.
     static const auto mappings = [] {
-        std::array<std::array<ControlColorMapping, 4>, 10> all{};
+        std::array<std::array<ControlColorMapping, 4>, ControlFamilyCount> all{};
         for (size_t f = 0; f < all.size(); ++f) {
-            ControlColorMapping neutral{ColorRole::control, ColorRole::accent, ColorRole::text,
-                ColorRole::controlHover, ColorRole::controlPressed, ColorRole::disabledSurface,
-                ColorRole::disabledText, ColorRole::inactiveSelection, ColorRole::text,
-                ColorRole::selection, ColorRole::text, ColorRole::outline, ColorRole::outline, ColorRole::focus};
-            const auto put = [&](ControlColor property, ColorRole role) { neutral[size_t(property)] = role; };
-            switch (ControlFamily(f)) {
-            case ControlFamily::Tool:
-            case ControlFamily::Label:
-            case ControlFamily::Delegate:
-            case ControlFamily::Tab:
-            case ControlFamily::Choice:
-                put(ControlColor::backgroundColor, ColorRole::transparent);
-                break;
-            case ControlFamily::Field:
-            case ControlFamily::Surface:
-                put(ControlColor::backgroundColor, ColorRole::content);
-                break;
-            case ControlFamily::Popup:
-                put(ControlColor::backgroundColor, ColorRole::popup);
-                break;
-            case ControlFamily::Tooltip:
-                put(ControlColor::backgroundColor, ColorRole::tooltipBackground);
-                put(ControlColor::hoverBackgroundColor, ColorRole::tooltipBackground);
-                put(ControlColor::pressedBackgroundColor, ColorRole::tooltipBackground);
-                put(ControlColor::foregroundColor, ColorRole::tooltipText);
-                break;
-            case ControlFamily::Button:
-                break;
-            }
+            const auto &descriptor = Families[f];
+            const auto &neutral = descriptor.colors;
             all[f][0] = neutral;
             const std::array<std::array<ColorRole, 6>, 3> semantic{{
                 {ColorRole::primarySurface, ColorRole::primaryText, ColorRole::primaryHover,
@@ -146,7 +203,7 @@ ControlColorMapping controlColorMapping(ControlFamily family, Presentation::Tone
             for (size_t t = 0; t < semantic.size(); ++t) {
                 auto colored = neutral;
                 const auto &roles = semantic[t];
-                if (ControlFamily(f) == ControlFamily::Label) {
+                if (descriptor.semanticTextOnly) {
                     colored[size_t(ControlColor::foregroundColor)] = roles[5];
                 } else {
                     colored[size_t(ControlColor::backgroundColor)] = roles[0];
@@ -244,9 +301,9 @@ PaletteUpdate PaletteUpdate::between(const AppearanceStatePtr &before, const App
     }
     const auto &old = before->snapshot;
     const auto &next = after->snapshot;
-    if (old.density != next.density || old.tokens.value(QStringLiteral("metrics")) != next.tokens.value(QStringLiteral("metrics")))
+    if (old.density != next.density || !(before->metrics == after->metrics))
         update.changedGroups |= MetricsGroup;
-    if (old.tokens.value(QStringLiteral("typography")) != next.tokens.value(QStringLiteral("typography")))
+    if (!(before->typography == after->typography))
         update.changedGroups |= TypographyGroup;
     if (old.tokens.value(QStringLiteral("motion")) != next.tokens.value(QStringLiteral("motion")))
         update.changedGroups |= MotionGroup;
@@ -308,7 +365,7 @@ std::shared_ptr<const PaletteState> PaletteState::calculate(const ResolvedAppear
         }
         state->pairs.append(std::move(pair));
     };
-    for (int f = 0; f <= int(ControlFamily::Tooltip); ++f) {
+    for (size_t f = 0; f < ControlFamilyCount; ++f) {
         for (const auto tone : {Presentation::Neutral, Presentation::Primary, Presentation::Destructive, Presentation::Caution}) {
             const auto roles = controlColorMapping(ControlFamily(f), tone, Presentation::None);
             for (const auto surface : {ControlColor::backgroundColor, ControlColor::hoverBackgroundColor,

@@ -13,6 +13,8 @@
 #include <bitset>
 #include <memory>
 #include <map>
+#include <optional>
+#include <variant>
 
 namespace InterActive {
 
@@ -47,10 +49,9 @@ constexpr size_t ColorRoleCount = size_t(ColorRole::Count);
 using ColorRoleMask = std::bitset<ColorRoleCount>;
 
 enum class ControlColor {
-    backgroundColor, fillColor, foregroundColor, hoverBackgroundColor,
-    pressedBackgroundColor, disabledBackgroundColor, disabledForegroundColor,
-    inactiveBackgroundColor, inactiveForegroundColor, selectedBackgroundColor,
-    selectedForegroundColor, borderColor, disabledBorderColor, focusColor, Count
+#define IA_CONTROL_INDEX(type, name, upper, group, token) name,
+    IA_CONTROL_COLOR_PROPERTIES(IA_CONTROL_INDEX)
+    Count
 };
 constexpr size_t ControlColorCount = size_t(ControlColor::Count);
 using ControlColorMapping = std::array<ColorRole, ControlColorCount>;
@@ -63,8 +64,88 @@ inline constexpr std::array<std::pair<ControlColor, ControlColor>, 6> ControlDia
     {ControlColor::inactiveForegroundColor, ControlColor::inactiveBackgroundColor},
     {ControlColor::focusColor, ControlColor::backgroundColor}}};
 
-enum class ControlFamily { Button, Tool, Field, Surface, Popup, Label, Delegate, Tab, Choice, Tooltip };
-ControlFamily controlFamily(const QString &family);
+enum class ControlNoncolor {
+    IA_CONTROL_NONCOLOR_PROPERTIES(IA_CONTROL_INDEX)
+    Count
+};
+constexpr size_t ControlNoncolorCount = size_t(ControlNoncolor::Count);
+using ControlNoncolorValue = std::variant<qreal, QString, int>;
+using ControlNoncolorValues = std::array<ControlNoncolorValue, ControlNoncolorCount>;
+
+enum class ControlInput {
+    IA_CONTROL_PROPERTIES(IA_CONTROL_INDEX)
+    family, tone, validation, Count
+};
+#undef IA_CONTROL_INDEX
+
+template<typename T, size_t N> struct SparseControlValues {
+    using Value = T;
+    std::array<T, N> values{};
+    std::bitset<N> presence;
+    template<typename Index> bool contains(Index index) const { return presence.test(size_t(index)); }
+    template<typename Index> const T &value(Index index) const { return values[size_t(index)]; }
+    template<typename Index> void set(Index index, const T &value)
+    {
+        values[size_t(index)] = value;
+        presence.set(size_t(index));
+    }
+    template<typename Index> bool reset(Index index)
+    {
+        const bool removed = contains(index);
+        presence.reset(size_t(index));
+        return removed;
+    }
+    bool operator==(const SparseControlValues &other) const
+    {
+        if (presence != other.presence)
+            return false;
+        for (size_t i = 0; i < N; ++i) {
+            if (presence.test(i) && values[i] != other.values[i])
+                return false;
+        }
+        return true;
+    }
+};
+using ControlColorValues = SparseControlValues<QColor, ControlColorCount>;
+using ControlNoncolorOverrides = SparseControlValues<ControlNoncolorValue, ControlNoncolorCount>;
+using ControlInputErrors = SparseControlValues<QVariantMap, size_t(ControlInput::Count)>;
+
+// Decode the schema boundary once per accepted snapshot, not once per facade.
+struct MetricRecord {
+#define IA_METRIC_FIELD(name, ...) qreal name = 0;
+    IA_METRIC_TOKENS(IA_METRIC_FIELD)
+#undef IA_METRIC_FIELD
+    static MetricRecord from(const QVariantMap &values);
+    bool operator==(const MetricRecord &other) const;
+};
+
+struct TypographyRecord {
+    QString family;
+#define IA_TYPE_SIZE_FIELD(name, ...) qreal name = 0;
+    IA_TYPE_SIZE_TOKENS(IA_TYPE_SIZE_FIELD)
+#undef IA_TYPE_SIZE_FIELD
+#define IA_TYPE_WEIGHT_FIELD(name, ...) int name = 0;
+    IA_TYPE_WEIGHT_TOKENS(IA_TYPE_WEIGHT_FIELD)
+#undef IA_TYPE_WEIGHT_FIELD
+    static TypographyRecord from(const QVariantMap &values);
+    bool operator==(const TypographyRecord &other) const;
+};
+
+enum class ControlFamily { Button, Tool, Field, Surface, Popup, Label, Delegate, Tab, Choice, Tooltip, Count };
+constexpr size_t ControlFamilyCount = size_t(ControlFamily::Count);
+struct FamilyDescriptor {
+    const char *name;
+    ControlColorMapping colors;
+    qreal MetricRecord::*height;
+    qreal MetricRecord::*radius;
+    qreal MetricRecord::*horizontalPadding;
+    qreal MetricRecord::*verticalPadding;
+    qreal TypographyRecord::*fontSize;
+    bool interactive;
+    bool semanticTextOnly;
+};
+std::optional<ControlFamily> controlFamily(const QString &family);
+const FamilyDescriptor &familyDescriptor(ControlFamily family);
 const char *controlColorName(ControlColor color);
 const QString &controlColorKey(ControlColor color);
 ControlColorMapping controlColorMapping(ControlFamily family, Presentation::Tone tone,
@@ -118,6 +199,9 @@ struct AppearanceState {
     quint64 revision = 0;
     ResolvedAppearance snapshot;
     std::shared_ptr<const PaletteState> palette;
+    MetricRecord metrics;
+    TypographyRecord typography;
+    void installNoncolors();
 };
 using AppearanceStatePtr = std::shared_ptr<const AppearanceState>;
 

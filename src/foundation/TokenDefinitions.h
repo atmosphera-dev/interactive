@@ -139,3 +139,34 @@ inline constexpr double LabelContrastTarget = 7;
     X(chevronRight, "chevron-right.svg") \
     X(close, "close.svg") \
     X(search, "search.svg")
+
+// The public facade and its private indexed records use one property order.
+#define IA_CONTROL_COLOR_PROPERTIES(X) \
+    X(QColor, backgroundColor, BackgroundColor, colors, control) \
+    X(QColor, fillColor, FillColor, colors, accent) \
+    X(QColor, foregroundColor, ForegroundColor, colors, text) \
+    X(QColor, hoverBackgroundColor, HoverBackgroundColor, colors, controlHover) \
+    X(QColor, pressedBackgroundColor, PressedBackgroundColor, colors, controlPressed) \
+    X(QColor, disabledBackgroundColor, DisabledBackgroundColor, colors, disabledSurface) \
+    X(QColor, disabledForegroundColor, DisabledForegroundColor, colors, disabledText) \
+    X(QColor, inactiveBackgroundColor, InactiveBackgroundColor, colors, inactiveSelection) \
+    X(QColor, inactiveForegroundColor, InactiveForegroundColor, colors, text) \
+    X(QColor, selectedBackgroundColor, SelectedBackgroundColor, colors, selection) \
+    X(QColor, selectedForegroundColor, SelectedForegroundColor, colors, text) \
+    X(QColor, borderColor, BorderColor, colors, outline) \
+    X(QColor, disabledBorderColor, DisabledBorderColor, colors, outline) \
+    X(QColor, focusColor, FocusColor, colors, focus)
+
+#define IA_CONTROL_NONCOLOR_PROPERTIES(X) \
+    X(qreal, controlRadius, ControlRadius, metrics, controlRadius) \
+    X(QString, fontFamily, FontFamily, typography, family) \
+    X(qreal, fontPixelSize, FontPixelSize, typography, controlSize) \
+    X(int, fontWeight, FontWeight, typography, controlWeight) \
+    X(qreal, minimumHeight, MinimumHeight, metrics, controlHeight) \
+    X(qreal, horizontalPadding, HorizontalPadding, metrics, horizontalPadding) \
+    X(qreal, verticalPadding, VerticalPadding, metrics, verticalPadding) \
+    X(qreal, spacing, Spacing, metrics, spacing)
+
+#define IA_CONTROL_PROPERTIES(X) \
+    IA_CONTROL_COLOR_PROPERTIES(X) \
+    IA_CONTROL_NONCOLOR_PROPERTIES(X)

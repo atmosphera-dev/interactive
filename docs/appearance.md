@@ -519,6 +519,18 @@ Changing source disconnects the previous source and installs the new shared stat
 Source-null color data is shared immutable library data; each facade retains its
 own construction-time font family and local overrides.
 
+Internally, a single data-only family descriptor table selects color roles and
+metric/typography fields. The public family string is validated and converted to
+an internal enum by its setter; the accepted strings and invalid-input diagnostics
+are unchanged. Accepted source snapshots decode metric and typography records
+once. Facades use X-macro-generated indexed arrays and explicit presence bits for
+local values/overrides, with typed font, geometry and color-branch cache keys.
+Facade notifications compare typed last-notified values and drain pending bits in
+the existing property order, re-reading effective values after nested callbacks;
+they do not read properties reflectively. The application/token-group publication
+path remains separate. This does not add interaction-state tables or move visual
+flags out of QML.
+
 Its semantic inputs are `source` (`Appearance*`), `family` (QString), `tone`
 (`Presentation::Tone`), and `validation` (`Presentation::Validation`). Enums are
 `Presentation.Auto`, `Neutral`, `Primary`, `Destructive`, `Caution`, and

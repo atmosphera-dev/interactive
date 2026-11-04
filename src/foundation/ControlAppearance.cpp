@@ -5,15 +5,20 @@
 #include "FontEnvironment_p.h"
 #include "LocalColorOverrides_p.h"
 #include <QFontMetricsF>
-#include <QStringList>
 #include <algorithm>
 #include <cmath>
 
 namespace InterActive {
 
 struct ControlAppearancePrivate {
+    struct Defaults {
+        MetricRecord metrics;
+        TypographyRecord typography;
+        QString density;
+    };
+    explicit ControlAppearancePrivate(Defaults defaults) : defaults(std::move(defaults)) {}
     struct Diagnostics {
-        QVariantMap invalidInputs;
+        ControlInputErrors invalidInputs;
         std::shared_ptr<const ControlFindings> findings;
         bool operator==(const Diagnostics &other) const
         {
@@ -22,15 +27,58 @@ struct ControlAppearancePrivate {
         }
         bool operator!=(const Diagnostics &other) const { return !(*this == other); }
     };
+    enum class Notification {
+        source, family, tone, validation,
+#define IA_NOTIFY_INDEX(type, name, upper, group, token) name,
+        IA_CONTROL_PROPERTIES(IA_NOTIFY_INDEX)
+#undef IA_NOTIFY_INDEX
+        resolvedFont, Count
+    };
+    struct NotifiedValues {
+        Appearance *source = nullptr;
+        ControlFamily family = ControlFamily::Button;
+        Presentation::Tone tone = Presentation::Auto;
+        Presentation::Validation validation = Presentation::None;
+#define IA_NOTIFIED_VALUE(type, name, upper, group, token) type name{};
+        IA_CONTROL_PROPERTIES(IA_NOTIFIED_VALUE)
+#undef IA_NOTIFIED_VALUE
+        QFont resolvedFont;
+    } last;
+    struct FontInputs {
+        QString family;
+        int pixelSize;
+        int weight;
+        quint64 generation;
+        bool operator==(const FontInputs &other) const
+        {
+            return family == other.family && pixelSize == other.pixelSize
+                && weight == other.weight && generation == other.generation;
+        }
+    };
+    struct HeightInputs {
+        qreal floor, padding, target, textHeight;
+        bool operator==(const HeightInputs &other) const
+        {
+            return floor == other.floor && padding == other.padding
+                && target == other.target && textHeight == other.textHeight;
+        }
+    };
+    const Defaults defaults;
+    ControlFamily family = ControlFamily::Button;
     AppearanceStatePtr sourceState;
     std::shared_ptr<const PaletteState> palette = PaletteState::fallback();
     ControlColorMapping mapping = controlColorMapping(ControlFamily::Button, Presentation::Auto, Presentation::None);
     LocalColorOverrides local;
-    PropertyNotifications notifications;
+    ControlColorValues colorOverrides;
+    ControlNoncolorOverrides noncolorOverrides;
+    ControlNoncolorValues values;
+    ControlInputErrors invalidInputs;
+    std::bitset<size_t(Notification::Count)> pending;
+    bool notificationsInitialized = false;
+    bool drainingNotifications = false;
     FontEnvironment *environment = nullptr;
-    QVariantList noncolorInputs;
-    QVariantList fontInputs;
-    QVariantList heightInputs;
+    std::optional<FontInputs> fontInputs;
+    std::optional<HeightInputs> heightInputs;
     qreal textHeight = 0;
     quint64 revision = 0;
     Diagnostics diagnostics, lastDiagnostics;
@@ -40,17 +88,16 @@ struct ControlAppearancePrivate {
 };
 
 namespace {
-ResolvedAppearance fallbackNoncolors()
+ControlAppearancePrivate::Defaults fallbackNoncolors()
 {
-    ResolvedAppearance defaults;
-    defaults.tokens = AirmailProfiles::profile(defaults.scheme, Appearance::initialFontFamily());
-    defaults.tokens.remove(QStringLiteral("colors"));
-    return defaults;
+    const auto tokens = AirmailProfiles::profile(QStringLiteral("light"), Appearance::initialFontFamily());
+    return {MetricRecord::from(tokens.value(QStringLiteral("metrics")).toMap()),
+        TypographyRecord::from(tokens.value(QStringLiteral("typography")).toMap()), QStringLiteral("compact")};
 }
 }
 
 ControlAppearance::ControlAppearance(QObject *parent)
-    : QObject(parent), m_defaults(fallbackNoncolors()), m_private(new ControlAppearancePrivate)
+    : QObject(parent), m_private(new ControlAppearancePrivate(fallbackNoncolors()))
 {
     m_private->environment = FontEnvironment::shared();
     connect(m_private->environment, &FontEnvironment::invalidated, this, [this] {
@@ -63,19 +110,16 @@ ControlAppearance::ControlAppearance(QObject *parent)
             resolveParts(false, true, false);
     });
     resolve();
-    // Diagnostics compare their shared components, not a flattened public list.
-    // Keep the existing reflective notifications for the other properties (S2).
-    QStringList properties{QStringLiteral("source"), QStringLiteral("family"),
-        QStringLiteral("tone"), QStringLiteral("validation")};
-#define IA_NOTIFY_PROPERTY(type, name, upper, group, token) properties.append(QStringLiteral(#name));
-    IA_CONTROL_PROPERTIES(IA_NOTIFY_PROPERTY)
-#undef IA_NOTIFY_PROPERTY
-    properties.append(QStringLiteral("resolvedFont"));
-    m_private->notifications.initialize(this, properties);
+    initializeNotifications();
     m_private->lastDiagnostics = m_private->diagnostics;
 }
 
 ControlAppearance::~ControlAppearance() = default;
+
+QString ControlAppearance::family() const
+{
+    return QString::fromLatin1(familyDescriptor(m_private->family).name);
+}
 
 QVariantList ControlAppearance::diagnostics() const
 {
@@ -84,8 +128,20 @@ QVariantList ControlAppearance::diagnostics() const
         qCDebug(appearanceWork).nospace() << "owner=" << this << " revision=" << state.revision
             << " operation=control-diagnostics-build";
         QVariantList diagnostics;
-        for (auto it = state.diagnostics.invalidInputs.cbegin(); it != state.diagnostics.invalidInputs.cend(); ++it)
-            diagnostics.append(it.value());
+        // Public input diagnostics retain their original lexical property order.
+        static const auto errorOrder = [] {
+            std::array<std::pair<const char *, ControlInput>, size_t(ControlInput::Count)> names{{
+#define IA_INPUT_NAME(type, name, upper, group, token) {#name, ControlInput::name},
+                IA_CONTROL_PROPERTIES(IA_INPUT_NAME)
+#undef IA_INPUT_NAME
+                {"family", ControlInput::family}, {"tone", ControlInput::tone}, {"validation", ControlInput::validation}}};
+            std::sort(names.begin(), names.end(), [](const auto &a, const auto &b) { return qstrcmp(a.first, b.first) < 0; });
+            return names;
+        }();
+        for (const auto &entry : errorOrder) {
+            if (state.diagnostics.invalidInputs.contains(entry.second))
+                diagnostics.append(state.diagnostics.invalidInputs.value(entry.second));
+        }
         if (state.diagnostics.findings) {
             for (const auto &findings : *state.diagnostics.findings)
                 diagnostics.append(findings);
@@ -102,7 +158,7 @@ QVariantList ControlAppearance::diagnostics() const
 IA_CONTROL_COLOR_PROPERTIES(IA_COLOR_GETTER)
 #undef IA_COLOR_GETTER
 #define IA_NONCOLOR_GETTER(type, name, upper, group, token) \
-    type ControlAppearance::name() const { return m_values.value(QStringLiteral(#name)).value<type>(); }
+    type ControlAppearance::name() const { return std::get<type>(m_private->values[size_t(ControlNoncolor::name)]); }
 IA_CONTROL_NONCOLOR_PROPERTIES(IA_NONCOLOR_GETTER)
 #undef IA_NONCOLOR_GETTER
 
@@ -128,32 +184,29 @@ void ControlAppearance::setSource(Appearance *source)
 
 void ControlAppearance::setFamily(const QString &family)
 {
-    const QStringList families{QStringLiteral("button"), QStringLiteral("tool"), QStringLiteral("field"),
-                               QStringLiteral("surface"), QStringLiteral("popup"), QStringLiteral("label"),
-                               QStringLiteral("delegate"), QStringLiteral("tab"), QStringLiteral("choice"),
-                               QStringLiteral("tooltip")};
-    if (!families.contains(family)) {
-        m_invalidInputs.insert(QStringLiteral("family"), TokenSchema::diagnostic(QStringLiteral("family"),
+    const auto parsed = controlFamily(family);
+    if (!parsed) {
+        m_private->invalidInputs.set(ControlInput::family, TokenSchema::diagnostic(QStringLiteral("family"),
             QStringLiteral("invalid-value"), QStringLiteral("Unknown family; previous family retained.")));
         resolve();
         return;
     }
-    const bool hadError = m_invalidInputs.remove(QStringLiteral("family"));
-    if (m_family == family && !hadError)
+    const bool hadError = m_private->invalidInputs.reset(ControlInput::family);
+    if (m_private->family == *parsed && !hadError)
         return;
-    m_family = family;
+    m_private->family = *parsed;
     resolve();
 }
 
 void ControlAppearance::setTone(Presentation::Tone tone)
 {
     if (tone < Presentation::Auto || tone > Presentation::Caution) {
-        m_invalidInputs.insert(QStringLiteral("tone"), TokenSchema::diagnostic(QStringLiteral("tone"),
+        m_private->invalidInputs.set(ControlInput::tone, TokenSchema::diagnostic(QStringLiteral("tone"),
             QStringLiteral("invalid-value"), QStringLiteral("Unknown tone; previous tone retained.")));
         resolve();
         return;
     }
-    const bool hadError = m_invalidInputs.remove(QStringLiteral("tone"));
+    const bool hadError = m_private->invalidInputs.reset(ControlInput::tone);
     if (m_tone == tone && !hadError)
         return;
     m_tone = tone;
@@ -163,56 +216,62 @@ void ControlAppearance::setTone(Presentation::Tone tone)
 void ControlAppearance::setValidation(Presentation::Validation validation)
 {
     if (validation < Presentation::None || validation > Presentation::Invalid) {
-        m_invalidInputs.insert(QStringLiteral("validation"), TokenSchema::diagnostic(QStringLiteral("validation"),
+        m_private->invalidInputs.set(ControlInput::validation, TokenSchema::diagnostic(QStringLiteral("validation"),
             QStringLiteral("invalid-value"), QStringLiteral("Unknown validation; previous value retained.")));
         resolve();
         return;
     }
-    const bool hadError = m_invalidInputs.remove(QStringLiteral("validation"));
+    const bool hadError = m_private->invalidInputs.reset(ControlInput::validation);
     if (m_validation == validation && !hadError)
         return;
     m_validation = validation;
     resolve();
 }
 
-#define IA_LOCAL_METHODS(type, name, upper, group, token) \
+#define IA_LOCAL_METHODS(type, name, upper, group, token, record, Index) \
     void ControlAppearance::set##upper(const type &value) \
-    { setOverride(QStringLiteral(#name), QStringLiteral(#group), QStringLiteral(#token), QVariant::fromValue(value)); } \
-    void ControlAppearance::reset##upper() { resetOverride(QStringLiteral(#name)); }
-IA_CONTROL_PROPERTIES(IA_LOCAL_METHODS)
-#undef IA_LOCAL_METHODS
-
-void ControlAppearance::setOverride(const QString &name, const QString &group, const QString &token, const QVariant &value)
-{
-    QVariant normalized;
-    QVariantList diagnostics;
-    if (!TokenSchema::validate(group, token, value, &normalized, &diagnostics, name, true)) {
-        m_invalidInputs.insert(name, diagnostics.first());
-        resolve();
-        return;
+    { \
+        auto &state = *m_private; \
+        QVariant normalized; \
+        QVariantList diagnostics; \
+        if (!TokenSchema::validate(QStringLiteral(#group), QStringLiteral(#token), QVariant::fromValue(value), \
+                &normalized, &diagnostics, QStringLiteral(#name), true)) { \
+            state.invalidInputs.set(ControlInput::name, diagnostics.first().toMap()); \
+            resolve(); \
+            return; \
+        } \
+        const bool hadError = state.invalidInputs.reset(ControlInput::name); \
+        const decltype(state.record)::Value typed = normalized.value<type>(); \
+        if (state.record.contains(Index::name) && state.record.value(Index::name) == typed && !hadError) \
+            return; \
+        state.record.set(Index::name, typed); \
+        resolve(); \
+    } \
+    void ControlAppearance::reset##upper() \
+    { \
+        const bool removed = m_private->record.reset(Index::name); \
+        const bool hadError = m_private->invalidInputs.reset(ControlInput::name); \
+        if (removed || hadError) \
+            resolve(); \
     }
-    const bool hadError = m_invalidInputs.remove(name);
-    if (m_overrides.contains(name) && m_overrides.value(name) == normalized && !hadError)
-        return;
-    // Presence, not comparison with the effective value, defines an override.
-    m_overrides.insert(name, normalized);
-    resolve();
-}
-
-void ControlAppearance::resetOverride(const QString &name)
-{
-    const bool removed = m_overrides.remove(name);
-    const bool hadError = m_invalidInputs.remove(name);
-    if (removed || hadError)
-        resolve();
-}
+#define IA_COLOR_METHODS(type, name, upper, group, token) \
+    IA_LOCAL_METHODS(type, name, upper, group, token, colorOverrides, ControlColor)
+IA_CONTROL_COLOR_PROPERTIES(IA_COLOR_METHODS)
+#undef IA_COLOR_METHODS
+#define IA_NONCOLOR_METHODS(type, name, upper, group, token) \
+    IA_LOCAL_METHODS(type, name, upper, group, token, noncolorOverrides, ControlNoncolor)
+IA_CONTROL_NONCOLOR_PROPERTIES(IA_NONCOLOR_METHODS)
+#undef IA_NONCOLOR_METHODS
+#undef IA_LOCAL_METHODS
 
 void ControlAppearance::resetOverrides()
 {
-    if (m_overrides.isEmpty() && m_invalidInputs.isEmpty())
+    auto &state = *m_private;
+    if (state.colorOverrides.presence.none() && state.noncolorOverrides.presence.none() && state.invalidInputs.presence.none())
         return;
-    m_overrides.clear();
-    m_invalidInputs.clear();
+    state.colorOverrides.presence.reset();
+    state.noncolorOverrides.presence.reset();
+    state.invalidInputs.presence.reset();
     resolve();
 }
 
@@ -255,104 +314,159 @@ void ControlAppearance::resolveParts(bool colors, bool noncolors, bool selectors
     // Own the installed source reference across every callback. Read the newest
     // source state, not the earlier dispatch mask, if an observer reentered it.
     state.sourceState = m_source ? m_source->m_state : AppearanceStatePtr();
-    const auto &profile = state.sourceState ? state.sourceState->snapshot : m_defaults;
     state.palette = state.sourceState ? state.sourceState->palette : PaletteState::fallback();
     state.revision = state.sourceState ? state.sourceState->revision : state.revision + 1;
-    const auto family = controlFamily(m_family);
+    const auto &descriptor = familyDescriptor(state.family);
     if (colors) {
         qCDebug(appearanceWork).nospace() << "owner=" << this << " revision=" << state.revision
             << " operation=color-resolution";
-        state.mapping = controlColorMapping(family, m_tone, m_validation);
+        state.mapping = controlColorMapping(state.family, m_tone, m_validation);
         const bool colored = m_tone == Presentation::Primary || m_tone == Presentation::Destructive || m_tone == Presentation::Caution;
-        const bool coupleBorder = colored && family != ControlFamily::Label && m_validation == Presentation::None
+        const bool coupleBorder = colored && !descriptor.semanticTextOnly && m_validation == Presentation::None
             && !state.palette->explicitRole(state.mapping[size_t(ControlColor::borderColor)]);
-        state.local.install(*state.palette, state.mapping, m_overrides, coupleBorder, this, state.revision);
+        state.local.install(*state.palette, state.mapping, state.colorOverrides, coupleBorder, this, state.revision);
     }
 
     if (noncolors) {
-        const auto metrics = profile.tokens.value(QStringLiteral("metrics")).toMap();
-        const auto typography = profile.tokens.value(QStringLiteral("typography")).toMap();
-        QVariantMap noncolorOverrides;
-#define IA_NONCOLOR_OVERRIDE(type, name, upper, group, token) \
-        if (m_overrides.contains(QStringLiteral(#name))) \
-            noncolorOverrides.insert(QStringLiteral(#name), m_overrides.value(QStringLiteral(#name)));
-        IA_CONTROL_NONCOLOR_PROPERTIES(IA_NONCOLOR_OVERRIDE)
-#undef IA_NONCOLOR_OVERRIDE
-        const QVariantList inputs{metrics, typography, noncolorOverrides, m_family, profile.density,
-            QVariant::fromValue(state.environment->generation())};
-        if (state.noncolorInputs != inputs) {
-            QVariantMap candidate;
+        const auto &metrics = state.sourceState ? state.sourceState->metrics : state.defaults.metrics;
+        const auto &typography = state.sourceState ? state.sourceState->typography : state.defaults.typography;
+        const auto &density = state.sourceState ? state.sourceState->snapshot.density : state.defaults.density;
+        ControlNoncolorValues candidate;
 #define IA_NONCOLOR_DEFAULT(type, name, upper, group, token) \
-            candidate.insert(QStringLiteral(#name), group.value(QStringLiteral(#token)));
-            IA_CONTROL_NONCOLOR_PROPERTIES(IA_NONCOLOR_DEFAULT)
+        candidate[size_t(ControlNoncolor::name)] = group.token;
+        IA_CONTROL_NONCOLOR_PROPERTIES(IA_NONCOLOR_DEFAULT)
 #undef IA_NONCOLOR_DEFAULT
-            if (family == ControlFamily::Popup) {
-                candidate.insert(QStringLiteral("controlRadius"), metrics.value(QStringLiteral("popupRadius")));
-                candidate.insert(QStringLiteral("horizontalPadding"), metrics.value(QStringLiteral("popupPadding")));
-                candidate.insert(QStringLiteral("verticalPadding"), metrics.value(QStringLiteral("popupPadding")));
-            }
-            if (family == ControlFamily::Tooltip)
-                candidate.insert(QStringLiteral("fontPixelSize"), typography.value(QStringLiteral("supportingSize")));
-            if (family == ControlFamily::Tool)
-                candidate.insert(QStringLiteral("minimumHeight"), metrics.value(QStringLiteral("toolHeight")));
-            if (family == ControlFamily::Delegate || family == ControlFamily::Tab)
-                candidate.insert(QStringLiteral("minimumHeight"), metrics.value(QStringLiteral("rowHeight")));
-            const bool interactive = family != ControlFamily::Label && family != ControlFamily::Surface
-                && family != ControlFamily::Popup && family != ControlFamily::Tooltip;
-            if (!interactive)
-                candidate.insert(QStringLiteral("minimumHeight"), qreal(0));
-            for (auto it = noncolorOverrides.cbegin(); it != noncolorOverrides.cend(); ++it)
-                candidate.insert(it.key(), it.value());
-            const QString requestedFamily = candidate.value(QStringLiteral("fontFamily")).toString();
-            const int pixelSize = std::max(1, qRound(candidate.value(QStringLiteral("fontPixelSize")).toDouble()));
-            const int weight = candidate.value(QStringLiteral("fontWeight")).toInt();
-            const QVariantList fontInputs{requestedFamily, pixelSize, weight,
-                QVariant::fromValue(state.environment->generation())};
-            if (state.fontInputs != fontInputs) {
-                qCDebug(appearanceWork).nospace() << "owner=" << this << " revision=" << state.revision
-                    << " operation=font-construction";
-                QFont font;
-                font.setFamily(requestedFamily);
-                font.setPixelSize(pixelSize);
-                font.setWeight(static_cast<QFont::Weight>(weight));
-                qCDebug(appearanceWork).nospace() << "owner=" << this << " revision=" << state.revision
-                    << " operation=font-measurement";
-                state.textHeight = std::ceil(QFontMetricsF(font).height());
-                m_font = font;
-                state.fontInputs = fontInputs;
-            }
-            // Keep the requested floor, never yesterday's derived output, in the key.
-            const qreal requestedFloor = candidate.value(QStringLiteral("minimumHeight")).toDouble();
-            const qreal padding = candidate.value(QStringLiteral("verticalPadding")).toDouble();
-            const qreal targetFloor = interactive && profile.density == QLatin1String("touch")
-                ? metrics.value(QStringLiteral("targetSize")).toDouble() : 0;
-            const QVariantList heightInputs{requestedFloor, padding, targetFloor, state.textHeight};
-            qreal minimum = m_values.value(QStringLiteral("minimumHeight")).toDouble();
-            if (state.heightInputs != heightInputs) {
-                qCDebug(appearanceWork).nospace() << "owner=" << this << " revision=" << state.revision
-                    << " operation=geometry-calculation";
-                minimum = std::max({requestedFloor, state.textHeight + 2 * padding, targetFloor});
-                state.heightInputs = heightInputs;
-            }
-            candidate.insert(QStringLiteral("minimumHeight"), minimum);
-            m_values = std::move(candidate);
-            state.noncolorInputs = inputs;
+        candidate[size_t(ControlNoncolor::controlRadius)] = metrics.*descriptor.radius;
+        candidate[size_t(ControlNoncolor::horizontalPadding)] = metrics.*descriptor.horizontalPadding;
+        candidate[size_t(ControlNoncolor::verticalPadding)] = metrics.*descriptor.verticalPadding;
+        candidate[size_t(ControlNoncolor::fontPixelSize)] = typography.*descriptor.fontSize;
+        candidate[size_t(ControlNoncolor::minimumHeight)] = descriptor.height ? metrics.*descriptor.height : qreal(0);
+        for (size_t i = 0; i < candidate.size(); ++i) {
+            if (state.noncolorOverrides.presence.test(i))
+                candidate[i] = state.noncolorOverrides.values[i];
         }
+        const auto &requestedFamily = std::get<QString>(candidate[size_t(ControlNoncolor::fontFamily)]);
+        const int pixelSize = std::max(1, qRound(std::get<qreal>(candidate[size_t(ControlNoncolor::fontPixelSize)])));
+        const int weight = std::get<int>(candidate[size_t(ControlNoncolor::fontWeight)]);
+        const ControlAppearancePrivate::FontInputs fontInputs{requestedFamily, pixelSize, weight, state.environment->generation()};
+        if (!state.fontInputs || !(*state.fontInputs == fontInputs)) {
+            qCDebug(appearanceWork).nospace() << "owner=" << this << " revision=" << state.revision
+                << " operation=font-construction";
+            QFont font;
+            font.setFamily(requestedFamily);
+            font.setPixelSize(pixelSize);
+            font.setWeight(static_cast<QFont::Weight>(weight));
+            qCDebug(appearanceWork).nospace() << "owner=" << this << " revision=" << state.revision
+                << " operation=font-measurement";
+            state.textHeight = std::ceil(QFontMetricsF(font).height());
+            m_font = font;
+            state.fontInputs = fontInputs;
+        }
+        // Keep the requested floor, never yesterday's derived output, in the key.
+        const qreal requestedFloor = std::get<qreal>(candidate[size_t(ControlNoncolor::minimumHeight)]);
+        const qreal padding = std::get<qreal>(candidate[size_t(ControlNoncolor::verticalPadding)]);
+        const qreal targetFloor = descriptor.interactive && density == QLatin1String("touch") ? metrics.targetSize : 0;
+        const ControlAppearancePrivate::HeightInputs heightInputs{requestedFloor, padding, targetFloor, state.textHeight};
+        qreal minimum = state.heightInputs ? minimumHeight() : 0;
+        if (!state.heightInputs || !(*state.heightInputs == heightInputs)) {
+            qCDebug(appearanceWork).nospace() << "owner=" << this << " revision=" << state.revision
+                << " operation=geometry-calculation";
+            minimum = std::max({requestedFloor, state.textHeight + 2 * padding, targetFloor});
+            state.heightInputs = heightInputs;
+        }
+        candidate[size_t(ControlNoncolor::minimumHeight)] = minimum;
+        state.values = std::move(candidate);
     }
-    const ControlAppearancePrivate::Diagnostics diagnostics{m_invalidInputs, state.local.findings()};
+    const ControlAppearancePrivate::Diagnostics diagnostics{state.invalidInputs, state.local.findings()};
     if (state.diagnostics != diagnostics) {
         state.diagnostics = diagnostics;
         state.diagnosticsCacheValid = false;
     }
     if (colors || noncolors || selectors)
-        state.notifications.installed(this);
+        installNotifications();
     const QPointer<ControlAppearance> guard(this);
     emit resolvedChanged();
     if (guard)
-        state.notifications.drain(this);
+        drainNotifications();
     if (guard)
         drainDiagnostics();
 }
+
+#define IA_FACADE_SELECTORS(X) \
+    X(source, m_source.data()) \
+    X(family, m_private->family) \
+    X(tone, m_tone) \
+    X(validation, m_validation)
+
+void ControlAppearance::initializeNotifications()
+{
+    auto &state = *m_private;
+#define IA_INITIALIZE(name, current) state.last.name = current;
+    IA_FACADE_SELECTORS(IA_INITIALIZE)
+#define IA_INITIALIZE_PROPERTY(type, name, upper, group, token) IA_INITIALIZE(name, name())
+    IA_CONTROL_PROPERTIES(IA_INITIALIZE_PROPERTY)
+#undef IA_INITIALIZE_PROPERTY
+    IA_INITIALIZE(resolvedFont, m_font)
+#undef IA_INITIALIZE
+    state.notificationsInitialized = true;
+}
+
+void ControlAppearance::installNotifications()
+{
+    auto &state = *m_private;
+    if (!state.notificationsInitialized)
+        return;
+    const AppearanceWorkScope timing("notification-compare", this);
+    TraceSpan span(TraceScope::NotificationCompare, this);
+    using Notification = ControlAppearancePrivate::Notification;
+#define IA_COMPARE(name, current) \
+    if (state.last.name != (current)) state.pending.set(size_t(Notification::name));
+    IA_FACADE_SELECTORS(IA_COMPARE)
+#define IA_COMPARE_PROPERTY(type, name, upper, group, token) IA_COMPARE(name, name())
+    IA_CONTROL_PROPERTIES(IA_COMPARE_PROPERTY)
+#undef IA_COMPARE_PROPERTY
+    IA_COMPARE(resolvedFont, m_font)
+#undef IA_COMPARE
+    span.setAux(quint32(Notification::Count));
+}
+
+void ControlAppearance::drainNotifications()
+{
+    auto &state = *m_private;
+    const AppearanceWorkScope timing("notification-drain", this);
+    TraceSpan span(TraceScope::NotificationDrain, this);
+    if (!state.notificationsInitialized || state.drainingNotifications)
+        return;
+    state.drainingNotifications = true;
+    const QPointer<ControlAppearance> guard(this);
+    quint32 emitted = 0;
+    using Notification = ControlAppearancePrivate::Notification;
+    const auto notify = [&](Notification property, auto &last, const auto &current, auto signal) {
+        state.pending.reset(size_t(property));
+        if (last == current)
+            return true;
+        last = current;
+        ++emitted;
+        (this->*signal)();
+        return bool(guard);
+    };
+    while (state.pending.any()) {
+        // Preserve declaration order, re-reading each pending property after
+        // callbacks. Nested installs add obligations to this same drain.
+#define IA_NOTIFY(name, current) \
+        if (state.pending.test(size_t(Notification::name)) \
+            && !notify(Notification::name, state.last.name, current, &ControlAppearance::name##Changed)) return;
+        IA_FACADE_SELECTORS(IA_NOTIFY)
+#define IA_NOTIFY_PROPERTY(type, name, upper, group, token) IA_NOTIFY(name, name())
+        IA_CONTROL_PROPERTIES(IA_NOTIFY_PROPERTY)
+#undef IA_NOTIFY_PROPERTY
+        IA_NOTIFY(resolvedFont, m_font)
+#undef IA_NOTIFY
+    }
+    state.drainingNotifications = false;
+    span.setAux(emitted);
+}
+#undef IA_FACADE_SELECTORS
 
 void ControlAppearance::drainDiagnostics()
 {

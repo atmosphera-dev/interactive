@@ -29,6 +29,7 @@ Appearance::Appearance(QObject *parent)
     state->snapshot.tokens.insert(QStringLiteral("colors"), state->palette->values);
     state->snapshot.diagnostics.append(state->palette->diagnostics);
     TokenSchema::resolveNoncolors(&state->snapshot);
+    state->installNoncolors();
     m_state = state;
     m_resolved = state->snapshot;
     m_diagnostics = m_resolved.diagnostics;
@@ -103,6 +104,7 @@ void Appearance::setInput(const QVariantMap &input)
     const bool motionChange = m_motion->values() != candidate.tokens.value(QStringLiteral("motion")).toMap();
     const bool iconChange = m_icons->values() != candidate.tokens.value(QStringLiteral("icons")).toMap();
     state->snapshot = candidate;
+    state->installNoncolors();
     const auto update = PaletteUpdate::between(before, state);
     m_input = input;
     m_prepared = std::move(prepared);

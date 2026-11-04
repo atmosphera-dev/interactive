@@ -6,36 +6,6 @@
 #include <QFont>
 #include <QPointer>
 
-#define IA_CONTROL_COLOR_PROPERTIES(X) \
-    X(QColor, backgroundColor, BackgroundColor, colors, control) \
-    X(QColor, fillColor, FillColor, colors, accent) \
-    X(QColor, foregroundColor, ForegroundColor, colors, text) \
-    X(QColor, hoverBackgroundColor, HoverBackgroundColor, colors, controlHover) \
-    X(QColor, pressedBackgroundColor, PressedBackgroundColor, colors, controlPressed) \
-    X(QColor, disabledBackgroundColor, DisabledBackgroundColor, colors, disabledSurface) \
-    X(QColor, disabledForegroundColor, DisabledForegroundColor, colors, disabledText) \
-    X(QColor, inactiveBackgroundColor, InactiveBackgroundColor, colors, inactiveSelection) \
-    X(QColor, inactiveForegroundColor, InactiveForegroundColor, colors, text) \
-    X(QColor, selectedBackgroundColor, SelectedBackgroundColor, colors, selection) \
-    X(QColor, selectedForegroundColor, SelectedForegroundColor, colors, text) \
-    X(QColor, borderColor, BorderColor, colors, outline) \
-    X(QColor, disabledBorderColor, DisabledBorderColor, colors, outline) \
-    X(QColor, focusColor, FocusColor, colors, focus)
-
-#define IA_CONTROL_NONCOLOR_PROPERTIES(X) \
-    X(qreal, controlRadius, ControlRadius, metrics, controlRadius) \
-    X(QString, fontFamily, FontFamily, typography, family) \
-    X(qreal, fontPixelSize, FontPixelSize, typography, controlSize) \
-    X(int, fontWeight, FontWeight, typography, controlWeight) \
-    X(qreal, minimumHeight, MinimumHeight, metrics, controlHeight) \
-    X(qreal, horizontalPadding, HorizontalPadding, metrics, horizontalPadding) \
-    X(qreal, verticalPadding, VerticalPadding, metrics, verticalPadding) \
-    X(qreal, spacing, Spacing, metrics, spacing)
-
-#define IA_CONTROL_PROPERTIES(X) \
-    IA_CONTROL_COLOR_PROPERTIES(X) \
-    IA_CONTROL_NONCOLOR_PROPERTIES(X)
-
 namespace InterActive {
 
 struct ControlAppearancePrivate;
@@ -60,7 +30,7 @@ public:
     ~ControlAppearance() override;
     Appearance *source() const { return m_source.data(); }
     void setSource(Appearance *source);
-    QString family() const { return m_family; }
+    QString family() const;
     void setFamily(const QString &family);
     Presentation::Tone tone() const { return m_tone; }
     void setTone(Presentation::Tone tone);
@@ -87,23 +57,19 @@ signals:
     IA_CONTROL_PROPERTIES(IA_LOCAL_SIGNAL)
 #undef IA_LOCAL_SIGNAL
 private:
-    void setOverride(const QString &name, const QString &group, const QString &token, const QVariant &value);
-    void resetOverride(const QString &name);
     void resolve();
     void resolve(const PaletteUpdate &update, bool forceNoncolors = false);
     void resolveParts(bool colors, bool noncolors, bool selectors);
     void drainDiagnostics();
+    void initializeNotifications();
+    void installNotifications();
+    void drainNotifications();
     QPointer<Appearance> m_source;
     QMetaObject::Connection m_sourceChanged;
     QMetaObject::Connection m_sourceDestroyed;
-    const ResolvedAppearance m_defaults;
     std::unique_ptr<ControlAppearancePrivate> m_private;
-    QString m_family = QStringLiteral("button");
     Presentation::Tone m_tone = Presentation::Auto;
     Presentation::Validation m_validation = Presentation::None;
-    QVariantMap m_overrides;
-    QVariantMap m_values;
-    QVariantMap m_invalidInputs;
     QFont m_font;
 };
 

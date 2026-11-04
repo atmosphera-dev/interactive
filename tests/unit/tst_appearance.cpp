@@ -27,6 +27,7 @@
 #include <cstdio>
 #include <limits>#include <memory>
 #include <vector>
+#include <functional>
 
 using namespace InterActive;
 
@@ -370,7 +371,181 @@ private slots:
     void preciseAtomicCallbacks();
     void equalSourceAndOwnershipNotifications();
     void localDependencyChanges();
+    void familyDescriptorContract();
+    void typedFacadeNotificationOrder();
+    void typedFacadePendingReversion();
 };
+
+void AppearanceTests::familyDescriptorContract()
+{
+    struct Family {
+        const char *name;
+        const char *background;
+        qreal height;
+        bool interactive;
+    };
+    const Family families[]{
+        {"button", "control", 100, true}, {"tool", "transparent", 110, true},
+        {"field", "content", 100, true}, {"surface", "content", 0, false},
+        {"popup", "popup", 0, false}, {"label", "transparent", 0, false},
+        {"delegate", "transparent", 120, true}, {"tab", "transparent", 120, true},
+        {"choice", "transparent", 100, true}, {"tooltip", "tooltipBackground", 0, false}};
+    Appearance appearance;
+    for (const auto *scheme : {"light", "dark"}) {
+        for (const auto *density : {"compact", "touch"}) {
+            appearance.setInput({{QStringLiteral("scheme"), QString::fromLatin1(scheme)},
+                {QStringLiteral("density"), QString::fromLatin1(density)},
+                {QStringLiteral("tokens"), QVariantMap{
+                    {QStringLiteral("metrics"), QVariantMap{{QStringLiteral("controlHeight"), 100},
+                        {QStringLiteral("toolHeight"), 110}, {QStringLiteral("rowHeight"), 120},
+                        {QStringLiteral("targetSize"), 200}, {QStringLiteral("controlRadius"), 5},
+                        {QStringLiteral("popupRadius"), 9}, {QStringLiteral("horizontalPadding"), 3},
+                        {QStringLiteral("verticalPadding"), 7}, {QStringLiteral("popupPadding"), 11},
+                        {QStringLiteral("spacing"), 13}}},
+                    {QStringLiteral("typography"), QVariantMap{{QStringLiteral("controlSize"), 14},
+                        {QStringLiteral("supportingSize"), 10}, {QStringLiteral("controlWeight"), 450}}}}}});
+            const auto colors = appearance.colors()->values();
+            const auto color = [&](const QString &role) { return colors.value(role).value<QColor>(); };
+            for (const auto &family : families) {
+                ControlAppearance control;
+                control.setSource(&appearance);
+                control.setFamily(QLatin1String(family.name));
+                QCOMPARE(control.family(), QLatin1String(family.name));
+                const bool popup = control.family() == QLatin1String("popup");
+                const bool tooltip = control.family() == QLatin1String("tooltip");
+                const bool label = control.family() == QLatin1String("label");
+                QCOMPARE(control.controlRadius(), popup ? 9.0 : 5.0);
+                QCOMPARE(control.horizontalPadding(), popup ? 11.0 : 3.0);
+                QCOMPARE(control.verticalPadding(), popup ? 11.0 : 7.0);
+                QCOMPARE(control.spacing(), 13.0);
+                QCOMPARE(control.fontPixelSize(), tooltip ? 10.0 : 14.0);
+                QCOMPARE(control.fontWeight(), 450);
+                const qreal target = family.interactive && qstrcmp(density, "touch") == 0 ? 200 : 0;
+                QCOMPARE(control.minimumHeight(), std::max({family.height, target,
+                    std::ceil(QFontMetricsF(control.resolvedFont()).height()) + 2 * control.verticalPadding()}));
+                for (const auto tone : {Presentation::Auto, Presentation::Neutral, Presentation::Primary,
+                         Presentation::Destructive, Presentation::Caution}) {
+                    control.setTone(tone);
+                    const QString semantic = tone == Presentation::Primary ? QStringLiteral("primary")
+                        : tone == Presentation::Destructive ? QStringLiteral("destructive")
+                        : tone == Presentation::Caution ? QStringLiteral("caution") : QString();
+                    const bool colored = !semantic.isEmpty();
+                    const QString background = colored && !label ? semantic + QStringLiteral("Surface") : QString::fromLatin1(family.background);
+                    const QString foreground = colored ? (label
+                        ? tone == Presentation::Primary ? QStringLiteral("accentText")
+                            : tone == Presentation::Destructive ? QStringLiteral("errorText") : QStringLiteral("warningText")
+                        : semantic + QStringLiteral("Text")) : tooltip ? QStringLiteral("tooltipText") : QStringLiteral("text");
+                    const QString hover = colored && !label ? semantic + QStringLiteral("Hover")
+                        : tooltip ? QStringLiteral("tooltipBackground") : QStringLiteral("controlHover");
+                    const QString pressed = colored && !label ? semantic + QStringLiteral("Pressed")
+                        : tooltip ? QStringLiteral("tooltipBackground") : QStringLiteral("controlPressed");
+                    for (const auto validation : {Presentation::None, Presentation::Warning, Presentation::Invalid}) {
+                        control.setValidation(validation);
+                        QCOMPARE(control.backgroundColor(), color(background));
+                        QCOMPARE(control.foregroundColor(), color(foreground));
+                        QCOMPARE(control.hoverBackgroundColor(), color(hover));
+                        QCOMPARE(control.pressedBackgroundColor(), color(pressed));
+                        QCOMPARE(control.selectedBackgroundColor(), color(colored && !label ? semantic + QStringLiteral("Pressed") : QStringLiteral("selection")));
+                        QCOMPARE(control.inactiveBackgroundColor(), color(colored && !label ? semantic + QStringLiteral("Surface") : QStringLiteral("inactiveSelection")));
+                        QCOMPARE(control.selectedForegroundColor(), color(colored && !label ? foreground : QStringLiteral("text")));
+                        QCOMPARE(control.inactiveForegroundColor(), control.selectedForegroundColor());
+                        const QString border = validation == Presentation::Invalid ? QStringLiteral("errorText")
+                            : validation == Presentation::Warning ? QStringLiteral("warningText")
+                            : colored && !label ? semantic + QStringLiteral("Outline") : QStringLiteral("outline");
+                        QCOMPARE(control.borderColor(), color(border));
+                        QCOMPARE(control.disabledBorderColor(), color(validation == Presentation::None ? QStringLiteral("outline") : border));
+                        QCOMPARE(control.disabledBackgroundColor(), appearance.colors()->disabledSurface());
+                        QCOMPARE(control.disabledForegroundColor(), appearance.colors()->disabledText());
+                        QCOMPARE(control.focusColor(), appearance.colors()->focus());
+                        QCOMPARE(control.fillColor(), appearance.colors()->accent());
+                    }
+                }
+            }
+        }
+    }
+}
+
+void AppearanceTests::typedFacadeNotificationOrder()
+{
+    ControlAppearance control;
+    QStringList names{QStringLiteral("source"), QStringLiteral("family"), QStringLiteral("tone"), QStringLiteral("validation")};
+#define IA_TEST_NAME(type, name, upper, group, token) names.append(QStringLiteral(#name));
+    IA_CONTROL_PROPERTIES(IA_TEST_NAME)
+#undef IA_TEST_NAME
+    names.append(QStringLiteral("resolvedFont"));
+    names.append(QStringLiteral("diagnostics"));
+    QStringList observed;
+    connect(&control, &ControlAppearance::resolvedChanged, this, [&] { observed.append(QStringLiteral("resolvedChanged")); });
+#define IA_TEST_OBSERVE(name) \
+    connect(&control, &ControlAppearance::name##Changed, this, [&] { observed.append(QStringLiteral(#name "Changed")); });
+    IA_TEST_OBSERVE(source)
+    IA_TEST_OBSERVE(family)
+    IA_TEST_OBSERVE(tone)
+    IA_TEST_OBSERVE(validation)
+#define IA_TEST_PROPERTY(type, name, upper, group, token) IA_TEST_OBSERVE(name)
+    IA_CONTROL_PROPERTIES(IA_TEST_PROPERTY)
+#undef IA_TEST_PROPERTY
+    IA_TEST_OBSERVE(resolvedFont)
+    IA_TEST_OBSERVE(diagnostics)
+#undef IA_TEST_OBSERVE
+    const auto snapshot = [&] {
+        QVariantMap values;
+        for (const auto &name : names)
+            values.insert(name, control.property(name.toLatin1().constData()));
+        return values;
+    };
+    const auto check = [&](const std::function<void()> &change) {
+        const auto before = snapshot();
+        observed.clear();
+        change();
+        const auto after = snapshot();
+        QStringList expected{QStringLiteral("resolvedChanged")};
+        for (const auto &name : names) {
+            if (before.value(name) != after.value(name))
+                expected.append(name + QStringLiteral("Changed"));
+        }
+        QCOMPARE(observed, expected);
+    };
+    auto appearance = std::make_unique<Appearance>();
+    check([&] { control.setSource(appearance.get()); });
+    check([&] { control.setFamily(QStringLiteral("popup")); });
+    check([&] { control.setTone(Presentation::Primary); });
+    check([&] { control.setValidation(Presentation::Invalid); });
+    check([&] { appearance->setInput({{QStringLiteral("scheme"), QStringLiteral("dark")}, {QStringLiteral("fontScale"), 1.5}}); });
+    check([&] { control.setFamily(QStringLiteral(" Popup ")); });
+    check([&] { control.setFamily(QStringLiteral("popup")); });
+    check([&] { control.setSpacing(-1); });
+    check([&] { control.resetSpacing(); });
+    check([&] { appearance.reset(); });
+}
+
+void AppearanceTests::typedFacadePendingReversion()
+{
+    Appearance appearance;
+    appearance.setInput({{QStringLiteral("fontScale"), 2},
+        {QStringLiteral("tokens"), QVariantMap{{QStringLiteral("metrics"), QVariantMap{{QStringLiteral("controlRadius"), 10}}}}}});
+    ControlAppearance control;
+    const qreal initialSize = control.fontPixelSize(), initialRadius = control.controlRadius();
+    const auto reenter = connect(&control, &ControlAppearance::sourceChanged, this, [&] {
+        control.setFontPixelSize(initialSize);
+        control.setControlRadius(initialRadius);
+    });
+    QSignalSpy size(&control, &ControlAppearance::fontPixelSizeChanged);
+    QSignalSpy radius(&control, &ControlAppearance::controlRadiusChanged);
+    QSignalSpy font(&control, &ControlAppearance::resolvedFontChanged);
+    control.setSource(&appearance);
+    QCOMPARE(control.fontPixelSize(), initialSize);
+    QCOMPARE(control.controlRadius(), initialRadius);
+    QCOMPARE(size.count(), 0);
+    QCOMPARE(radius.count(), 0);
+    QCOMPARE(font.count(), 0);
+    disconnect(reenter);
+    QSignalSpy family(&control, &ControlAppearance::familyChanged);
+    connect(&control, &ControlAppearance::spacingChanged, this, [&] { control.setFamily(QStringLiteral("label")); });
+    control.setSpacing(17);
+    QCOMPARE(control.family(), QStringLiteral("label"));
+    QCOMPARE(family.count(), 1); // A nested obligation earlier than the current drain position.
+}
 
 void AppearanceTests::preciseAtomicCallbacks()
 {
