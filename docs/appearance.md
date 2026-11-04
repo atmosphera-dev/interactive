@@ -133,6 +133,11 @@ retains accepted state, and clearing rejection diagnostics need not rebuild colo
 `TokenSchema::resolve` remains the stateless entry point using the same recipe;
 ordinary controls forward completed color roles instead of calling it themselves.
 
+Completed updates carry color-value/presence masks and independent metrics,
+typography, motion and icon group flags. Facades resolve only affected color or
+font/geometry inputs. Nested publication compares against the latest source and
+the facade's actual installed snapshot rather than applying an obsolete mask.
+
 Nested setters still install synchronously. Property-notification obligations are
 drained on the same stack against the newest installed values, so an earlier
 dispatch cannot leave font/layout bindings stale after a nested color update.
@@ -432,6 +437,11 @@ IA uses the original one-argument QFontMetricsF measurement, without a mandatory
 window or paint-device-specific protocol. Unsignaled changes to runtime font
 substitution/fallback tables are outside this observation boundary.
 
+One application-owned font environment observes these process-wide notifications
+for all facades and QML engines: one application event filter and one set of screen
+connections. Only observation/generation is shared; appearance input, captured font
+families and generation-keyed measurement reuse remain independently owned.
+
 Qt's own font-database refresh updates existing rendered text on the next scene-
 graph synchronization; IA does not force equal-font notifications or schedule idle
 frames. Qt 6.8.0 and 6.11.2 have a reproduced TextEdit limitation: after a font is
@@ -599,6 +609,12 @@ focus, fill, selected/inactive or validation roles still follow the shared state
 A hover-only or pressed-only override legitimately retains inherited dependencies.
 Ordinary diagnostic pairs are measured once in shared state and projected to local
 paths; locally changed pairs are measured locally, independently of font/geometry.
+
+Projected ordinary pair findings are shared by palette and role mapping, rather
+than copied into each unmodified control. A control flattens its public diagnostic
+list only when read, caching it until its effective findings or input errors change.
+Diagnostic notifications compare those components without forcing that list to be
+built and retain the same changed-effective-value and nested-publication contract.
 
 Local validation reuses TokenSchema. Local pixel sizes allow `[3, 384]`, the full
 effective global size range; local height floors allow `[0, 4096]` to accommodate

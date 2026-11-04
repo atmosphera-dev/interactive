@@ -38,6 +38,14 @@ void LocalColorOverrides::install(const PaletteState &palette, const ControlColo
         if (overrides.contains(name))
             values.insert(name, overrides.value(name));
     }
+    m_findings = palette.controlFindings(mapping);
+    if (values.isEmpty()) {
+        m_resting.valid = m_hover.valid = m_pressed.valid = m_foreground.valid = m_selected.valid = m_inactive.valid = false;
+        for (auto &pair : m_pairs)
+            pair.valid = false;
+        m_values.clear();
+        return;
+    }
     const auto name = [](ControlColor property) -> const QString & { return controlColorKey(property); };
     const auto explicitLocal = [&](ControlColor property) { return overrides.contains(name(property)); };
     const auto effective = [&](ControlColor property) {
@@ -106,16 +114,9 @@ void LocalColorOverrides::install(const PaletteState &palette, const ControlColo
     if (explicitLocal(ControlColor::borderColor) && !explicitLocal(ControlColor::disabledBorderColor))
         put(ControlColor::disabledBorderColor, effective(ControlColor::borderColor));
 
-    QVariantList diagnostics;
-    const std::array<std::pair<ControlColor, ControlColor>, 6> pairs{{
-        {ControlColor::foregroundColor, ControlColor::backgroundColor},
-        {ControlColor::foregroundColor, ControlColor::hoverBackgroundColor},
-        {ControlColor::foregroundColor, ControlColor::pressedBackgroundColor},
-        {ControlColor::selectedForegroundColor, ControlColor::selectedBackgroundColor},
-        {ControlColor::inactiveForegroundColor, ControlColor::inactiveBackgroundColor},
-        {ControlColor::focusColor, ControlColor::backgroundColor}}};
-    for (size_t i = 0; i < pairs.size(); ++i) {
-        const auto [foreground, background] = pairs[i];
+    std::shared_ptr<ControlFindings> localFindings;
+    for (size_t i = 0; i < ControlDiagnosticPairs.size(); ++i) {
+        const auto [foreground, background] = ControlDiagnosticPairs[i];
         const bool focus = i == 5;
         const QString path = name(foreground) + QLatin1Char('/') + (focus ? QStringLiteral("content") : name(background));
         const bool localText = values.contains(name(foreground));
@@ -124,8 +125,6 @@ void LocalColorOverrides::install(const PaletteState &palette, const ControlColo
         auto &pair = m_pairs[i];
         if (!locallyMeasured) {
             pair.valid = false;
-            diagnostics.append(palette.pairFindings(mapping[size_t(foreground)],
-                focus ? ColorRole::content : mapping[size_t(background)], path, focus));
             continue;
         }
         const QColor text = effective(foreground);
@@ -142,10 +141,13 @@ void LocalColorOverrides::install(const PaletteState &palette, const ControlColo
             pair.inputs = inputs;
             pair.valid = true;
         }
-        diagnostics.append(pair.findings);
+        if (!localFindings)
+            localFindings = std::make_shared<ControlFindings>(*m_findings);
+        (*localFindings)[i] = pair.findings;
     }
     m_values = std::move(values);
-    m_diagnostics = std::move(diagnostics);
+    if (localFindings)
+        m_findings = std::move(localFindings);
 }
 
 } // namespace InterActive

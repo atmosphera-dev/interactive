@@ -215,6 +215,46 @@ QVariantList PaletteState::pairFindings(ColorRole foreground, ColorRole backgrou
     return results;
 }
 
+std::shared_ptr<const ControlFindings> PaletteState::controlFindings(const ControlColorMapping &mapping) const
+{
+    const auto found = m_controlFindings.find(mapping);
+    if (found != m_controlFindings.end())
+        return found->second;
+    auto findings = std::make_shared<ControlFindings>();
+    for (size_t i = 0; i < ControlDiagnosticPairs.size(); ++i) {
+        const auto [foreground, background] = ControlDiagnosticPairs[i];
+        const bool focus = i == 5;
+        const QString path = controlColorKey(foreground) + QLatin1Char('/')
+            + (focus ? QStringLiteral("content") : controlColorKey(background));
+        (*findings)[i] = pairFindings(mapping[size_t(foreground)],
+            focus ? ColorRole::content : mapping[size_t(background)], path, focus);
+    }
+    m_controlFindings.emplace(mapping, findings);
+    return findings;
+}
+
+PaletteUpdate PaletteUpdate::between(const AppearanceStatePtr &before, const AppearanceStatePtr &after)
+{
+    PaletteUpdate update{before, after, {}, {}};
+    if (before->palette != after->palette) {
+        for (size_t i = 0; i < ColorRoleCount; ++i) {
+            update.changedRoles.set(i, before->palette->colors[i] != after->palette->colors[i]);
+            update.changedPresence.set(i, before->palette->presence.test(i) != after->palette->presence.test(i));
+        }
+    }
+    const auto &old = before->snapshot;
+    const auto &next = after->snapshot;
+    if (old.density != next.density || old.tokens.value(QStringLiteral("metrics")) != next.tokens.value(QStringLiteral("metrics")))
+        update.changedGroups |= MetricsGroup;
+    if (old.tokens.value(QStringLiteral("typography")) != next.tokens.value(QStringLiteral("typography")))
+        update.changedGroups |= TypographyGroup;
+    if (old.tokens.value(QStringLiteral("motion")) != next.tokens.value(QStringLiteral("motion")))
+        update.changedGroups |= MotionGroup;
+    if (old.tokens.value(QStringLiteral("icons")) != next.tokens.value(QStringLiteral("icons")))
+        update.changedGroups |= IconsGroup;
+    return update;
+}
+
 std::shared_ptr<const PaletteState> PaletteState::calculate(const ResolvedAppearance &prepared,
     const std::shared_ptr<const PaletteState> &previous, const void *owner, quint64 revision)
 {

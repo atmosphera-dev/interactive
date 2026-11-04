@@ -39,6 +39,7 @@
 namespace InterActive {
 
 struct ControlAppearancePrivate;
+struct PaletteUpdate;
 
 class INTERACTIVE_FOUNDATION_EXPORT ControlAppearance : public QObject
 {
@@ -72,7 +73,7 @@ public:
     IA_CONTROL_PROPERTIES(IA_LOCAL_METHODS)
 #undef IA_LOCAL_METHODS
     QFont resolvedFont() const { return m_font; }
-    QVariantList diagnostics() const { return m_diagnostics; }
+    QVariantList diagnostics() const;
     Q_INVOKABLE void resetOverrides();
 signals:
     void resolvedChanged();
@@ -89,6 +90,9 @@ private:
     void setOverride(const QString &name, const QString &group, const QString &token, const QVariant &value);
     void resetOverride(const QString &name);
     void resolve();
+    void resolve(const PaletteUpdate &update, bool forceNoncolors = false);
+    void resolveParts(bool colors, bool noncolors, bool selectors);
+    void drainDiagnostics();
     QPointer<Appearance> m_source;
     QMetaObject::Connection m_sourceChanged;
     QMetaObject::Connection m_sourceDestroyed;
@@ -100,7 +104,6 @@ private:
     QVariantMap m_overrides;
     QVariantMap m_values;
     QVariantMap m_invalidInputs;
-    QVariantList m_diagnostics;
     QFont m_font;
 };
 

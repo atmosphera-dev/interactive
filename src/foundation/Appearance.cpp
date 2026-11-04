@@ -103,11 +103,7 @@ void Appearance::setInput(const QVariantMap &input)
     const bool motionChange = m_motion->values() != candidate.tokens.value(QStringLiteral("motion")).toMap();
     const bool iconChange = m_icons->values() != candidate.tokens.value(QStringLiteral("icons")).toMap();
     state->snapshot = candidate;
-    PaletteUpdate update{before, state, {}, {}};
-    for (size_t i = 0; i < ColorRoleCount; ++i) {
-        update.changedRoles.set(i, before->palette->colors[i] != state->palette->colors[i]);
-        update.changedPresence.set(i, before->palette->presence.test(i) != state->palette->presence.test(i));
-    }
+    const auto update = PaletteUpdate::between(before, state);
     m_input = input;
     m_prepared = std::move(prepared);
     m_state = state;

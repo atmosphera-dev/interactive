@@ -359,6 +359,9 @@ private slots:
     void sharedPaletteWork_data();
     void sharedPaletteWork();
     void mixedFacadeWorkDoesNotScale();
+    void sharedFontEnvironmentDoesNotScale();
+    void fontEnvironmentDuringSourceUpdate();
+    void lazyControlDiagnostics();
     void propertySpecificNotifications();
     void localWorkIsolation();
     void fontAndGeometryWork();
@@ -612,6 +615,7 @@ void AppearanceTests::mixedFacadeWorkDoesNotScale()
         tokens.insert(QStringLiteral("metrics"), QVariantMap{{QStringLiteral("controlRadius"), 9}});
         input.insert(QStringLiteral("tokens"), tokens);
         appearance.setInput(input);
+        QCOMPARE(work.count("color-resolution"), 0);
         for (const auto *operation : operations)
             metricsCounts.append(work.count(operation));
         for (const auto &facade : facades)
@@ -628,6 +632,95 @@ void AppearanceTests::mixedFacadeWorkDoesNotScale()
             QCOMPARE(metricsCounts, baselineMetrics);
         }
     }
+}
+
+void AppearanceTests::sharedFontEnvironmentDoesNotScale()
+{
+    for (const int count : {10, 100}) {
+        QQmlEngine first, second;
+        auto *source = first.singletonInstance<Appearance *>("InterActive.Foundation", "Appearance");
+        auto *other = second.singletonInstance<Appearance *>("InterActive.Foundation", "Appearance");
+        QVERIFY(source);
+        QVERIFY(other);
+        std::vector<std::unique_ptr<ControlAppearance>> facades;
+        for (int i = 0; i < count; ++i) {
+            auto facade = std::make_unique<ControlAppearance>();
+            facade->setSource(i % 2 ? source : other);
+            facades.push_back(std::move(facade));
+        }
+        int environments = 0;
+        for (auto *child : qApp->children()) {
+            if (qstrcmp(child->metaObject()->className(), "InterActive::FontEnvironment") == 0)
+                ++environments;
+        }
+        QCOMPARE(environments, 1); // Each shared environment installs exactly one app filter.
+        source->setInput({{QStringLiteral("scheme"), QStringLiteral("dark")}});
+        QCOMPARE(facades[0]->backgroundColor(), other->colors()->control());
+        QCOMPARE(facades[1]->backgroundColor(), source->colors()->control());
+        QCOMPARE(other->scheme(), QStringLiteral("light"));
+    }
+}
+
+void AppearanceTests::lazyControlDiagnostics()
+{
+    Appearance appearance;
+    ControlAppearance control;
+    control.setSource(&appearance);
+    QSignalSpy diagnostics(&control, &ControlAppearance::diagnosticsChanged);
+    WorkRecorder work;
+    appearance.setInput(tokenInput(QStringLiteral("colors"), {
+        {QStringLiteral("text"), QColor("#ffffff")},
+        {QStringLiteral("control"), QColor("#ffffff")}}));
+    QCOMPARE(diagnostics.count(), 1);
+    QCOMPARE(work.count("control-diagnostics-build"), 0);
+    const auto findings = control.diagnostics();
+    QVERIFY(hasDiagnostic(findings, QStringLiteral("low-contrast"), QStringLiteral("foregroundColor/backgroundColor")));
+    QCOMPARE(work.count("control-diagnostics-build"), 1);
+    QCOMPARE(control.diagnostics(), findings);
+    QCOMPARE(work.count("control-diagnostics-build"), 1);
+    auto input = appearance.input();
+    auto tokens = input.value(QStringLiteral("tokens")).toMap();
+    tokens.insert(QStringLiteral("metrics"), QVariantMap{{QStringLiteral("controlRadius"), 9}});
+    input.insert(QStringLiteral("tokens"), tokens);
+    appearance.setInput(input);
+    QCOMPARE(control.diagnostics(), findings);
+    QCOMPARE(work.count("control-diagnostics-build"), 1);
+    QCOMPARE(diagnostics.count(), 1);
+    // Nested diagnostic updates retain their notification obligations without
+    // forcing a read of the flattened public list.
+    connect(&control, &ControlAppearance::diagnosticsChanged, &control, [&] {
+        if (control.controlRadius() == 9)
+            control.setControlRadius(-1);
+    });
+    control.setForegroundColor(QColor("#000000"));
+    QVERIFY(hasDiagnostic(control.diagnostics(), QStringLiteral("invalid-value"), QStringLiteral("controlRadius")));
+}
+
+void AppearanceTests::fontEnvironmentDuringSourceUpdate()
+{
+    Appearance appearance;
+    ControlAppearance control;
+    control.setSource(&appearance);
+    control.setTone(Presentation::Primary);
+    control.setHoverBackgroundColor(QColor("#303040"));
+    const QFont original = QGuiApplication::font();
+    const auto restore = qScopeGuard([&] { QGuiApplication::setFont(original); });
+    QFont modified = original;
+    modified.setItalic(!original.italic());
+    connect(&appearance, &Appearance::resolvedChanged, &control, [&] {
+        QGuiApplication::setFont(modified);
+    });
+    QSignalSpy fill(&control, &ControlAppearance::fillColorChanged);
+    appearance.setInput(tokenInput(QStringLiteral("colors"), {{QStringLiteral("accent"), QColor("#FFDF00")}}));
+    QCOMPARE(fill.count(), 1);
+    QCOMPARE(control.fillColor(), appearance.colors()->accent());
+    QCOMPARE(control.resolvedFont().italic(), modified.italic());
+    ControlAppearance expected;
+    expected.setSource(&appearance);
+    expected.setTone(Presentation::Primary);
+    expected.setHoverBackgroundColor(QColor("#303040"));
+    QCOMPARE(control.foregroundColor(), expected.foregroundColor());
+    QCOMPARE(control.diagnostics(), expected.diagnostics());
 }
 
 void AppearanceTests::propertySpecificNotifications()

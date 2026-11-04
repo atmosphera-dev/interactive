@@ -10,13 +10,14 @@ class FontEnvironment : public QObject
 {
     Q_OBJECT
 public:
-    explicit FontEnvironment(QObject *parent = nullptr);
+    static FontEnvironment *shared();
     quint64 generation() const { return m_generation; }
 signals:
     void invalidated();
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 private:
+    explicit FontEnvironment(QObject *parent);
     void observeScreens();
     void screenEnvironmentChanged();
     void invalidate();

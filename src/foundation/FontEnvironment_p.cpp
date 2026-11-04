@@ -2,10 +2,21 @@
 #include "FontEnvironment_p.h"
 #include <QEvent>
 #include <QGuiApplication>
+#include <QPointer>
 #include <QScreen>
 #include <QThread>
 
 namespace InterActive {
+
+FontEnvironment *FontEnvironment::shared()
+{
+    // Only process-wide font/screen observation is shared, never appearance input.
+    // Application ownership also makes recreation safe in embedding/test hosts.
+    static QPointer<FontEnvironment> environment;
+    if (!environment)
+        environment = new FontEnvironment(QCoreApplication::instance());
+    return environment;
+}
 
 FontEnvironment::FontEnvironment(QObject *parent) : QObject(parent)
 {

@@ -12,6 +12,7 @@
 #include <array>
 #include <bitset>
 #include <memory>
+#include <map>
 
 namespace InterActive {
 
@@ -53,6 +54,14 @@ enum class ControlColor {
 };
 constexpr size_t ControlColorCount = size_t(ControlColor::Count);
 using ControlColorMapping = std::array<ColorRole, ControlColorCount>;
+using ControlFindings = std::array<QVariantList, 6>;
+inline constexpr std::array<std::pair<ControlColor, ControlColor>, 6> ControlDiagnosticPairs{{
+    {ControlColor::foregroundColor, ControlColor::backgroundColor},
+    {ControlColor::foregroundColor, ControlColor::hoverBackgroundColor},
+    {ControlColor::foregroundColor, ControlColor::pressedBackgroundColor},
+    {ControlColor::selectedForegroundColor, ControlColor::selectedBackgroundColor},
+    {ControlColor::inactiveForegroundColor, ControlColor::inactiveBackgroundColor},
+    {ControlColor::focusColor, ControlColor::backgroundColor}}};
 
 enum class ControlFamily { Button, Tool, Field, Surface, Popup, Label, Delegate, Tab, Choice, Tooltip };
 ControlFamily controlFamily(const QString &family);
@@ -96,9 +105,13 @@ struct PaletteState {
     bool explicitRole(ColorRole role) const { return presence.test(size_t(role)); }
     QVariantList pairFindings(ColorRole foreground, ColorRole background,
                               const QString &path, bool focus = false) const;
+    std::shared_ptr<const ControlFindings> controlFindings(const ControlColorMapping &mapping) const;
     static std::shared_ptr<const PaletteState> calculate(const ResolvedAppearance &prepared,
         const std::shared_ptr<const PaletteState> &previous, const void *owner, quint64 revision);
     static const std::shared_ptr<const PaletteState> &fallback();
+private:
+    // GUI-thread memoization of diagnostic projections only, not color/state tables.
+    mutable std::map<ControlColorMapping, std::shared_ptr<const ControlFindings>> m_controlFindings;
 };
 
 struct AppearanceState {
@@ -108,11 +121,15 @@ struct AppearanceState {
 };
 using AppearanceStatePtr = std::shared_ptr<const AppearanceState>;
 
+enum NoncolorGroup : quint8 { MetricsGroup = 1, TypographyGroup = 2, MotionGroup = 4, IconsGroup = 8 };
+
 struct PaletteUpdate {
     AppearanceStatePtr before;
     AppearanceStatePtr after;
     ColorRoleMask changedRoles;
     ColorRoleMask changedPresence;
+    quint8 changedGroups = 0;
+    static PaletteUpdate between(const AppearanceStatePtr &before, const AppearanceStatePtr &after);
 };
 
 // Same-stack notification obligations, separate from calculation/publication.
