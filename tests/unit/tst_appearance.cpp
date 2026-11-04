@@ -25,7 +25,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
-#include <limits>#include <memory>
+#include <limits>
+#include <memory>
 #include <vector>
 #include <functional>
 
@@ -380,7 +381,20 @@ private slots:
     void stateTableNotifications();
     void supplementaryStateRoles();
     void stateSweepDoesNoFoundationWork();
+    void appearanceMetaObjectIsPublic();
 };
+
+void AppearanceTests::appearanceMetaObjectIsPublic()
+{
+    const auto &meta = Appearance::staticMetaObject;
+    for (int i = meta.methodOffset(); i < meta.methodCount(); ++i) {
+        const auto method = meta.method(i);
+        QVERIFY(method.name() != QByteArrayLiteral("completed"));
+        for (const auto &type : method.parameterTypes())
+            QVERIFY2(!type.contains("PaletteUpdate"), type.constData());
+    }
+    QVERIFY(meta.indexOfSignal("resolvedChanged()") >= 0);
+}
 
 void AppearanceTests::stateTableEquivalence()
 {

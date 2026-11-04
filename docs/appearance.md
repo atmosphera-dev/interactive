@@ -132,11 +132,18 @@ prepared from profile defaults, never from the previous resolved output. Rejecti
 retains accepted state, and clearing rejection diagnostics need not rebuild colors.
 `TokenSchema::resolve` remains the stateless entry point using the same recipe;
 ordinary controls forward completed color roles instead of calling it themselves.
+`TokenSchema` is a compatibility facade: private `TokenValidation` owns envelope
+parsing, schema and diagnostics, `PaletteBuilder` owns profile preparation and
+palette/non-color construction, and `ColorMath` owns the pure color helpers.
 
 Completed updates carry color-value/presence masks and independent metrics,
 typography, motion and icon group flags. Facades resolve only affected color or
 font/geometry inputs. Nested publication compares against the latest source and
 the facade's actual installed snapshot rather than applying an obsolete mask.
+These updates travel through a private, Appearance-owned `AppearanceSource`;
+facades obtain immutable state and observe completion there, without friend
+access or private update types in Appearance's public meta-object. Completion
+still follows `resolvedChanged()` and precedes specific/group notifications.
 
 Nested setters still install synchronously. Property-notification obligations are
 drained on the same stack against the newest installed values, so an earlier

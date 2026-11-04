@@ -23,6 +23,8 @@ struct INTERACTIVE_FOUNDATION_EXPORT ResolvedAppearance
     QVariantList diagnostics;
 };
 
+// Compatibility facade for the stateless API used by applications and tests.
+// Foundation internals use the private validation, builder and color-math units.
 class INTERACTIVE_FOUNDATION_EXPORT TokenSchema
 {
 public:
@@ -42,14 +44,6 @@ public:
     static void checkContrast(QVariantList *diagnostics, const QString &path,
                               const QColor &foreground, const QColor &background,
                               qreal target = 4.5);
-private:
-    friend class Appearance;
-    friend struct PaletteState;
-    static ResolvedAppearance prepare(const QVariantMap &input, const QString &fontFamily);
-    static ResolvedAppearance calculatePalette(ResolvedAppearance prepared);
-    static void resolveNoncolors(ResolvedAppearance *prepared,
-                                 const ResolvedAppearance *previousInput = nullptr,
-                                 const ResolvedAppearance *previousOutput = nullptr);
 };
 
 } // namespace InterActive

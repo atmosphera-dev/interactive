@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 #include "Appearance.h"
+#include "AppearanceSource_p.h"
 #include "AppearanceTrace_p.h"
+#include "PaletteBuilder_p.h"
 #include "PaletteState_p.h"
 #include <QFont>
 #include <QGuiApplication>
@@ -18,19 +20,20 @@ QString Appearance::initialFontFamily()
 
 Appearance::Appearance(QObject *parent)
     : QObject(parent), m_fontFamily(initialFontFamily()),
-      m_prepared(TokenSchema::prepare({}, m_fontFamily)), m_notifications(new PropertyNotifications),
+      m_prepared(PaletteBuilder::prepare({}, m_fontFamily)),
       m_colors(new ColorTokens(this)), m_metrics(new MetricTokens(this)),
       m_typography(new TypographyTokens(this)), m_motion(new MotionTokens(this)), m_icons(new IconTokens(this))
 {
+    auto *source = new AppearanceSource(this);
     auto state = std::make_shared<AppearanceState>();
     state->revision = 1;
     state->palette = PaletteState::calculate(m_prepared, {}, this, state->revision);
     state->snapshot = m_prepared;
     state->snapshot.tokens.insert(QStringLiteral("colors"), state->palette->values);
     state->snapshot.diagnostics.append(state->palette->diagnostics);
-    TokenSchema::resolveNoncolors(&state->snapshot);
+    PaletteBuilder::resolveNoncolors(&state->snapshot);
     state->installNoncolors();
-    m_state = state;
+    source->install(state);
     m_resolved = state->snapshot;
     m_diagnostics = m_resolved.diagnostics;
     m_colors->m_palette = state->palette;
@@ -42,7 +45,7 @@ Appearance::Appearance(QObject *parent)
     for (auto *group : {static_cast<TokenGroup *>(m_colors), static_cast<TokenGroup *>(m_metrics),
              static_cast<TokenGroup *>(m_typography), static_cast<TokenGroup *>(m_motion), static_cast<TokenGroup *>(m_icons)})
         group->initializeNotifications();
-    m_notifications->initialize(this, {QStringLiteral("scheme"), QStringLiteral("density"),
+    source->notifications.initialize(this, {QStringLiteral("scheme"), QStringLiteral("density"),
         QStringLiteral("contrast"), QStringLiteral("fontScale"), QStringLiteral("reducedMotion")});
 }
 
@@ -57,8 +60,9 @@ void Appearance::setInput(const QVariantMap &input)
 {
     const AppearanceWorkScope timing("source-update", this);
     TraceAttempt attempt(this);
-    const quint64 revisionBefore = m_state ? m_state->revision : 0;
-    auto prepared = TokenSchema::prepare(input, m_fontFamily);
+    auto *source = AppearanceSource::from(this);
+    const quint64 revisionBefore = source->state() ? source->state()->revision : 0;
+    auto prepared = PaletteBuilder::prepare(input, m_fontFamily);
     const QPointer<Appearance> guard(this);
     if (!prepared.accepted) {
         attempt.finish(TraceOutcome::Rejected, revisionBefore, revisionBefore);
@@ -71,7 +75,7 @@ void Appearance::setInput(const QVariantMap &input)
             emit inputRejected(rejected);
         return;
     }
-    const auto before = m_state;
+    const auto before = source->state();
     auto state = std::make_shared<AppearanceState>();
     state->revision = before->revision + 1;
     const auto inputs = PaletteInputs::from(prepared);
@@ -87,7 +91,7 @@ void Appearance::setInput(const QVariantMap &input)
     auto candidate = prepared;
     {
         TraceSpan noncolors(TraceScope::ResolveNoncolors, this);
-        TokenSchema::resolveNoncolors(&candidate, &m_prepared, &before->snapshot);
+        PaletteBuilder::resolveNoncolors(&candidate, &m_prepared, &before->snapshot);
     }
     candidate.tokens.insert(QStringLiteral("colors"), state->palette->values);
     candidate.diagnostics.append(state->palette->diagnostics);
@@ -108,7 +112,7 @@ void Appearance::setInput(const QVariantMap &input)
     const auto update = PaletteUpdate::between(before, state);
     m_input = input;
     m_prepared = std::move(prepared);
-    m_state = state;
+    source->install(state);
     m_resolved = std::move(candidate);
     m_diagnostics = m_resolved.diagnostics;
     m_colors->m_palette = state->palette;
@@ -123,17 +127,17 @@ void Appearance::setInput(const QVariantMap &input)
         m_motion->install(m_resolved.tokens.value(QStringLiteral("motion")).toMap());
         m_icons->install(m_resolved.tokens.value(QStringLiteral("icons")).toMap());
     }
-    m_notifications->installed(this);
+    source->notifications.installed(this);
     {
         TraceSpan dispatch(TraceScope::AggregateDispatch, this);
         emit resolvedChanged();
         if (!guard)
             return;
-        emit completed(update);
+        source->publish(update);
         if (!guard)
             return;
     }
-    m_notifications->drain(this);
+    source->notifications.drain(this);
     if (!guard)
         return;
     if (colorChange)

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 #include "LocalColorOverrides_p.h"
+#include "ColorMath_p.h"
+#include "TokenValidation_p.h"
 #include "AppearanceTrace_p.h"
 
 namespace InterActive {
@@ -76,12 +78,12 @@ std::shared_ptr<const StateTableData> LocalColorOverrides::install(const Palette
     if (backgroundOwned) {
         const QColor resting = foregroundOwned ? effective(ControlColor::foregroundColor)
             : m_resting.evaluate({{base, backdrop}, labelTarget, 0, 1}, [&] {
-                return TokenSchema::contrastingText(base, {base}, backdrop, labelTarget);
+                return ColorMath::contrastingText(base, {base}, backdrop, labelTarget);
             }, "resting-foreground", owner, revision);
         if (!explicitLocal(ControlColor::hoverBackgroundColor)) {
             put(ControlColor::hoverBackgroundColor, m_hover.evaluate({{base, resting, backdrop},
                 labelTarget, palette.hoverBlend, quint8(foregroundOwned)}, [&] {
-                    return TokenSchema::feedbackSurface(base, resting, palette.hoverBlend);
+                    return ColorMath::feedbackSurface(base, resting, palette.hoverBlend);
                 }, "hover-feedback", owner, revision));
         } else {
             m_hover.valid = false;
@@ -89,7 +91,7 @@ std::shared_ptr<const StateTableData> LocalColorOverrides::install(const Palette
         if (!explicitLocal(ControlColor::pressedBackgroundColor)) {
             put(ControlColor::pressedBackgroundColor, m_pressed.evaluate({{base, resting, backdrop},
                 labelTarget, palette.pressedBlend, quint8(foregroundOwned)}, [&] {
-                    return TokenSchema::feedbackSurface(base, resting, palette.pressedBlend);
+                    return ColorMath::feedbackSurface(base, resting, palette.pressedBlend);
                 }, "pressed-feedback", owner, revision));
         } else {
             m_pressed.valid = false;
@@ -107,7 +109,7 @@ std::shared_ptr<const StateTableData> LocalColorOverrides::install(const Palette
         const quint8 ownership = quint8(backgroundOwned | (hoverOwned << 1) | (pressedOwned << 2));
         put(ControlColor::foregroundColor, m_foreground.evaluate({{base, hover, pressed, backdrop},
             labelTarget, 0, ownership}, [&] {
-                return TokenSchema::contrastingText(base, {base, hover, pressed}, backdrop, labelTarget);
+                return ColorMath::contrastingText(base, {base, hover, pressed}, backdrop, labelTarget);
             }, "ordinary-foreground", owner, revision));
     } else {
         m_foreground.valid = false;
@@ -116,7 +118,7 @@ std::shared_ptr<const StateTableData> LocalColorOverrides::install(const Palette
         if (explicitLocal(background) && !explicitLocal(foreground)) {
             const QColor surface = effective(background);
             put(foreground, branch.evaluate({{surface, backdrop}, labelTarget, 0, 1}, [&] {
-                return TokenSchema::contrastingText(surface, {surface}, backdrop, labelTarget);
+                return ColorMath::contrastingText(surface, {surface}, backdrop, labelTarget);
             }, operation, owner, revision));
         } else {
             branch.valid = false;
@@ -152,8 +154,8 @@ std::shared_ptr<const StateTableData> LocalColorOverrides::install(const Palette
                 << " operation=local-pair-measurement pair=" << i;
             const TraceAggregate aggregated(TraceScope::AggLocalPairMeasure, quint16(i));
             pair.findings.clear();
-            TokenSchema::checkContrast(&pair.findings, path, text,
-                focus ? backdrop : TokenSchema::composite(surface, backdrop), required);
+            TokenValidation::checkContrast(&pair.findings, path, text,
+                focus ? backdrop : ColorMath::composite(surface, backdrop), required);
             pair.inputs = inputs;
             pair.valid = true;
         }

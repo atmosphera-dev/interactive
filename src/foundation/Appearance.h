@@ -7,13 +7,8 @@
 
 class QQmlEngine;
 class QJSEngine;
-Q_MOC_INCLUDE("PaletteState_p.h")
 
 namespace InterActive {
-
-struct AppearanceState;
-struct PaletteUpdate;
-struct PropertyNotifications;
 
 class INTERACTIVE_FOUNDATION_EXPORT Appearance : public QObject
 {
@@ -63,13 +58,9 @@ signals:
     void fontScaleChanged();
     void reducedMotionChanged();
 private:
-    friend class ControlAppearance;
-    Q_SIGNAL void completed(const InterActive::PaletteUpdate &update);
     QVariantMap m_input;
     const QString m_fontFamily;
-    std::shared_ptr<const AppearanceState> m_state;
     ResolvedAppearance m_prepared;
-    std::unique_ptr<PropertyNotifications> m_notifications;
     ResolvedAppearance m_resolved;
     QVariantList m_diagnostics;
     ColorTokens *m_colors;

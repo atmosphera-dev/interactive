@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 #include "ControlAppearance.h"
+#include "AppearanceSource_p.h"
 #include "AirmailProfiles.h"
 #include "AppearanceTrace_p.h"
 #include "FontEnvironment_p.h"
 #include "LocalColorOverrides_p.h"
+#include "TokenValidation_p.h"
 #include <QFontMetricsF>
 #include <algorithm>
 #include <cmath>
@@ -66,6 +68,7 @@ struct ControlAppearancePrivate {
     };
     const Defaults defaults;
     ControlFamily family = ControlFamily::Button;
+    QPointer<AppearanceSource> source;
     AppearanceStatePtr sourceState;
     std::shared_ptr<const PaletteState> palette = PaletteState::fallback();
     ControlColorMapping mapping = controlColorMapping(ControlFamily::Button, Presentation::Auto, Presentation::None);
@@ -107,7 +110,7 @@ ControlAppearance::ControlAppearance(QObject *parent)
         // before completed() reaches this facade. Do not mark that newer source
         // installed while leaving its dependent color branches/notifications old.
         if (m_source && m_private->sourceState)
-            resolve(PaletteUpdate::between(m_private->sourceState, m_source->m_state), true);
+            resolve(PaletteUpdate::between(m_private->sourceState, m_private->source->state()), true);
         else
             resolveParts(false, true, false);
     });
@@ -175,8 +178,9 @@ void ControlAppearance::setSource(Appearance *source)
     disconnect(m_sourceChanged);
     disconnect(m_sourceDestroyed);
     m_source = source;
+    m_private->source = source ? AppearanceSource::from(source) : nullptr;
     if (source) {
-        m_sourceChanged = connect(source, &Appearance::completed, this, [this, source](const PaletteUpdate &update) {
+        m_sourceChanged = connect(m_private->source, &AppearanceSource::completed, this, [this, source](const PaletteUpdate &update) {
             if (m_source == source)
                 resolve(update);
         });
@@ -192,7 +196,7 @@ void ControlAppearance::setFamily(const QString &family)
 {
     const auto parsed = controlFamily(family);
     if (!parsed) {
-        m_private->invalidInputs.set(ControlInput::family, TokenSchema::diagnostic(QStringLiteral("family"),
+        m_private->invalidInputs.set(ControlInput::family, TokenValidation::diagnostic(QStringLiteral("family"),
             QStringLiteral("invalid-value"), QStringLiteral("Unknown family; previous family retained.")));
         resolve();
         return;
@@ -207,7 +211,7 @@ void ControlAppearance::setFamily(const QString &family)
 void ControlAppearance::setTone(Presentation::Tone tone)
 {
     if (tone < Presentation::Auto || tone > Presentation::Caution) {
-        m_private->invalidInputs.set(ControlInput::tone, TokenSchema::diagnostic(QStringLiteral("tone"),
+        m_private->invalidInputs.set(ControlInput::tone, TokenValidation::diagnostic(QStringLiteral("tone"),
             QStringLiteral("invalid-value"), QStringLiteral("Unknown tone; previous tone retained.")));
         resolve();
         return;
@@ -222,7 +226,7 @@ void ControlAppearance::setTone(Presentation::Tone tone)
 void ControlAppearance::setValidation(Presentation::Validation validation)
 {
     if (validation < Presentation::None || validation > Presentation::Invalid) {
-        m_private->invalidInputs.set(ControlInput::validation, TokenSchema::diagnostic(QStringLiteral("validation"),
+        m_private->invalidInputs.set(ControlInput::validation, TokenValidation::diagnostic(QStringLiteral("validation"),
             QStringLiteral("invalid-value"), QStringLiteral("Unknown validation; previous value retained.")));
         resolve();
         return;
@@ -240,7 +244,7 @@ void ControlAppearance::setValidation(Presentation::Validation validation)
         auto &state = *m_private; \
         QVariant normalized; \
         QVariantList diagnostics; \
-        if (!TokenSchema::validate(QStringLiteral(#group), QStringLiteral(#token), QVariant::fromValue(value), \
+        if (!TokenValidation::validate(QStringLiteral(#group), QStringLiteral(#token), QVariant::fromValue(value), \
                 &normalized, &diagnostics, QStringLiteral(#name), true)) { \
             state.invalidInputs.set(ControlInput::name, diagnostics.first().toMap()); \
             resolve(); \
@@ -289,7 +293,7 @@ void ControlAppearance::resolve()
 void ControlAppearance::resolve(const PaletteUpdate &update, bool forceNoncolors)
 {
     auto &state = *m_private;
-    const auto newest = m_source ? m_source->m_state : AppearanceStatePtr();
+    const auto newest = m_source ? m_private->source->state() : AppearanceStatePtr();
     if (!newest || !state.sourceState) {
         resolve();
         return;
@@ -325,7 +329,7 @@ void ControlAppearance::resolveParts(bool colors, bool noncolors, bool selectors
     auto &state = *m_private;
     // Own the installed source reference across every callback. Read the newest
     // source state, not the earlier dispatch mask, if an observer reentered it.
-    state.sourceState = m_source ? m_source->m_state : AppearanceStatePtr();
+    state.sourceState = m_source ? state.source->state() : AppearanceStatePtr();
     state.palette = state.sourceState ? state.sourceState->palette : PaletteState::fallback();
     state.revision = state.sourceState ? state.sourceState->revision : state.revision + 1;
     const auto &descriptor = familyDescriptor(state.family);

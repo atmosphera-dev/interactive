@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 #include "PaletteState_p.h"
+#include "PaletteBuilder_p.h"
+#include "ColorMath_p.h"
+#include "TokenValidation_p.h"
 #include "AppearanceTrace_p.h"
 #include "LocalColorOverrides_p.h"
 #include <QPointer>
@@ -347,7 +350,7 @@ std::shared_ptr<const PaletteState> PaletteState::calculate(const ResolvedAppear
         << " operation=shared-palette-build";
     auto input = prepared;
     input.diagnostics.clear();
-    const auto output = TokenSchema::calculatePalette(std::move(input));
+    const auto output = PaletteBuilder::calculatePalette(std::move(input));
     auto state = std::make_shared<PaletteState>();
     state->values = output.tokens.value(QStringLiteral("colors")).toMap();
     state->diagnostics = output.diagnostics;
@@ -356,7 +359,7 @@ std::shared_ptr<const PaletteState> PaletteState::calculate(const ResolvedAppear
     state->presence.set(size_t(ColorRole::name), prepared.explicitTokens.contains(QStringLiteral("colors." #name)));
     IA_COLOR_TOKENS(IA_INSTALL_COLOR)
 #undef IA_INSTALL_COLOR
-    state->backdrop = TokenSchema::composite(state->color(ColorRole::content), state->color(ColorRole::canvas));
+    state->backdrop = ColorMath::composite(state->color(ColorRole::content), state->color(ColorRole::canvas));
     state->target = prepared.contrast == QLatin1String("high") ? 7 : 5;
     const auto motion = prepared.tokens.value(QStringLiteral("motion")).toMap();
     state->hoverBlend = motion.value(QStringLiteral("hoverBlend")).toDouble();
@@ -384,8 +387,8 @@ std::shared_ptr<const PaletteState> PaletteState::calculate(const ResolvedAppear
                 << " operation=shared-pair-measurement foreground=" << int(foreground)
                 << " background=" << int(background);
             AppearanceTrace::counter(TraceScope::PaletteBuild, owner, 2); // measured pair
-            TokenSchema::checkContrast(&pair.findings, {}, state->color(foreground),
-                focus ? state->backdrop : TokenSchema::composite(state->color(background), state->backdrop), required);
+            TokenValidation::checkContrast(&pair.findings, {}, state->color(foreground),
+                focus ? state->backdrop : ColorMath::composite(state->color(background), state->backdrop), required);
         } else {
             AppearanceTrace::counter(TraceScope::PaletteBuild, owner, 1); // reused pair
         }
@@ -408,7 +411,7 @@ std::shared_ptr<const PaletteState> PaletteState::calculate(const ResolvedAppear
 const std::shared_ptr<const PaletteState> &PaletteState::fallback()
 {
     // Pure constants only. Font/application/engine state is deliberately absent.
-    static const auto state = calculate(TokenSchema::prepare({}, QStringLiteral("Sans Serif")), {}, nullptr, 0);
+    static const auto state = calculate(PaletteBuilder::prepare({}, QStringLiteral("Sans Serif")), {}, nullptr, 0);
     return state;
 }
 

@@ -8,8 +8,12 @@ qt_add_qml_module(interactive_foundation
     DEPENDENCIES QtQuick
     SOURCES
         Appearance.h Appearance.cpp
+        AppearanceSource_p.h
         TokenDefinitions.h TokenGroups.h TokenGroups.cpp
         TokenSchema.h TokenSchema.cpp
+        TokenValidation_p.h TokenValidation_p.cpp
+        PaletteBuilder_p.h PaletteBuilder_p.cpp
+        ColorMath_p.h ColorMath_p.cpp
         PaletteState_p.h PaletteState_p.cpp
         AppearanceTrace_p.h AppearanceTrace_p.cpp
         LocalColorOverrides_p.h LocalColorOverrides_p.cpp
