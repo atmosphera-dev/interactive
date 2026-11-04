@@ -16,6 +16,7 @@ qt_add_qml_module(interactive_quick_tests
         qml/tst_popups.qml
         qml/tst_icons.qml
         qml/tst_states.qml
+        qml/tst_capture.qml
         qml/tst_solid.qml
         qml/PaletteStateFixture.qml
         qml/tst_palette_state.qml
@@ -43,6 +44,9 @@ add_test(NAME interactive.long-document COMMAND interactive_quick_tests
     -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_long_document.qml")
 set_tests_properties(interactive.qt-version interactive.controls interactive.geometry interactive.popups interactive.icons interactive.states interactive.solid interactive.palette-state interactive.long-document
     PROPERTIES LABELS interactive-overview TIMEOUT 180)
+add_test(NAME interactive.capture COMMAND interactive_quick_tests
+    -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_capture.qml")
+set_tests_properties(interactive.capture PROPERTIES LABELS interactive-capture TIMEOUT 600)
 target_compile_definitions(interactive_quick_tests PRIVATE
     IA_EXPECTED_QT_VERSION="${Qt6_VERSION}")
 

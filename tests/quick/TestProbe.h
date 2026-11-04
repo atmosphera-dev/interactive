@@ -30,6 +30,11 @@ public:
     Q_INVOKABLE bool release(QQuickItem *item, qreal x, qreal y) const;
     Q_INVOKABLE bool keyClick(QQuickItem *hostItem, int key, int modifiers = 0) const;
     Q_INVOKABLE bool typeAscii(QQuickItem *hostItem, const QString &text) const;
+    // Capture tooling only: snapshots include the actual parent/window clipping.
+    Q_INVOKABLE QString captureDirectory() const;
+    Q_INVOKABLE bool createCaptureMode(const QString &mode) const;
+    Q_INVOKABLE QString captureDataUrl(QQuickItem *item, qreal margin) const;
+    Q_INVOKABLE bool writeCaptureManifest(const QString &text) const;
     // Only tests may inspect Qt's fallback picker implementation.
     Q_INVOKABLE QQuickItem *pickerItem(QObject *dialog, const QString &name) const;
 #ifdef IA_TEST_PLAYGROUND

@@ -5,10 +5,15 @@
 #include <QSignalSpy>
 #include <QQmlEngine>
 #include <QGuiApplication>
+#include <QBuffer>
+#include <QDir>
+#include <QFileInfo>
+#include <QImage>
+#include <QSaveFile>
+#include <QtMath>
 #ifdef IA_TEST_PLAYGROUND
 #include "PlaygroundState.h"
 #include <QFile>
-#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -106,6 +111,64 @@ bool TestProbe::typeAscii(QQuickItem *hostItem, const QString &text) const
     for (const QChar character : text)
         QTest::keyClick(hostItem->window(), character.toLatin1());
     return true;
+}
+
+QString TestProbe::captureDirectory() const
+{
+    const QString path = qEnvironmentVariable("IA_CAPTURE_DIR");
+    const QFileInfo directory(path);
+    if (path.isEmpty() || !QDir::isAbsolutePath(path) || !directory.isDir() || !directory.isWritable()) {
+        qWarning("IA_CAPTURE_DIR must name an absolute, existing, writable directory");
+        return {};
+    }
+    return QDir::cleanPath(path);
+}
+
+bool TestProbe::createCaptureMode(const QString &mode) const
+{
+    const QString root = captureDirectory();
+    if (root.isEmpty() || (mode != QLatin1String("light-normal") && mode != QLatin1String("light-high")
+                          && mode != QLatin1String("dark-normal") && mode != QLatin1String("dark-high")))
+        return false;
+    return QDir(root).mkpath(mode);
+}
+
+QString TestProbe::captureDataUrl(QQuickItem *item, qreal margin) const
+{
+    if (!exposed(item) || margin < 0 || item->width() <= 0 || item->height() <= 0)
+        return {};
+    auto *window = item->window();
+    const QImage frame = window->grabWindow();
+    if (frame.isNull() || window->width() <= 0 || window->height() <= 0)
+        return {};
+    // Window capture also sees item-hosted popups (which live in the overlay,
+    // outside the fixture's item subtree), and preserves real viewport clipping.
+    // Capture the allocated control rectangle, matching snapshot()'s logical
+    // image size. Virtual boundingRect() can describe only text/ink (TextInput),
+    // which would crop the field and then stretch that crop in the shared sheet.
+    const QRectF bounds = item->mapRectToScene(QRectF(0, 0, item->width(), item->height()))
+                              .adjusted(-margin, -margin, margin, margin);
+    const qreal sx = qreal(frame.width()) / window->width();
+    const qreal sy = qreal(frame.height()) / window->height();
+    const QRect pixels(QPoint(qFloor(bounds.left() * sx), qFloor(bounds.top() * sy)),
+                       QPoint(qCeil(bounds.right() * sx) - 1, qCeil(bounds.bottom() * sy) - 1));
+    if (!frame.rect().contains(pixels))
+        return {}; // Never silently trim an outside-painted focus ring.
+    QByteArray bytes;
+    QBuffer buffer(&bytes);
+    if (!buffer.open(QIODevice::WriteOnly) || !frame.copy(pixels).save(&buffer, "PNG"))
+        return {};
+    return QStringLiteral("data:image/png;base64,") + QString::fromLatin1(bytes.toBase64());
+}
+
+bool TestProbe::writeCaptureManifest(const QString &text) const
+{
+    const QString root = captureDirectory();
+    if (root.isEmpty())
+        return false;
+    QSaveFile file(QDir(root).filePath(QStringLiteral("manifest.txt")));
+    const QByteArray bytes = text.toUtf8();
+    return file.open(QIODevice::WriteOnly) && file.write(bytes) == bytes.size() && file.commit();
 }
 
 QQuickItem *TestProbe::pickerItem(QObject *dialog, const QString &name) const

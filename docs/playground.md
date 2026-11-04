@@ -111,6 +111,7 @@ Supported options:
 --width <logical pixels> --height <logical pixels>
 --scene default|menu|dialog|partial-profile
 --automation
+--screenshot <absolute-path>
 --palette-samples-file <absolute-path>
 --appearance-profile-summary <path>
 --appearance-trace <path>
@@ -391,6 +392,57 @@ focused window. The default scene's ordinary Collection actions button needs no
 bootstrap: a real click supplies the input. Item menus and dialog scenes do not
 request the modifier. This describes existing playground behavior, not a library
 initialization requirement.
+
+## Review Capture Tooling
+
+`--screenshot <absolute-path>` waits for the existing automation `ready` condition
+(active/exposed hosts and submitted frames), grabs the main `QQuickWindow`, saves
+a PNG and exits successfully. A missing/relative path, readiness timeout, empty
+grab or save failure is reported on stderr with a nonzero exit. The destination's
+parent directory must already exist. Screenshot mode does not read stdin, even
+with `--automation`; EOF cannot cancel the one-shot capture. It uses the same
+OpenGL RHI requirement and 15-second readiness deadline as automation.
+Use `--popup item`: main-window grabs do **not** include separate Window popups.
+
+The opt-in `interactive.capture` CTest suite is labeled `interactive-capture`
+only, with a 600-second timeout; it is not part of `interactive-overview`.
+Set `IA_CAPTURE_DIR` to an **absolute, existing, writable directory** in the
+disk-backed guest workspace. Missing or unusable destinations fail clearly.
+For example, inside the project's authorized graphical test VM, with the same
+SDK/import environment as the other suites and disk-backed `TMPDIR`:
+
+```sh
+IA_CAPTURE_DIR="$PWD/build/captures/review/states" \
+  ./build/bin/interactive-quick-tests -input tests/quick/qml/tst_capture.qml
+# Or: IA_CAPTURE_DIR=... ctest --test-dir build -L interactive-capture --output-on-failure
+./build/bin/interactive-playground --page foundations --popup item --scene menu \
+  --appearance dark --contrast high --screenshot "$PWD/build/captures/review/window/menu-dark-high.png"
+```
+
+Each light/dark × normal/high mode produces 11 labeled family sheets: four button
+tones; neutral checkable buttons; text/icon-only tool buttons; tabs in a tab bar;
+delegates in a list; items in an open item-hosted menu; check boxes, radio buttons,
+switches, slider and text field. Rows are the relevant states (including pointer
+hover/held press, checked/selected, Tab keyboard focus, disabled and field
+validation/read-only states). Control regions include `2 × focusWidth` on every
+side; real parent clipping is preserved, not repaired by the capture tooling.
+Four further PNGs per mode show a focused last field in a scrollable dialog,
+focused first/last delegates in a clipped list, and a focused tab in its bar.
+The 60 PNGs live under `<scheme>-<contrast>/`; `manifest.txt` records each PNG's
+family, scheme, contrast and included states/columns. The suite checks capture
+setup and successful writes, not visual correctness or golden-image equality.
+
+The external laptop wrapper `ark-vm-build --capture` builds in VM
+`arch-niri-interactive-devbase-interactive-palette-cpu` on ark, then runs this suite
+and 12 real playground window shots (default/menu/dialog × light/dark ×
+normal/high, item-hosted popups), after tests when `--test` is also supplied.
+Guest outputs stay under `/home/tester/interactive/build/captures/<run>/`, never
+RAM-backed temporary storage. It prints `CAPTURE_OK` only for the complete
+72-PNG run, copies captures and the manifest to the laptop run directory's
+`captures/`, and logs their count/path in `run.log` (`capture.log` has guest
+details). Capture or copy failures are reported without blocking preview refresh.
+These are agent review artifacts under `~/TemporaryFiles/InterActive/ark-vm-build/`,
+not final screenshot delivery to the user. No image processing runs on the laptop.
 
 ## Visual Review
 

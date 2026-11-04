@@ -8,6 +8,7 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QHash>
+#include <QImage>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QKeyEvent>
@@ -164,8 +165,9 @@ class Automation : public QObject
     Q_OBJECT
 public:
     Automation(QQuickWindow *window, PlaygroundState *state, InterActive::Appearance *appearance,
-               const QString &scene, QObject *parent)
-        : QObject(parent), m_window(window), m_state(state), m_appearance(appearance), m_scene(scene)
+               const QString &scene, const QString &screenshot, QObject *parent)
+        : QObject(parent), m_window(window), m_state(state), m_appearance(appearance), m_scene(scene),
+          m_screenshot(screenshot)
     {
         m_deadline.setSingleShot(true);
         m_deadline.setInterval(15000);
@@ -187,6 +189,12 @@ public:
 
     void start()
     {
+        // A one-shot screenshot uses the same ready observation without stdin:
+        // EOF from a noninteractive caller must not cancel capture readiness.
+        if (!m_screenshot.isEmpty()) {
+            observe(QStringLiteral("ready"));
+            return;
+        }
         m_stdinFlags = ::fcntl(STDIN_FILENO, F_GETFL);
         if (m_stdinFlags < 0 || ::fcntl(STDIN_FILENO, F_SETFL, m_stdinFlags | O_NONBLOCK) < 0) {
             fail(QStringLiteral("Cannot make automation stdin nonblocking: ") + QString::fromLocal8Bit(std::strerror(errno)));
@@ -274,6 +282,15 @@ public slots:
                     {QStringLiteral("qtVersion"), QString::fromLatin1(qVersion())},
                     {QStringLiteral("renderer"), QStringLiteral("opengl")},
                     {QStringLiteral("popupWindow"), bool(host && host != m_window && host->isExposed())}});
+        if (event == QLatin1String("ready") && !m_screenshot.isEmpty()) {
+            const QImage image = m_window->grabWindow();
+            if (image.isNull() || !image.save(m_screenshot, "PNG")) {
+                fail(QStringLiteral("Cannot save playground screenshot: ") + m_screenshot);
+                return;
+            }
+            QCoreApplication::quit();
+            return;
+        }
         QMetaObject::invokeMethod(this, [this] { processNext(); }, Qt::QueuedConnection);
     }
 
@@ -449,6 +466,7 @@ private:
     PlaygroundState *const m_state;
     InterActive::Appearance *const m_appearance;
     const QString m_scene;
+    const QString m_screenshot;
     QList<QQuickItem *> m_contents;
     QList<QPointer<QQuickWindow>> m_hosts;
     QList<QMetaObject::Connection> m_contentConnections;
@@ -487,6 +505,7 @@ int main(int argc, char **argv)
         {QStringLiteral("height"), "Initial viewport height in logical pixels", "height", "820"},
         {QStringLiteral("scene"), "Scene: default, menu, dialog, partial-profile", "scene", "default"},
         {QStringLiteral("automation"), "Enable newline-delimited JSON commands and IA_EVENT records"},
+        {QStringLiteral("screenshot"), "Save the ready main window as PNG, then exit (absolute path)", "path"},
         {QStringLiteral("palette-samples-file"), "Append calibration samples on Save to this absolute path", "path"},
         {QStringLiteral("appearance-profile-summary"), "Opt-in diagnostic session: write the summary to a fresh path", "path"},
         {QStringLiteral("appearance-trace"), "Also record buffered detailed spans to a fresh path", "path"},
@@ -525,6 +544,10 @@ int main(int argc, char **argv)
     const int height = parser.value(QStringLiteral("height")).toInt(&heightOk);
     if (!widthOk || !heightOk || width < 320 || height < 320)
         return startupError(QStringLiteral("--width and --height must be integers of at least 320 logical pixels."));
+
+    const QString screenshot = parser.value(QStringLiteral("screenshot"));
+    if (parser.isSet(QStringLiteral("screenshot")) && (screenshot.isEmpty() || !QDir::isAbsolutePath(screenshot)))
+        return startupError(QStringLiteral("--screenshot requires an absolute nonempty path."));
 
     QString samplesFile;
     if (parser.isSet(QStringLiteral("palette-samples-file"))) {
@@ -629,8 +652,8 @@ int main(int argc, char **argv)
         traceController = std::make_unique<AppearanceTraceController>(profileOptions, &app, appearance, nullptr);
         traceController->arm();
     }
-    if (automationRequested) {
-        automation = std::make_unique<Automation>(window, state, appearance, scene, nullptr);
+    if (automationRequested || !screenshot.isEmpty()) {
+        automation = std::make_unique<Automation>(window, state, appearance, scene, screenshot, nullptr);
         QObject::connect(startup.get(), &StartupScene::inputRequired,
                          automation.get(), &Automation::requestNativeInput);
         automation->start();
