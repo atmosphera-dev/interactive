@@ -358,6 +358,7 @@ private slots:
     void contrastingTextFastPath();
     void sharedPaletteWork_data();
     void sharedPaletteWork();
+    void mixedFacadeWorkDoesNotScale();
     void propertySpecificNotifications();
     void localWorkIsolation();
     void fontAndGeometryWork();
@@ -574,6 +575,59 @@ void AppearanceTests::sharedPaletteWork()
     QCOMPARE(work.count("shared-palette-build"), 0);
     QVERIFY(work.count("font-measurement") > 0);
     QVERIFY(work.count("geometry-calculation") > 0);
+}
+
+void AppearanceTests::mixedFacadeWorkDoesNotScale()
+{
+    const QStringList families{QStringLiteral("button"), QStringLiteral("tool"),
+        QStringLiteral("field"), QStringLiteral("choice"), QStringLiteral("delegate"),
+        QStringLiteral("delegate")}; // IAMenuItem also uses the delegate family.
+    const Presentation::Tone tones[]{Presentation::Neutral, Presentation::Primary,
+        Presentation::Caution, Presentation::Destructive};
+    const char *operations[]{"shared-palette-build", "local-derivation",
+        "local-pair-measurement", "font-measurement", "geometry-calculation"};
+    QList<int> baselineAccent, baselineMetrics;
+    for (const int count : {10, 100}) {
+        Appearance appearance;
+        std::vector<std::unique_ptr<ControlAppearance>> facades;
+        for (int i = 0; i < count; ++i) {
+            auto facade = std::make_unique<ControlAppearance>();
+            facade->setFamily(families[i % families.size()]);
+            facade->setTone(tones[i % 4]);
+            facade->setSource(&appearance);
+            QCOMPARE(facade->family(), families[i % families.size()]);
+            facades.push_back(std::move(facade));
+        }
+        WorkRecorder work; // Exclude construction and selector initialization.
+        auto input = tokenInput(QStringLiteral("colors"), {{QStringLiteral("accent"), QColor("#8657b8")}});
+        appearance.setInput(input);
+        QCOMPARE(work.count("shared-palette-build"), 1);
+        QList<int> accentCounts, metricsCounts;
+        for (const auto *operation : operations)
+            accentCounts.append(work.count(operation));
+        work.clear();
+        auto tokens = input.value(QStringLiteral("tokens")).toMap();
+        // Radius changes exercise metrics resolution without requiring per-control
+        // height recalculation, which master intentionally still performs for height inputs.
+        tokens.insert(QStringLiteral("metrics"), QVariantMap{{QStringLiteral("controlRadius"), 9}});
+        input.insert(QStringLiteral("tokens"), tokens);
+        appearance.setInput(input);
+        for (const auto *operation : operations)
+            metricsCounts.append(work.count(operation));
+        for (const auto &facade : facades)
+            QCOMPARE(facade->controlRadius(), 9.0);
+        for (int i = 0; i < accentCounts.size(); ++i) {
+            qInfo().nospace() << "G1 N=" << count << " operation=" << operations[i]
+                             << " accent=" << accentCounts[i] << " metrics=" << metricsCounts[i];
+        }
+        if (count == 10) {
+            baselineAccent = accentCounts;
+            baselineMetrics = metricsCounts;
+        } else {
+            QCOMPARE(accentCounts, baselineAccent);
+            QCOMPARE(metricsCounts, baselineMetrics);
+        }
+    }
 }
 
 void AppearanceTests::propertySpecificNotifications()
@@ -3160,4 +3214,3 @@ int main(int argc, char *argv[])
     return result;
 }
 #include "tst_appearance.moc"
-

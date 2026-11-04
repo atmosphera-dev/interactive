@@ -89,6 +89,34 @@ The main outputs are `build/bin/interactive-playground`,
 These tests establish their asserted outcomes, not completion of the remaining
 control pool, installed-consumer proof, accessibility, or final visual review.
 
+## Performance Gates
+
+`ark-vm-build --test --no-deliver` runs G1 with the overview suite: ten versus
+one hundred mixed, source-bound facades without overrides must record identical
+palette/derivation/pair/font/geometry work for an accent edit and a radius-only
+metrics edit (one shared palette build for the accent edit). Counts are logged as
+`G1`. Height-affecting metrics still require per-control geometry work on master;
+this baseline gate does not assert otherwise.
+
+`ark-vm-build --perf --no-deliver` runs G3 in VM `interactive-dev` on ark.home,
+using the same Debug SDK/RHI lane. The `interactive_perf` target is labeled only
+`interactive-perf` (600-second timeout), outside `interactive-overview`. Its real
+window contains 300 mixed controls. Five rounds report median and nearest-rank
+p95 (the maximum of five) for scene creation through first swap (`create_ms`),
+60 accent edits through their frames (`accent_update_ms`, total milliseconds),
+300 control-center mouse moves through their frames (`hover_move_ms`, total
+milliseconds), and 1,000 empty-area moves (`idle_move_us`, microseconds per event,
+dispatch only). The benchmark view requests swap interval zero before creating
+its native surface and retains frame-completion waits. A compositor/platform may
+still pace update delivery independently of swap interval; check per-operation
+wall times rather than assume the request removes that pacing.
+Each metric contains `wall_ms` (or `wall_us` for idle) and `cpu_ms` distributions;
+CPU uses `CLOCK_PROCESS_CPUTIME_ID` across GUI and render threads and is the total
+for the batch, including all 1,000 idle moves. `IA_PERF_OUT` selects a fresh JSON
+file; unset prints JSON. The wrapper retains it as `<run directory>/perf.json`.
+Compare repeated runs on the same VM and mode; the benchmark adds no product
+instrumentation. Earlier vsync-paced wall-only JSONs are not comparable baselines.
+
 ## Running The Playground
 
 Use the same SDK/runtime environment as the build:
