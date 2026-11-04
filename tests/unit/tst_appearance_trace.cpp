@@ -24,6 +24,7 @@ private slots:
     void cleanup();
 
     void disabledDoesNothing();
+    void typedWorkCounters();
     void recordsKnownNesting();
     void attemptOutcomes();
     void reentrantAttempts();
@@ -73,6 +74,58 @@ void AppearanceTraceTests::disabledDoesNothing()
     }
     QCOMPARE(AppearanceTrace::recordsWritten(), 0);
     QCOMPARE(AppearanceTrace::recordsDropped(), 0);
+}
+
+void AppearanceTraceTests::typedWorkCounters()
+{
+    // Counters neither need nor enable clocks/the buffered recorder.
+    AppearanceTrace::work(AppearanceWork::FacadeUpdate); // off: must not leak into a subscription
+    for (const auto mode : {TraceMode::Summary, TraceMode::Trace}) {
+        AppearanceWorkRecorder work;
+        QCOMPARE(work.count(AppearanceWork::FacadeUpdate), 0);
+        {
+            TraceSpan span(TraceScope::FacadeResolve, this, AppearanceWork::FacadeUpdate);
+            QVERIFY(!span.active());
+            TraceAggregate leaf(TraceScope::AggLocalDerivation, 0, AppearanceWork::LocalDerivation);
+        }
+        QCOMPARE(work.count(AppearanceWork::FacadeUpdate), 1);
+        QCOMPARE(work.count(AppearanceWork::LocalDerivation), 1);
+        AppearanceTrace::paletteRecipe({PaletteRecipeRole::Error, 2, 1, 3, true});
+        const auto recipes = work.paletteRecipes();
+        QCOMPARE(recipes.size(), 1);
+        QCOMPARE(recipes.first().role, PaletteRecipeRole::Error);
+        QCOMPARE(recipes.first().chromatic, 2);
+        QCOMPARE(recipes.first().neutral, 1);
+        QCOMPARE(recipes.first().tried, 3);
+        QVERIFY(recipes.first().exhausted);
+        work.clear();
+        QCOMPARE(work.count(AppearanceWork::FacadeUpdate), 0);
+        QVERIFY(work.paletteRecipes().isEmpty());
+
+        QVERIFY(beginSession(mode) != 0);
+        {
+            TraceAttempt attempt(this);
+            TraceSpan span(TraceScope::FacadeResolve, this, AppearanceWork::FacadeUpdate);
+            QCOMPARE(span.active(), mode == TraceMode::Trace);
+            TraceAggregate leaf(TraceScope::AggLocalDerivation, 0, AppearanceWork::LocalDerivation);
+            AppearanceTrace::counter(TraceScope::PaletteBuild, this, 2, AppearanceWork::SharedPairMeasurement);
+            attempt.finish(TraceOutcome::Accepted, 0, 1);
+        }
+        AppearanceTrace::stop();
+        QVERIFY(!AppearanceTrace::enabled());
+        QVERIFY(AppearanceTrace::quiesce(1000));
+        QCOMPARE(work.count(AppearanceWork::SourceUpdate), 1);
+        QCOMPARE(work.count(AppearanceWork::FacadeUpdate), 1);
+        QCOMPARE(work.count(AppearanceWork::LocalDerivation), 1);
+        QCOMPARE(work.count(AppearanceWork::SharedPairMeasurement), 1);
+        // Stopping tracing must not unsubscribe the independent typed observer.
+        AppearanceTrace::work(AppearanceWork::FacadeUpdate);
+        QCOMPARE(work.count(AppearanceWork::FacadeUpdate), 2);
+        QString error;
+        const QString stem = mode == TraceMode::Trace ? QStringLiteral("work-trace") : QStringLiteral("work-summary");
+        QVERIFY2(AppearanceTrace::exportTo(m_dir.filePath(stem + QStringLiteral(".json")),
+            m_dir.filePath(stem + QStringLiteral(".sidecar.json")), &error), qPrintable(error));
+    }
 }
 
 void AppearanceTraceTests::recordsKnownNesting()

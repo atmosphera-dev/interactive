@@ -130,8 +130,7 @@ QVariantList ControlAppearance::diagnostics() const
 {
     auto &state = *m_private;
     if (!state.diagnosticsCacheValid) {
-        qCDebug(appearanceWork).nospace() << "owner=" << this << " revision=" << state.revision
-            << " operation=control-diagnostics-build";
+        AppearanceTrace::work(AppearanceWork::ControlDiagnosticsBuild);
         QVariantList diagnostics;
         // Public input diagnostics retain their original lexical property order.
         static const auto errorOrder = [] {
@@ -324,8 +323,7 @@ void ControlAppearance::resolve(const PaletteUpdate &update, bool forceNoncolors
 
 void ControlAppearance::resolveParts(bool colors, bool noncolors, bool selectors)
 {
-    const AppearanceWorkScope timing("facade-update", this);
-    TraceSpan span(TraceScope::FacadeResolve, this);
+    TraceSpan span(TraceScope::FacadeResolve, this, AppearanceWork::FacadeUpdate);
     auto &state = *m_private;
     // Own the installed source reference across every callback. Read the newest
     // source state, not the earlier dispatch mask, if an observer reentered it.
@@ -334,8 +332,7 @@ void ControlAppearance::resolveParts(bool colors, bool noncolors, bool selectors
     state.revision = state.sourceState ? state.sourceState->revision : state.revision + 1;
     const auto &descriptor = familyDescriptor(state.family);
     if (colors) {
-        qCDebug(appearanceWork).nospace() << "owner=" << this << " revision=" << state.revision
-            << " operation=color-resolution";
+        AppearanceTrace::work(AppearanceWork::ColorResolution);
         state.mapping = controlColorMapping(state.family, m_tone, m_validation);
         const bool colored = m_tone == Presentation::Primary || m_tone == Presentation::Destructive || m_tone == Presentation::Caution;
         const bool coupleBorder = colored && !descriptor.semanticTextOnly && m_validation == Presentation::None
@@ -372,14 +369,12 @@ void ControlAppearance::resolveParts(bool colors, bool noncolors, bool selectors
         const int weight = std::get<int>(candidate[size_t(ControlNoncolor::fontWeight)]);
         const ControlAppearancePrivate::FontInputs fontInputs{requestedFamily, pixelSize, weight, state.environment->generation()};
         if (!state.fontInputs || !(*state.fontInputs == fontInputs)) {
-            qCDebug(appearanceWork).nospace() << "owner=" << this << " revision=" << state.revision
-                << " operation=font-construction";
+            AppearanceTrace::work(AppearanceWork::FontConstruction);
             QFont font;
             font.setFamily(requestedFamily);
             font.setPixelSize(pixelSize);
             font.setWeight(static_cast<QFont::Weight>(weight));
-            qCDebug(appearanceWork).nospace() << "owner=" << this << " revision=" << state.revision
-                << " operation=font-measurement";
+            AppearanceTrace::work(AppearanceWork::FontMeasurement);
             state.textHeight = std::ceil(QFontMetricsF(font).height());
             m_font = font;
             state.fontInputs = fontInputs;
@@ -391,8 +386,7 @@ void ControlAppearance::resolveParts(bool colors, bool noncolors, bool selectors
         const ControlAppearancePrivate::HeightInputs heightInputs{requestedFloor, padding, targetFloor, state.textHeight};
         qreal minimum = state.heightInputs ? minimumHeight() : 0;
         if (!state.heightInputs || !(*state.heightInputs == heightInputs)) {
-            qCDebug(appearanceWork).nospace() << "owner=" << this << " revision=" << state.revision
-                << " operation=geometry-calculation";
+            AppearanceTrace::work(AppearanceWork::GeometryCalculation);
             minimum = std::max({requestedFloor, state.textHeight + 2 * padding, targetFloor});
             state.heightInputs = heightInputs;
         }
@@ -439,8 +433,7 @@ void ControlAppearance::installNotifications()
     auto &state = *m_private;
     if (!state.notificationsInitialized)
         return;
-    const AppearanceWorkScope timing("notification-compare", this);
-    TraceSpan span(TraceScope::NotificationCompare, this);
+    TraceSpan span(TraceScope::NotificationCompare, this, AppearanceWork::NotificationCompare);
     using Notification = ControlAppearancePrivate::Notification;
 #define IA_COMPARE(name, current) \
     if (state.last.name != (current)) state.pending.set(size_t(Notification::name));
@@ -457,8 +450,7 @@ void ControlAppearance::installNotifications()
 void ControlAppearance::drainNotifications()
 {
     auto &state = *m_private;
-    const AppearanceWorkScope timing("notification-drain", this);
-    TraceSpan span(TraceScope::NotificationDrain, this);
+    TraceSpan span(TraceScope::NotificationDrain, this, AppearanceWork::NotificationDrain);
     if (!state.notificationsInitialized || state.drainingNotifications)
         return;
     state.drainingNotifications = true;

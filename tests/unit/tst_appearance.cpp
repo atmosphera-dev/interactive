@@ -3,6 +3,7 @@
 #include "AirmailProfiles.h"
 #include "ControlAppearance.h"
 #include "TokenSchema.h"
+#include "AppearanceTrace_p.h"
 #include "TestTraceSetup.h"
 #include "cpp/cam/cam.h"
 #include "cpp/cam/hct.h"
@@ -13,7 +14,6 @@
 #include <QFontMetricsF>
 #include <QGuiApplication>
 #include <QList>
-#include <QLoggingCategory>
 #include <QMetaEnum>
 #include <QMetaProperty>
 #include <QQmlComponent>
@@ -21,7 +21,6 @@
 #include <QSignalSpy>
 #include <QScopeGuard>
 #include <QtTest>
-#include <QRegularExpression>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -34,61 +33,15 @@ using namespace InterActive;
 
 namespace {
 
-class WorkRecorder {
-public:
-    WorkRecorder()
-    {
-        Q_ASSERT(!active);
-        active = this;
-        previousHandler = qInstallMessageHandler(message);
-        previousFilter = QLoggingCategory::installFilter(filter);
-    }
-    ~WorkRecorder()
-    {
-        QLoggingCategory::installFilter(previousFilter);
-        qInstallMessageHandler(previousHandler);
-        active = nullptr;
-    }
-    int count(const char *operation) const
-    {
-        return std::count_if(records.cbegin(), records.cend(), [&](const QString &record) {
-            return record.contains(QStringLiteral("operation=") + QLatin1String(operation));
-        });
-    }
-    void clear() { records.clear(); }
-private:
-    static void filter(QLoggingCategory *category)
-    {
-        if (active->previousFilter)
-            active->previousFilter(category);
-        if (qstrcmp(category->categoryName(), "interactive.appearance.work") == 0)
-            category->setEnabled(QtDebugMsg, true);
-    }
-    static void message(QtMsgType type, const QMessageLogContext &context, const QString &text)
-    {
-        if (context.category && qstrcmp(context.category, "interactive.appearance.work") == 0 && type == QtDebugMsg) {
-            active->records.append(text);
-            return;
-        }
-        if (active->previousHandler)
-            active->previousHandler(type, context, text);
-        else
-            std::fprintf(stderr, "%s\n", qPrintable(text));
-    }
-    inline static WorkRecorder *active = nullptr;
-    QtMessageHandler previousHandler = nullptr;
-    QLoggingCategory::CategoryFilter previousFilter = nullptr;
-    QStringList records;
-};
+using WorkRecorder = AppearanceWorkRecorder;
 
 QVariantMap tokenInput(const QString &group, const QVariantMap &values)
 {
     return {{QStringLiteral("tokens"), QVariantMap{{group, values}}}};
 }
 
-// Captures the interactive.palette per-role generation lines emitted by the
-// bounded direct recipe (off by default; enabled through the category filter).
-class PaletteLogRecorder {
+// Project typed per-role recipe work into the existing assertion context.
+class PaletteWorkRecorder {
 public:
     struct Line {
         QString role;
@@ -97,49 +50,19 @@ public:
         int tried = 0;
         bool exhausted = false;
     };
-    PaletteLogRecorder()
+    void clear() { work.clear(); }
+    QList<Line> lines() const
     {
-        Q_ASSERT(!active);
-        active = this;
-        previousHandler = qInstallMessageHandler(message);
-        previousFilter = QLoggingCategory::installFilter(filter);
-    }
-    ~PaletteLogRecorder()
-    {
-        QLoggingCategory::installFilter(previousFilter);
-        qInstallMessageHandler(previousHandler);
-        active = nullptr;
-    }
-    void clear() { lines.clear(); }
-    QList<Line> lines;
-private:
-    static void filter(QLoggingCategory *category)
-    {
-        if (active->previousFilter)
-            active->previousFilter(category);
-        if (qstrcmp(category->categoryName(), "interactive.palette") == 0)
-            category->setEnabled(QtDebugMsg, true);
-    }
-    static void message(QtMsgType type, const QMessageLogContext &context, const QString &text)
-    {
-        if (context.category && qstrcmp(context.category, "interactive.palette") == 0 && type == QtDebugMsg) {
-            static const QRegularExpression pattern(QStringLiteral(
-                "role=\"(\\w+)\" chromaticProposals=(\\d+) neutralProposals=(\\d+) tried=(\\d+) exhausted=(\\w+)"));
-            const auto match = pattern.match(text);
-            if (match.hasMatch()) {
-                active->lines.append({match.captured(1), match.captured(2).toInt(), match.captured(3).toInt(),
-                                      match.captured(4).toInt(), match.captured(5) == QLatin1String("true")});
-            }
-            return;
+        QList<Line> result;
+        for (const auto &entry : work.paletteRecipes()) {
+            const char *role = entry.role == PaletteRecipeRole::Error ? "error"
+                : entry.role == PaletteRecipeRole::Warning ? "warning" : "success";
+            result.append({QString::fromLatin1(role), entry.chromatic, entry.neutral, entry.tried, entry.exhausted});
         }
-        if (active->previousHandler)
-            active->previousHandler(type, context, text);
-        else
-            std::fprintf(stderr, "%s\n", qPrintable(text));
+        return result;
     }
-    inline static PaletteLogRecorder *active = nullptr;
-    QtMessageHandler previousHandler = nullptr;
-    QLoggingCategory::CategoryFilter previousFilter = nullptr;
+private:
+    AppearanceWorkRecorder work;
 };
 
 bool hasDiagnostic(const QVariantList &diagnostics, const QString &code, const QString &path = {})
@@ -487,17 +410,17 @@ void AppearanceTests::stateTableSharingAndLifetime()
         second.setSource(&appearance);
         WorkRecorder work;
         first.setFamily(QStringLiteral("choice"));
-        QCOMPARE(work.count("state-table-build"), 1);
+        QCOMPARE(work.count(AppearanceWork::StateTableBuild), 1);
         second.setFamily(QStringLiteral("choice"));
-        QCOMPARE(work.count("state-table-build"), 1);
+        QCOMPARE(work.count(AppearanceWork::StateTableBuild), 1);
         second.setTone(Presentation::Neutral); // Auto is the same memoization slot
-        QCOMPARE(work.count("state-table-build"), 1);
-        QCOMPARE(work.count("private-state-table-build"), 0);
+        QCOMPARE(work.count(AppearanceWork::StateTableBuild), 1);
+        QCOMPARE(work.count(AppearanceWork::PrivateStateTableBuild), 0);
         QCOMPARE(first.stateTable(), second.stateTable());
         retained = first.stateTable();
         before = retained.colors(Presentation::Rest).backgroundColor();
         first.setBackgroundColor(QColor("purple"));
-        QCOMPARE(work.count("private-state-table-build"), 1);
+        QCOMPARE(work.count(AppearanceWork::PrivateStateTableBuild), 1);
         QVERIFY(first.stateTable() != second.stateTable());
         QCOMPARE(second.stateTable().colors(Presentation::Rest).backgroundColor(), before);
         QCOMPARE(retained.colors(Presentation::Rest).backgroundColor(), before);
@@ -506,23 +429,23 @@ void AppearanceTests::stateTableSharingAndLifetime()
         first.setSpacing(17);
         first.setFontPixelSize(20);
         first.setBackgroundColor(QColor()); // invalid input affects diagnostics only
-        QCOMPARE(work.count("state-table-build"), 0);
-        QCOMPARE(work.count("private-state-table-build"), 0);
+        QCOMPARE(work.count(AppearanceWork::StateTableBuild), 0);
+        QCOMPARE(work.count(AppearanceWork::PrivateStateTableBuild), 0);
         QCOMPARE(first.stateTable(), privateSnapshot);
         first.resetOverrides();
         QCOMPARE(first.stateTable(), second.stateTable());
-        QCOMPARE(work.count("state-table-build"), 0);
-        QCOMPARE(work.count("private-state-table-build"), 0);
+        QCOMPARE(work.count(AppearanceWork::StateTableBuild), 0);
+        QCOMPARE(work.count(AppearanceWork::PrivateStateTableBuild), 0);
         work.clear();
         for (int i = 0; i < 100; ++i) {
             for (int state = Presentation::Rest; state <= Presentation::Disabled; ++state)
                 QVERIFY(first.stateTable().colors(Presentation::State(state)).backgroundColor().isValid());
         }
-        QCOMPARE(work.count("color-resolution"), 0);
-        QCOMPARE(work.count("local-derivation"), 0);
-        QCOMPARE(work.count("local-pair-measurement"), 0);
-        QCOMPARE(work.count("state-table-build"), 0);
-        QCOMPARE(work.count("private-state-table-build"), 0);
+        QCOMPARE(work.count(AppearanceWork::ColorResolution), 0);
+        QCOMPARE(work.count(AppearanceWork::LocalDerivation), 0);
+        QCOMPARE(work.count(AppearanceWork::LocalPairMeasurement), 0);
+        QCOMPARE(work.count(AppearanceWork::StateTableBuild), 0);
+        QCOMPARE(work.count(AppearanceWork::PrivateStateTableBuild), 0);
         // The public default/invalid index is safe and never indexes past the array.
         QVERIFY(!StateTable().colors(Presentation::Rest).backgroundColor().isValid());
         QVERIFY(!first.stateTable().colors(Presentation::State(-1)).backgroundColor().isValid());
@@ -692,7 +615,7 @@ void AppearanceTests::stateSweepDoesNoFoundationWork()
     QVERIFY(facade);
     WorkRecorder work;
     facade->setSpacing(facade->spacing() + 1);
-    QCOMPARE(work.count("timing scope=facade-update"), 1); // Positive control for the scope recorder.
+    QCOMPARE(work.count(AppearanceWork::FacadeUpdate), 1); // Positive control for the scope recorder.
     work.clear();
     for (int flags = 0; flags < 64; ++flags) {
         const bool enabled = flags & 1, down = flags & 2, hover = flags & 4;
@@ -724,12 +647,12 @@ void AppearanceTests::stateSweepDoesNoFoundationWork()
         QCOMPARE(object->property("observedChoice").value<QColor>(), choiceBackground);
         QCOMPARE(object->property("choiceForeground").value<QColor>(), choiceForeground);
     }
-    QCOMPARE(work.count("timing scope=facade-update"), 0);
-    QCOMPARE(work.count("color-resolution"), 0);
-    QCOMPARE(work.count("local-derivation"), 0);
-    QCOMPARE(work.count("local-pair-measurement"), 0);
-    QCOMPARE(work.count("state-table-build"), 0);
-    QCOMPARE(work.count("private-state-table-build"), 0);
+    QCOMPARE(work.count(AppearanceWork::FacadeUpdate), 0);
+    QCOMPARE(work.count(AppearanceWork::ColorResolution), 0);
+    QCOMPARE(work.count(AppearanceWork::LocalDerivation), 0);
+    QCOMPARE(work.count(AppearanceWork::LocalPairMeasurement), 0);
+    QCOMPARE(work.count(AppearanceWork::StateTableBuild), 0);
+    QCOMPARE(work.count(AppearanceWork::PrivateStateTableBuild), 0);
 }
 
 void AppearanceTests::familyDescriptorContract()
@@ -980,13 +903,13 @@ void AppearanceTests::equalSourceAndOwnershipNotifications()
     QCOMPARE(background.count(), 0);
     QCOMPARE(text.count(), 0);
     QCOMPARE(font.count(), 0);
-    QCOMPARE(work.count("local-derivation"), 0);
-    QCOMPARE(work.count("font-measurement"), 0);
+    QCOMPARE(work.count(AppearanceWork::LocalDerivation), 0);
+    QCOMPARE(work.count(AppearanceWork::FontMeasurement), 0);
     const QColor inheritedOutline = second.colors()->primaryOutline();
     second.setInput(tokenInput(QStringLiteral("colors"), {{QStringLiteral("primaryOutline"), inheritedOutline}}));
     QCOMPARE(facade.borderColor(), inheritedOutline);
     QCOMPARE(facade.foregroundColor(), localText);
-    QCOMPARE(work.count("local-derivation"), 0);
+    QCOMPARE(work.count(AppearanceWork::LocalDerivation), 0);
     second.setInput({});
     QCOMPARE(facade.borderColor(), localText);
     QCOMPARE(background.count(), 0);
@@ -1024,16 +947,16 @@ void AppearanceTests::localDependencyChanges()
     };
     appearance.setInput(tokenInput(QStringLiteral("colors"), {{QStringLiteral("content"), QColor("#27292d")},
         {QStringLiteral("canvas"), QColor("#202124")}}));
-    QVERIFY(work.count("local-derivation") >= 3);
+    QVERIFY(work.count(AppearanceWork::LocalDerivation) >= 3);
     assertPairs(5);
     work.clear();
     const QList<QColor> normalLabels{facade.foregroundColor(), facade.selectedForegroundColor(), facade.inactiveForegroundColor()};
     auto input = appearance.input();
     input.insert(QStringLiteral("contrast"), QStringLiteral("high"));
     appearance.setInput(input);
-    QCOMPARE(work.count("local-derivation"), 0); // Label target remains 7; only the diagnostic floor changes.
+    QCOMPARE(work.count(AppearanceWork::LocalDerivation), 0); // Label target remains 7; only the diagnostic floor changes.
     QCOMPARE((QList<QColor>{facade.foregroundColor(), facade.selectedForegroundColor(), facade.inactiveForegroundColor()}), normalLabels);
-    QVERIFY(work.count("local-pair-measurement") >= 3);
+    QVERIFY(work.count(AppearanceWork::LocalPairMeasurement) >= 3);
     assertPairs(7);
     work.clear();
     const QColor selected = facade.selectedForegroundColor();
@@ -1041,7 +964,7 @@ void AppearanceTests::localDependencyChanges()
     tokens.insert(QStringLiteral("motion"), QVariantMap{{QStringLiteral("hoverBlend"), .27}, {QStringLiteral("pressedBlend"), .39}});
     input.insert(QStringLiteral("tokens"), tokens);
     appearance.setInput(input);
-    QVERIFY(work.count("local-derivation") > 0);
+    QVERIFY(work.count(AppearanceWork::LocalDerivation) > 0);
     QCOMPARE(facade.selectedForegroundColor(), selected);
     assertPairs(7);
     work.clear();
@@ -1050,9 +973,9 @@ void AppearanceTests::localDependencyChanges()
     tokens.insert(QStringLiteral("colors"), colors);
     input.insert(QStringLiteral("tokens"), tokens);
     appearance.setInput(input);
-    QCOMPARE(work.count("local-derivation"), 0);
-    QCOMPARE(work.count("font-measurement"), 0);
-    QCOMPARE(work.count("geometry-calculation"), 0);
+    QCOMPARE(work.count(AppearanceWork::LocalDerivation), 0);
+    QCOMPARE(work.count(AppearanceWork::FontMeasurement), 0);
+    QCOMPARE(work.count(AppearanceWork::GeometryCalculation), 0);
     assertPairs(7);
 }
 
@@ -1076,18 +999,18 @@ void AppearanceTests::sharedPaletteWork()
         facade->setTone(Presentation::Primary);
         facades.push_back(std::move(facade));
     }
-    QVERIFY(work.count("shared-palette-build") <= 1); // immutable fallback, once only
-    QCOMPARE(work.count("local-derivation"), 0);
-    QCOMPARE(work.count("local-pair-measurement"), 0);
+    QVERIFY(work.count(AppearanceWork::SharedPaletteBuild) <= 1); // immutable fallback, once only
+    QCOMPARE(work.count(AppearanceWork::LocalDerivation), 0);
+    QCOMPARE(work.count(AppearanceWork::LocalPairMeasurement), 0);
     work.clear();
     const auto input = tokenInput(QStringLiteral("colors"), {{QStringLiteral("accent"), QColor("#8657b8")}});
     appearance.setInput(input);
-    QCOMPARE(work.count("shared-palette-build"), 1);
-    QCOMPARE(work.count("local-derivation"), 0);
-    QCOMPARE(work.count("local-pair-measurement"), 0);
-    QCOMPARE(work.count("font-construction"), 0);
-    QCOMPARE(work.count("font-measurement"), 0);
-    QCOMPARE(work.count("geometry-calculation"), 0);
+    QCOMPARE(work.count(AppearanceWork::SharedPaletteBuild), 1);
+    QCOMPARE(work.count(AppearanceWork::LocalDerivation), 0);
+    QCOMPARE(work.count(AppearanceWork::LocalPairMeasurement), 0);
+    QCOMPARE(work.count(AppearanceWork::FontConstruction), 0);
+    QCOMPARE(work.count(AppearanceWork::FontMeasurement), 0);
+    QCOMPARE(work.count(AppearanceWork::GeometryCalculation), 0);
     for (const auto &facade : facades) {
         QCOMPARE(facade->backgroundColor(), appearance.colors()->primarySurface());
         QCOMPARE(facade->selectedBackgroundColor(), appearance.colors()->primaryPressed());
@@ -1095,20 +1018,20 @@ void AppearanceTests::sharedPaletteWork()
     }
     work.clear();
     appearance.setInput(input);
-    QCOMPARE(work.count("shared-palette-build"), 0);
+    QCOMPARE(work.count(AppearanceWork::SharedPaletteBuild), 0);
     appearance.setInput({{QStringLiteral("schemaVersion"), 2}});
     QVERIFY(hasDiagnostic(appearance.diagnostics(), QStringLiteral("rejected-input")));
     appearance.setInput(input);
     QVERIFY(!hasDiagnostic(appearance.diagnostics(), QStringLiteral("rejected-input")));
-    QCOMPARE(work.count("shared-palette-build"), 0);
+    QCOMPARE(work.count(AppearanceWork::SharedPaletteBuild), 0);
     auto unrelated = input;
     unrelated.insert(QStringLiteral("fontScale"), 1.5);
     unrelated.insert(QStringLiteral("density"), QStringLiteral("touch"));
     unrelated.insert(QStringLiteral("reducedMotion"), true);
     appearance.setInput(unrelated);
-    QCOMPARE(work.count("shared-palette-build"), 0);
-    QVERIFY(work.count("font-measurement") > 0);
-    QVERIFY(work.count("geometry-calculation") > 0);
+    QCOMPARE(work.count(AppearanceWork::SharedPaletteBuild), 0);
+    QVERIFY(work.count(AppearanceWork::FontMeasurement) > 0);
+    QVERIFY(work.count(AppearanceWork::GeometryCalculation) > 0);
 }
 
 void AppearanceTests::mixedFacadeWorkDoesNotScale()
@@ -1118,8 +1041,9 @@ void AppearanceTests::mixedFacadeWorkDoesNotScale()
         QStringLiteral("delegate")}; // IAMenuItem also uses the delegate family.
     const Presentation::Tone tones[]{Presentation::Neutral, Presentation::Primary,
         Presentation::Caution, Presentation::Destructive};
-    const char *operations[]{"shared-palette-build", "local-derivation",
-        "local-pair-measurement", "font-measurement", "geometry-calculation", "state-table-build"};
+    const AppearanceWork operations[]{AppearanceWork::SharedPaletteBuild, AppearanceWork::LocalDerivation,
+        AppearanceWork::LocalPairMeasurement, AppearanceWork::FontMeasurement,
+        AppearanceWork::GeometryCalculation, AppearanceWork::StateTableBuild};
     QList<int> baselineAccent, baselineMetrics;
     for (const int count : {10, 100}) {
         Appearance appearance;
@@ -1141,16 +1065,16 @@ void AppearanceTests::mixedFacadeWorkDoesNotScale()
         WorkRecorder work; // Exclude construction and selector initialization.
         auto input = tokenInput(QStringLiteral("colors"), {{QStringLiteral("accent"), QColor("#8657b8")}});
         appearance.setInput(input);
-        QCOMPARE(work.count("shared-palette-build"), 1);
-        QVERIFY(work.count("state-table-build") > 0);
-        QVERIFY(work.count("state-table-build") <= combinations.size());
-        QCOMPARE(work.count("private-state-table-build"), 0);
-        QCOMPARE(work.count("local-derivation"), 0);
-        QCOMPARE(work.count("local-pair-measurement"), 0);
-        QCOMPARE(work.count("font-measurement"), 0);
-        QCOMPARE(work.count("geometry-calculation"), 0);
+        QCOMPARE(work.count(AppearanceWork::SharedPaletteBuild), 1);
+        QVERIFY(work.count(AppearanceWork::StateTableBuild) > 0);
+        QVERIFY(work.count(AppearanceWork::StateTableBuild) <= combinations.size());
+        QCOMPARE(work.count(AppearanceWork::PrivateStateTableBuild), 0);
+        QCOMPARE(work.count(AppearanceWork::LocalDerivation), 0);
+        QCOMPARE(work.count(AppearanceWork::LocalPairMeasurement), 0);
+        QCOMPARE(work.count(AppearanceWork::FontMeasurement), 0);
+        QCOMPARE(work.count(AppearanceWork::GeometryCalculation), 0);
         QList<int> accentCounts, metricsCounts;
-        for (const auto *operation : operations)
+        for (const auto operation : operations)
             accentCounts.append(work.count(operation));
         work.clear();
         auto tokens = input.value(QStringLiteral("tokens")).toMap();
@@ -1159,15 +1083,15 @@ void AppearanceTests::mixedFacadeWorkDoesNotScale()
         tokens.insert(QStringLiteral("metrics"), QVariantMap{{QStringLiteral("controlRadius"), 9}});
         input.insert(QStringLiteral("tokens"), tokens);
         appearance.setInput(input);
-        QCOMPARE(work.count("color-resolution"), 0);
-        QCOMPARE(work.count("state-table-build"), 0);
-        QCOMPARE(work.count("private-state-table-build"), 0);
-        for (const auto *operation : operations)
+        QCOMPARE(work.count(AppearanceWork::ColorResolution), 0);
+        QCOMPARE(work.count(AppearanceWork::StateTableBuild), 0);
+        QCOMPARE(work.count(AppearanceWork::PrivateStateTableBuild), 0);
+        for (const auto operation : operations)
             metricsCounts.append(work.count(operation));
         for (const auto &facade : facades)
             QCOMPARE(facade->controlRadius(), 9.0);
         for (int i = 0; i < accentCounts.size(); ++i) {
-            qInfo().nospace() << "G1 N=" << count << " operation=" << operations[i]
+            qInfo().nospace() << "G1 N=" << count << " operation=" << AppearanceTrace::workName(operations[i])
                              << " accent=" << accentCounts[i] << " metrics=" << metricsCounts[i];
         }
         if (count == 10) {
@@ -1218,19 +1142,19 @@ void AppearanceTests::lazyControlDiagnostics()
         {QStringLiteral("text"), QColor("#ffffff")},
         {QStringLiteral("control"), QColor("#ffffff")}}));
     QCOMPARE(diagnostics.count(), 1);
-    QCOMPARE(work.count("control-diagnostics-build"), 0);
+    QCOMPARE(work.count(AppearanceWork::ControlDiagnosticsBuild), 0);
     const auto findings = control.diagnostics();
     QVERIFY(hasDiagnostic(findings, QStringLiteral("low-contrast"), QStringLiteral("foregroundColor/backgroundColor")));
-    QCOMPARE(work.count("control-diagnostics-build"), 1);
+    QCOMPARE(work.count(AppearanceWork::ControlDiagnosticsBuild), 1);
     QCOMPARE(control.diagnostics(), findings);
-    QCOMPARE(work.count("control-diagnostics-build"), 1);
+    QCOMPARE(work.count(AppearanceWork::ControlDiagnosticsBuild), 1);
     auto input = appearance.input();
     auto tokens = input.value(QStringLiteral("tokens")).toMap();
     tokens.insert(QStringLiteral("metrics"), QVariantMap{{QStringLiteral("controlRadius"), 9}});
     input.insert(QStringLiteral("tokens"), tokens);
     appearance.setInput(input);
     QCOMPARE(control.diagnostics(), findings);
-    QCOMPARE(work.count("control-diagnostics-build"), 1);
+    QCOMPARE(work.count(AppearanceWork::ControlDiagnosticsBuild), 1);
     QCOMPARE(diagnostics.count(), 1);
     // Nested diagnostic updates retain their notification obligations without
     // forcing a read of the flattened public list.
@@ -1332,24 +1256,24 @@ void AppearanceTests::localWorkIsolation()
     WorkRecorder work;
     appearance.setInput(tokenInput(QStringLiteral("colors"), {{QStringLiteral("accent"), QColor("#20845f")}}));
     QCOMPARE(ordinary(), before);
-    QCOMPARE(work.count("local-derivation"), 0);
+    QCOMPARE(work.count(AppearanceWork::LocalDerivation), 0);
     QCOMPARE(local.fillColor(), appearance.colors()->accent());
     QCOMPARE(local.selectedBackgroundColor(), appearance.colors()->primaryPressed());
     QCOMPARE(local.inactiveBackgroundColor(), appearance.colors()->primarySurface());
     local.setBackgroundColor(QColor("#101020"));
     QVERIFY(ordinary() != before);
-    QVERIFY(work.count("local-derivation") > 0);
+    QVERIFY(work.count(AppearanceWork::LocalDerivation) > 0);
     local.resetOverrides();
     local.setHoverBackgroundColor(QColor("#303040"));
     work.clear();
     appearance.setInput(tokenInput(QStringLiteral("colors"), {{QStringLiteral("accent"), QColor("#FFDF00")}}));
-    QCOMPARE(work.count("local-derivation"), 1);
+    QCOMPARE(work.count(AppearanceWork::LocalDerivation), 1);
     local.setSelectedBackgroundColor(QColor("#111122"));
     const QColor selectedText = local.selectedForegroundColor();
     work.clear();
     appearance.setInput(tokenInput(QStringLiteral("colors"), {{QStringLiteral("accent"), QColor("#5C9CF5")}}));
     QCOMPARE(local.selectedForegroundColor(), selectedText);
-    QCOMPARE(work.count("local-derivation"), 1); // partially inherited ordinary pair only
+    QCOMPARE(work.count(AppearanceWork::LocalDerivation), 1); // partially inherited ordinary pair only
 }
 
 void AppearanceTests::fontAndGeometryWork()
@@ -1364,18 +1288,18 @@ void AppearanceTests::fontAndGeometryWork()
     control.setFontPixelSize(13.2);
     QCOMPARE(size.count(), 1);
     QCOMPARE(font.count(), 0);
-    QCOMPARE(work.count("font-construction"), 0);
-    QCOMPARE(work.count("font-measurement"), 0);
-    QCOMPARE(work.count("geometry-calculation"), 0);
+    QCOMPARE(work.count(AppearanceWork::FontConstruction), 0);
+    QCOMPARE(work.count(AppearanceWork::FontMeasurement), 0);
+    QCOMPARE(work.count(AppearanceWork::GeometryCalculation), 0);
     control.setVerticalPadding(12);
-    QCOMPARE(work.count("font-measurement"), 0);
-    QCOMPARE(work.count("geometry-calculation"), 1);
+    QCOMPARE(work.count(AppearanceWork::FontMeasurement), 0);
+    QCOMPARE(work.count(AppearanceWork::GeometryCalculation), 1);
     work.clear();
     control.setHorizontalPadding(17);
     control.setControlRadius(9);
     control.setSpacing(19);
-    QCOMPARE(work.count("font-measurement"), 0);
-    QCOMPARE(work.count("geometry-calculation"), 0);
+    QCOMPARE(work.count(AppearanceWork::FontMeasurement), 0);
+    QCOMPARE(work.count(AppearanceWork::GeometryCalculation), 0);
     control.setMinimumHeight(80);
     QCOMPARE(control.minimumHeight(), 80.0);
     control.setMinimumHeight(0);
@@ -1387,8 +1311,8 @@ void AppearanceTests::fontAndGeometryWork()
     modified.setItalic(!original.italic());
     work.clear();
     QGuiApplication::setFont(modified);
-    QVERIFY(work.count("font-construction") > 0);
-    QVERIFY(work.count("font-measurement") > 0);
+    QVERIFY(work.count(AppearanceWork::FontConstruction) > 0);
+    QVERIFY(work.count(AppearanceWork::FontMeasurement) > 0);
     QCOMPARE(control.fontFamily(), captured);
     QCOMPARE(control.resolvedFont().italic(), modified.italic());
 }
@@ -1812,7 +1736,7 @@ void AppearanceTests::semanticPaletteImmutablePairs()
 
 void AppearanceTests::directRecipeBounds()
 {
-    PaletteLogRecorder recorder;
+    PaletteWorkRecorder recorder;
     const QStringList fixtures{QStringLiteral("#5C9CF5"), QStringLiteral("#FFDF00"), QStringLiteral("#49335F"),
         QStringLiteral("#8628C8"), QStringLiteral("#E53935"), QStringLiteral("#60252A"), QStringLiteral("#F5B8B8"),
         QStringLiteral("#D99B24"), QStringLiteral("#36A56A"), QStringLiteral("#27B8CC"),
@@ -1829,7 +1753,7 @@ void AppearanceTests::directRecipeBounds()
                 const auto input = paletteInput(scheme, contrast, {{QStringLiteral("accent"), QColor(fixture)}});
                 recorder.clear();
                 const auto result = TokenSchema::resolve(input, QStringLiteral("Test Sans"));
-                QVERIFY2(!recorder.lines.isEmpty(), "the recipe must log per-role proposal counts");
+                QVERIFY2(!recorder.lines().isEmpty(), "the recipe must record per-role proposal counts");
                 // The honest report rides along: gates that failed, per role.
                 QHash<QString, QStringList> exhaustedGates;
                 QStringList allDiagnostics;
@@ -1844,7 +1768,7 @@ void AppearanceTests::directRecipeBounds()
                             .arg(QString::fromLatin1(entry.value(QStringLiteral("failedGates")).metaType().name())));
                     }
                 }
-                for (const auto &line : recorder.lines) {
+                for (const auto &line : recorder.lines()) {
                     const QString context = QStringLiteral("%1-%2-%3 role=%4 chromatic=%5 neutral=%6 tried=%7 exhaustedGates=[%8] keys=[%9] diagnostics=[%10]")
                         .arg(scheme, contrast, fixture, line.role).arg(line.chromatic).arg(line.neutral).arg(line.tried)
                         .arg(exhaustedGates.value(line.role).join(QLatin1Char('+')), exhaustedGates.keys().join(QLatin1Char('|')),
@@ -1871,7 +1795,7 @@ void AppearanceTests::directRecipeBounds()
     TokenSchema::resolve(paletteInput(QStringLiteral("light"), QStringLiteral("normal"),
         {{QStringLiteral("accent"), QColor("#E53935")}}), QStringLiteral("Test Sans"));
     bool sawNeutralDanger = false;
-    for (const auto &line : recorder.lines) {
+    for (const auto &line : recorder.lines()) {
         QVERIFY(line.chromatic <= 3 && line.neutral <= 3 && line.tried <= 6);
         if (line.role == QLatin1String("error")) {
             QCOMPARE(line.chromatic, 0);
@@ -1886,7 +1810,7 @@ void AppearanceTests::directRecipeBounds()
         {QStringLiteral("destructiveHover"), QColor(Qt::white)}, {QStringLiteral("destructivePressed"), QColor(Qt::black)}}),
         QStringLiteral("Test Sans"));
     bool sawExhausted = false;
-    for (const auto &line : recorder.lines) {
+    for (const auto &line : recorder.lines()) {
         QVERIFY(line.chromatic <= 3 && line.neutral <= 3 && line.tried <= 6);
         QCOMPARE(line.tried, line.chromatic + line.neutral);
         sawExhausted |= line.exhausted;

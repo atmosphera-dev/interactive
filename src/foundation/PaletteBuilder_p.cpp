@@ -8,8 +8,6 @@
 #include "cpp/cam/cam.h"
 #include "cpp/cam/hct.h"
 #include "cpp/utils/utils.h"
-#include <QElapsedTimer>
-#include <QLoggingCategory>
 #include <QStringList>
 #include <algorithm>
 #include <cmath>
@@ -18,7 +16,6 @@
 namespace InterActive {
 namespace {
 
-Q_LOGGING_CATEGORY(paletteLog, "interactive.palette", QtWarningMsg)
 namespace mcu = material_color_utilities;
 
 bool explicitColor(const QSet<QString> &supplied, const QString &role)
@@ -257,8 +254,6 @@ SemanticGroup selectGroup(const QVariantMap &colors, const QSet<QString> &suppli
                           qreal floor, qreal labelTarget, QVariantList *diagnostics)
 {
     const TraceSpan span(TraceScope::SelectGroup, nullptr);
-    QElapsedTimer timer;
-    timer.start();
     // A red-family primary occupies the danger family: danger stays true gray.
     const bool neutralDanger = role == QLatin1String("error") && chroma >= 12
         && mcu::DiffDegrees(seed.get_hue(), anchor) <= 20;
@@ -360,9 +355,8 @@ SemanticGroup selectGroup(const QVariantMap &colors, const QSet<QString> &suppli
     if (!accepted && !neutralDanger)
         accepted = branch(true);
     if (accepted) {
-        qCDebug(paletteLog).nospace() << "role=" << role << " chromaticProposals=" << proposals[0]
-            << " neutralProposals=" << proposals[1] << " tried=" << tried.size()
-            << " exhausted=false elapsedNs=" << timer.nsecsElapsed();
+        AppearanceTrace::paletteRecipe({PaletteRecipeRole(roleTag - 1), proposals[0], proposals[1],
+            int(tried.size()), false});
         return chosen;
     }
 
@@ -405,9 +399,8 @@ SemanticGroup selectGroup(const QVariantMap &colors, const QSet<QString> &suppli
     entry.insert(QStringLiteral("maximum"), maximum);
     entry.insert(QStringLiteral("failedGates"), failedGates);
     diagnostics->append(entry);
-    qCDebug(paletteLog).nospace() << "role=" << role << " chromaticProposals=" << proposals[0]
-        << " neutralProposals=" << proposals[1] << " tried=" << tried.size()
-        << " exhausted=true elapsedNs=" << timer.nsecsElapsed();
+    AppearanceTrace::paletteRecipe({PaletteRecipeRole(roleTag - 1), proposals[0], proposals[1],
+        int(tried.size()), true});
     return chosen;
 }
 

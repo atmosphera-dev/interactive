@@ -24,7 +24,13 @@
 
 namespace InterActive {
 
+quint8 AppearanceInstrumentation::admission = 0;
+
 namespace {
+
+std::array<std::atomic<int>, size_t(AppearanceWork::Count)> workCounts{};
+std::mutex workMutex;
+QVector<PaletteRecipeWork> recipeWork;
 
 constexpr quint32 ChunkRecords = 1024;                  // 64 KiB per chunk
 constexpr quint32 ChunkBytes = ChunkRecords * sizeof(TraceRecord);
@@ -209,16 +215,58 @@ bool summaryClass(TraceScope scope)
 
 } // namespace
 
-bool AppearanceTrace::enabled()
+AppearanceWorkRecorder::AppearanceWorkRecorder()
 {
-    return S().accepting.load(std::memory_order_acquire);
+    Q_ASSERT(!(AppearanceInstrumentation::admitted()
+        & AppearanceInstrumentation::Work));
+    clear();
+    __atomic_fetch_or(&AppearanceInstrumentation::admission, AppearanceInstrumentation::Work, __ATOMIC_RELAXED);
 }
 
-bool AppearanceTrace::detailed()
+AppearanceWorkRecorder::~AppearanceWorkRecorder()
 {
-    const auto &s = S();
-    return s.accepting.load(std::memory_order_acquire)
-        && s.mode.load(std::memory_order_acquire) == quint8(TraceMode::Trace);
+    __atomic_fetch_and(&AppearanceInstrumentation::admission, quint8(~AppearanceInstrumentation::Work), __ATOMIC_RELAXED);
+}
+
+int AppearanceWorkRecorder::count(AppearanceWork kind) const
+{
+    return workCounts[size_t(kind)].load(std::memory_order_relaxed);
+}
+
+void AppearanceWorkRecorder::clear()
+{
+    for (auto &count : workCounts)
+        count.store(0, std::memory_order_relaxed);
+    std::lock_guard<std::mutex> lock(workMutex);
+    recipeWork.clear();
+}
+
+QVector<PaletteRecipeWork> AppearanceWorkRecorder::paletteRecipes() const
+{
+    std::lock_guard<std::mutex> lock(workMutex);
+    return recipeWork;
+}
+
+void AppearanceTrace::workAdmitted(AppearanceWork kind)
+{
+    workCounts[size_t(kind)].fetch_add(1, std::memory_order_relaxed);
+}
+
+void AppearanceTrace::paletteRecipeAdmitted(const PaletteRecipeWork &result)
+{
+    std::lock_guard<std::mutex> lock(workMutex);
+    recipeWork.append(result);
+}
+
+const char *AppearanceTrace::workName(AppearanceWork kind)
+{
+    static constexpr const char *names[]{
+        "source-update", "notification-compare", "notification-drain", "facade-update",
+        "shared-palette-build", "shared-pair-measurement", "state-table-build", "private-state-table-build",
+        "color-resolution", "local-derivation", "local-pair-measurement", "font-construction",
+        "font-measurement", "geometry-calculation", "control-diagnostics-build"};
+    static_assert(std::size(names) == size_t(AppearanceWork::Count));
+    return kind < AppearanceWork::Count ? names[size_t(kind)] : "unknown";
 }
 
 quint64 AppearanceTrace::monotonicNow()
@@ -283,6 +331,8 @@ quint32 AppearanceTrace::start(TraceMode mode, const Config &config)
     s.active = true;
     s.mode.store(quint8(mode), std::memory_order_release);
     s.accepting.store(true, std::memory_order_release);
+    __atomic_fetch_or(&AppearanceInstrumentation::admission, mode == TraceMode::Trace
+        ? AppearanceInstrumentation::Detailed : AppearanceInstrumentation::Summary, __ATOMIC_RELAXED);
     return s.epoch;
 }
 
@@ -292,6 +342,7 @@ void AppearanceTrace::stop()
     if (!s.active)
         return;
     // Stop admitting first; admitted scopes still finish into their buffers.
+    __atomic_fetch_and(&AppearanceInstrumentation::admission, AppearanceInstrumentation::Work, __ATOMIC_RELAXED);
     s.accepting.store(false, std::memory_order_release);
     s.stopNs = rawNow();
 }
@@ -437,7 +488,7 @@ void AppearanceTrace::spanEnd(quint32 spanId, quint64 startNs, TraceScope scope,
     spanEndImpl(spanId, startNs, scope, owner, aux, 0);
 }
 
-void AppearanceTrace::instant(TraceScope scope, const void *owner, quint64 aux, bool summaryClassScope)
+void AppearanceTrace::instantAdmitted(TraceScope scope, const void *owner, quint64 aux, bool summaryClassScope)
 {
     auto &s = S();
     if (!s.accepting.load(std::memory_order_acquire))
@@ -464,7 +515,7 @@ void AppearanceTrace::instant(TraceScope scope, const void *owner, quint64 aux, 
     writeRecord(ctx, record);
 }
 
-void AppearanceTrace::counter(TraceScope scope, const void *owner, quint64 value)
+void AppearanceTrace::counterAdmitted(TraceScope scope, const void *owner, quint64 value)
 {
     auto &s = S();
     if (!s.accepting.load(std::memory_order_acquire))
@@ -595,68 +646,29 @@ void AppearanceTrace::popInput(quint32 inputId)
 
 // --- RAII wrappers -----------------------------------------------------------
 
-TraceSpan::TraceSpan(TraceScope scope, const void *owner)
-    : m_owner(owner), m_scope(scope)
+void TraceSpan::begin()
 {
-    if (AppearanceTrace::detailed()) {
-        m_startNs = AppearanceTrace::monotonicNow();
-        m_spanId = AppearanceTrace::spanBegin(scope, owner, false);
-        if (!m_spanId)
-            m_startNs = 0;
-    }
+    m_startNs = AppearanceTrace::monotonicNow();
+    m_spanId = AppearanceTrace::spanBegin(m_scope, m_owner, false);
+    if (!m_spanId)
+        m_startNs = 0;
 }
 
-TraceSpan::~TraceSpan()
+void TraceAttempt::begin()
 {
-    if (m_spanId)
-        AppearanceTrace::spanEnd(m_spanId, m_startNs, m_scope, m_owner, m_aux);
+    m_startNs = AppearanceTrace::monotonicNow();
+    m_spanId = AppearanceTrace::attemptBegin(m_owner);
+    if (!m_spanId)
+        m_startNs = 0;
 }
 
-TraceAttempt::TraceAttempt(const void *owner)
-    : m_owner(owner)
+void TraceAggregate::end()
 {
-    if (AppearanceTrace::enabled()) {
-        m_startNs = AppearanceTrace::monotonicNow();
-        m_spanId = AppearanceTrace::attemptBegin(owner);
-        if (!m_spanId)
-            m_startNs = 0;
-    }
+    const quint64 end = AppearanceTrace::monotonicNow();
+    AppearanceTrace::aggregateAdd(m_scope, m_roleKey, end > m_startNs ? end - m_startNs : 0);
 }
 
-TraceAttempt::~TraceAttempt()
-{
-    if (m_spanId)
-        AppearanceTrace::attemptEnd(m_spanId, m_startNs, m_owner, m_outcome, m_revisionBefore, m_revisionAfter);
-}
-
-void TraceAttempt::finish(TraceOutcome outcome, quint64 revisionBefore, quint64 revisionAfter)
-{
-    m_outcome = outcome;
-    m_revisionBefore = revisionBefore;
-    m_revisionAfter = revisionAfter;
-}
-
-quint32 TraceAttempt::id() const
-{
-    return m_spanId;
-}
-
-TraceAggregate::TraceAggregate(TraceScope scope, quint16 roleKey)
-    : m_roleKey(roleKey), m_scope(scope)
-{
-    if (AppearanceTrace::detailed())
-        m_startNs = AppearanceTrace::monotonicNow();
-}
-
-TraceAggregate::~TraceAggregate()
-{
-    if (m_startNs) {
-        const quint64 end = AppearanceTrace::monotonicNow();
-        AppearanceTrace::aggregateAdd(m_scope, m_roleKey, end > m_startNs ? end - m_startNs : 0);
-    }
-}
-
-quint32 TraceInput::begin(const void *window, quint64 packedEvent)
+quint32 TraceInput::beginAdmitted(const void *window, quint64 packedEvent)
 {
     auto &s = S();
     if (!s.accepting.load(std::memory_order_acquire))
@@ -671,7 +683,7 @@ quint32 TraceInput::begin(const void *window, quint64 packedEvent)
     return inputId;
 }
 
-void TraceInput::end(quint32 inputId, const void *window, quint64 packedEvent)
+void TraceInput::endAdmitted(quint32 inputId, const void *window, quint64 packedEvent)
 {
     if (!inputId)
         return;

@@ -58,7 +58,6 @@ Appearance *Appearance::create(QQmlEngine *engine, QJSEngine *)
 
 void Appearance::setInput(const QVariantMap &input)
 {
-    const AppearanceWorkScope timing("source-update", this);
     TraceAttempt attempt(this);
     auto *source = AppearanceSource::from(this);
     const quint64 revisionBefore = source->state() ? source->state()->revision : 0;

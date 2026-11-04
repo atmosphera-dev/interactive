@@ -9,10 +9,11 @@ namespace InterActive {
 QColor LocalColorOverrides::Branch::evaluate(const BranchInputs &next,
     const std::function<QColor()> &calculate, const char *operation, const void *owner, quint64 revision)
 {
+    Q_UNUSED(operation);
+    Q_UNUSED(owner);
+    Q_UNUSED(revision);
     if (!valid || !(inputs == next)) {
-        qCDebug(appearanceWork).nospace() << "owner=" << owner << " revision=" << revision
-            << " operation=local-derivation branch=" << operation;
-        const TraceAggregate aggregated(TraceScope::AggLocalDerivation, 0);
+        const TraceAggregate aggregated(TraceScope::AggLocalDerivation, 0, AppearanceWork::LocalDerivation);
         result = calculate();
         inputs = next;
         valid = true;
@@ -53,7 +54,6 @@ std::shared_ptr<const StateTableData> LocalColorOverrides::install(const Palette
     const ControlColorMapping &mapping, const std::shared_ptr<const StateTableData> &shared,
     const ControlColorValues &overrides, bool coupleBorder, const void *owner, quint64 revision)
 {
-    const AppearanceWorkScope timing("local-colors", owner);
     TraceSpan span(TraceScope::LocalInstall, owner);
     auto values = overrides;
     if (values.presence.none()) {
@@ -150,9 +150,8 @@ std::shared_ptr<const StateTableData> LocalColorOverrides::install(const Palette
         const qreal required = focus ? 3 : target;
         const PairInputs inputs{text, surface, backdrop, required, localText, localSurface};
         if (!pair.valid || !(pair.inputs == inputs)) {
-            qCDebug(appearanceWork).nospace() << "owner=" << owner << " revision=" << revision
-                << " operation=local-pair-measurement pair=" << i;
-            const TraceAggregate aggregated(TraceScope::AggLocalPairMeasure, quint16(i));
+            const TraceAggregate aggregated(TraceScope::AggLocalPairMeasure, quint16(i),
+                AppearanceWork::LocalPairMeasurement);
             pair.findings.clear();
             TokenValidation::checkContrast(&pair.findings, path, text,
                 focus ? backdrop : ColorMath::composite(surface, backdrop), required);
@@ -170,8 +169,7 @@ std::shared_ptr<const StateTableData> LocalColorOverrides::install(const Palette
     const std::shared_ptr<const ControlFindings> findings = localFindings ? localFindings : shared->findings;
     if (!m_table || !(m_table->values == values) || *m_table->findings != *findings
         || m_table->sharedColors != shared->sharedColors) {
-        qCDebug(appearanceWork).nospace() << "owner=" << owner << " revision=" << revision
-            << " operation=private-state-table-build";
+        AppearanceTrace::work(AppearanceWork::PrivateStateTableBuild);
         m_table = buildStateTable(values, findings, shared->sharedColors);
     }
     return m_table;

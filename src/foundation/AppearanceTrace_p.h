@@ -8,10 +8,56 @@
 #include "interactive_foundation_export.h"
 #include <QtGlobal>
 #include <QVector>
+#include <array>
 
 class QString;
 
 namespace InterActive {
+
+// One admission word for counters and the existing summary/detailed recorder.
+// Constant-initialized storage: disabled sites need only an inline relaxed load.
+namespace AppearanceInstrumentation {
+inline constexpr quint8 Summary = 1, Detailed = 2, Work = 4;
+extern INTERACTIVE_FOUNDATION_EXPORT quint8 admission;
+Q_ALWAYS_INLINE quint8 admitted()
+{
+    // This recorder already targets POSIX/GCC-compatible platforms. Use the
+    // compiler atomic directly: Debug libstdc++'s load adds an out-of-line
+    // memory-order validation helper even with a constant relaxed order.
+    static_assert(__atomic_always_lock_free(sizeof(admission), nullptr));
+    return __atomic_load_n(&admission, __ATOMIC_RELAXED);
+}
+}
+
+enum class AppearanceWork : quint8 {
+    SourceUpdate, NotificationCompare, NotificationDrain, FacadeUpdate,
+    SharedPaletteBuild, SharedPairMeasurement, StateTableBuild, PrivateStateTableBuild,
+    ColorResolution, LocalDerivation, LocalPairMeasurement, FontConstruction,
+    FontMeasurement, GeometryCalculation, ControlDiagnosticsBuild, Count
+};
+
+enum class PaletteRecipeRole : quint8 { Error, Warning, Success };
+struct PaletteRecipeWork {
+    PaletteRecipeRole role;
+    int chromatic = 0;
+    int neutral = 0;
+    int tried = 0;
+    bool exhausted = false;
+};
+
+// Private diagnostic subscription. Counts are process-wide, like the former
+// logging recorder; clear/read require the measured work to have finished.
+class INTERACTIVE_FOUNDATION_EXPORT AppearanceWorkRecorder
+{
+public:
+    AppearanceWorkRecorder();
+    ~AppearanceWorkRecorder();
+    AppearanceWorkRecorder(const AppearanceWorkRecorder &) = delete;
+    AppearanceWorkRecorder &operator=(const AppearanceWorkRecorder &) = delete;
+    int count(AppearanceWork kind) const;
+    void clear();
+    QVector<PaletteRecipeWork> paletteRecipes() const;
+};
 
 enum class TraceScope : quint16 {
     UpdateAttempt = 0,      // summary-class: recorded in summary and trace modes
@@ -83,8 +129,29 @@ public:
         quint32 capacityMiB = 128;      // total recorder budget, clamped to [1, 256]
     };
 
-    static bool enabled();              // cheap: one atomic load
-    static bool detailed();             // trace mode and accepting
+    static Q_ALWAYS_INLINE bool enabled()
+    {
+        return AppearanceInstrumentation::admitted()
+            & (AppearanceInstrumentation::Summary | AppearanceInstrumentation::Detailed);
+    }
+    static Q_ALWAYS_INLINE bool detailed()
+    {
+        return AppearanceInstrumentation::admitted()
+            & AppearanceInstrumentation::Detailed;
+    }
+    static Q_ALWAYS_INLINE void work(AppearanceWork kind)
+    {
+        if (AppearanceInstrumentation::admitted()
+            & AppearanceInstrumentation::Work)
+            workAdmitted(kind);
+    }
+    static Q_ALWAYS_INLINE void paletteRecipe(const PaletteRecipeWork &result)
+    {
+        if (AppearanceInstrumentation::admitted()
+            & AppearanceInstrumentation::Work)
+            paletteRecipeAdmitted(result);
+    }
+    static const char *workName(AppearanceWork kind);
 
     // Session lifecycle. start refuses while a previous session is still active
     // or unquiesced. stop stops admitting new scopes; admitted scopes finish
@@ -112,8 +179,24 @@ public:
     // Low-level recording entry points; the RAII wrappers below are the API.
     static quint32 spanBegin(TraceScope scope, const void *owner, bool summaryClass);
     static void spanEnd(quint32 spanId, quint64 startNs, TraceScope scope, const void *owner, quint64 aux);
-    static void instant(TraceScope scope, const void *owner, quint64 aux, bool summaryClass);
-    static void counter(TraceScope scope, const void *owner, quint64 value);
+    static Q_ALWAYS_INLINE void instant(TraceScope scope, const void *owner, quint64 aux, bool summaryClass)
+    {
+        if (enabled())
+            instantAdmitted(scope, owner, aux, summaryClass);
+    }
+    static Q_ALWAYS_INLINE void counter(TraceScope scope, const void *owner, quint64 value,
+                        AppearanceWork workKind = AppearanceWork::Count)
+    {
+        const auto admission = AppearanceInstrumentation::admitted();
+        if (admission & AppearanceInstrumentation::Work && workKind != AppearanceWork::Count)
+            workAdmitted(workKind);
+        if (admission & (AppearanceInstrumentation::Summary | AppearanceInstrumentation::Detailed))
+            counterAdmitted(scope, owner, value);
+    }
+    static void workAdmitted(AppearanceWork kind);
+    static void paletteRecipeAdmitted(const PaletteRecipeWork &result);
+    static void counterAdmitted(TraceScope scope, const void *owner, quint64 value);
+    static void instantAdmitted(TraceScope scope, const void *owner, quint64 aux, bool summaryClass);
     static void aggregateAdd(TraceScope scope, quint16 roleKey, quint64 durationNs);
     static quint32 attemptBegin(const void *owner);
     static void attemptEnd(quint32 spanId, quint64 startNs, const void *owner,
@@ -127,13 +210,26 @@ public:
 class INTERACTIVE_FOUNDATION_EXPORT TraceSpan
 {
 public:
-    TraceSpan(TraceScope scope, const void *owner);
-    ~TraceSpan();
+    Q_ALWAYS_INLINE TraceSpan(TraceScope scope, const void *owner, AppearanceWork work = AppearanceWork::Count)
+        : m_owner(owner), m_scope(scope)
+    {
+        const auto admission = AppearanceInstrumentation::admitted();
+        if (admission & AppearanceInstrumentation::Work && work != AppearanceWork::Count)
+            AppearanceTrace::workAdmitted(work);
+        if (admission & AppearanceInstrumentation::Detailed)
+            begin();
+    }
+    Q_ALWAYS_INLINE ~TraceSpan()
+    {
+        if (m_spanId)
+            AppearanceTrace::spanEnd(m_spanId, m_startNs, m_scope, m_owner, m_aux);
+    }
     TraceSpan(const TraceSpan &) = delete;
     TraceSpan &operator=(const TraceSpan &) = delete;
     bool active() const { return m_spanId != 0; }
-    void setAux(quint64 aux) { m_aux = aux; }
+    Q_ALWAYS_INLINE void setAux(quint64 aux) { m_aux = aux; }
 private:
+    void begin();
     quint64 m_startNs = 0;
     quint64 m_aux = 0;
     const void *m_owner = nullptr;
@@ -147,14 +243,31 @@ private:
 class INTERACTIVE_FOUNDATION_EXPORT TraceAttempt
 {
 public:
-    explicit TraceAttempt(const void *owner);
-    ~TraceAttempt();
+    Q_ALWAYS_INLINE explicit TraceAttempt(const void *owner) : m_owner(owner)
+    {
+        const auto admission = AppearanceInstrumentation::admitted();
+        if (admission & AppearanceInstrumentation::Work)
+            AppearanceTrace::workAdmitted(AppearanceWork::SourceUpdate);
+        if (admission & (AppearanceInstrumentation::Summary | AppearanceInstrumentation::Detailed))
+            begin();
+    }
+    Q_ALWAYS_INLINE ~TraceAttempt()
+    {
+        if (m_spanId)
+            AppearanceTrace::attemptEnd(m_spanId, m_startNs, m_owner, m_outcome, m_revisionBefore, m_revisionAfter);
+    }
     TraceAttempt(const TraceAttempt &) = delete;
     TraceAttempt &operator=(const TraceAttempt &) = delete;
-    void finish(TraceOutcome outcome, quint64 revisionBefore, quint64 revisionAfter);
-    quint32 id() const;
+    Q_ALWAYS_INLINE void finish(TraceOutcome outcome, quint64 revisionBefore, quint64 revisionAfter)
+    {
+        m_outcome = outcome;
+        m_revisionBefore = revisionBefore;
+        m_revisionAfter = revisionAfter;
+    }
+    quint32 id() const { return m_spanId; }
     bool active() const { return m_spanId != 0; }
 private:
+    void begin();
     quint64 m_startNs = 0;
     quint64 m_revisionBefore = 0;
     quint64 m_revisionAfter = 0;
@@ -168,11 +281,24 @@ private:
 class INTERACTIVE_FOUNDATION_EXPORT TraceAggregate
 {
 public:
-    TraceAggregate(TraceScope scope, quint16 roleKey);
-    ~TraceAggregate();
+    Q_ALWAYS_INLINE TraceAggregate(TraceScope scope, quint16 roleKey, AppearanceWork work = AppearanceWork::Count)
+        : m_roleKey(roleKey), m_scope(scope)
+    {
+        const auto admission = AppearanceInstrumentation::admitted();
+        if (admission & AppearanceInstrumentation::Work && work != AppearanceWork::Count)
+            AppearanceTrace::workAdmitted(work);
+        if (admission & AppearanceInstrumentation::Detailed)
+            m_startNs = AppearanceTrace::monotonicNow();
+    }
+    Q_ALWAYS_INLINE ~TraceAggregate()
+    {
+        if (m_startNs)
+            end();
+    }
     TraceAggregate(const TraceAggregate &) = delete;
     TraceAggregate &operator=(const TraceAggregate &) = delete;
 private:
+    void end();
     quint64 m_startNs = 0;
     quint16 m_roleKey = 0;
     TraceScope m_scope = TraceScope::Count;
@@ -183,8 +309,18 @@ class INTERACTIVE_FOUNDATION_EXPORT TraceInput
 {
 public:
     // Returns input id (0 when tracing is off); call end with the same token.
-    static quint32 begin(const void *window, quint64 packedEvent);
-    static void end(quint32 inputId, const void *window, quint64 packedEvent);
+    static Q_ALWAYS_INLINE quint32 begin(const void *window, quint64 packedEvent)
+    {
+        return AppearanceTrace::enabled() ? beginAdmitted(window, packedEvent) : 0;
+    }
+    static Q_ALWAYS_INLINE void end(quint32 inputId, const void *window, quint64 packedEvent)
+    {
+        if (inputId)
+            endAdmitted(inputId, window, packedEvent);
+    }
+private:
+    static quint32 beginAdmitted(const void *window, quint64 packedEvent);
+    static void endAdmitted(quint32 inputId, const void *window, quint64 packedEvent);
 };
 
 } // namespace InterActive

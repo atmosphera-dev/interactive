@@ -98,6 +98,13 @@ metrics edit (one shared palette build for the accent edit). Counts are logged a
 `G1`. Height-affecting metrics still require per-control geometry work on master;
 this baseline gate does not assert otherwise.
 
+Foundation's private instrumentation API shares one inline relaxed admission
+load for typed work counters and trace spans. Tests subscribe with
+`AppearanceWorkRecorder` and read `AppearanceWork` counts directly; bounded
+palette-recipe checks read typed per-role proposal/exhaustion records from that
+same subscription. With diagnostics off, sites do not read clocks or call the
+recorder. Timings use only the trace backend described below.
+
 `ark-vm-build --perf --no-deliver` runs G3 in VM `interactive-dev` on ark.home,
 using the same Debug SDK/RHI lane. The `interactive_perf` target is labeled only
 `interactive-perf` (600-second timeout), outside `interactive-overview`. Its real

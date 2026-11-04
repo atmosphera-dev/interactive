@@ -6,8 +6,6 @@
 #include "TokenSchema.h"
 #include "Presentation.h"
 #include "StateTable.h"
-#include <QLoggingCategory>
-#include <QElapsedTimer>
 #include <QMetaProperty>
 #include <QObject>
 #include <array>
@@ -18,27 +16,6 @@
 #include <variant>
 
 namespace InterActive {
-
-Q_DECLARE_LOGGING_CATEGORY(appearanceWork)
-
-class AppearanceWorkScope {
-public:
-    AppearanceWorkScope(const char *scope, const void *owner) : m_scope(scope), m_owner(owner)
-    {
-        if (appearanceWork().isDebugEnabled())
-            m_timer.start();
-    }
-    ~AppearanceWorkScope()
-    {
-        if (m_timer.isValid())
-            qCDebug(appearanceWork).nospace() << "owner=" << m_owner << " operation=timing scope="
-                << m_scope << " elapsedNs=" << m_timer.nsecsElapsed();
-    }
-private:
-    const char *m_scope;
-    const void *m_owner;
-    QElapsedTimer m_timer;
-};
 
 enum class ColorRole {
 #define IA_ROLE(name, light, dark) name,

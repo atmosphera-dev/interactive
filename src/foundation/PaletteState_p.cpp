@@ -10,8 +10,6 @@
 
 namespace InterActive {
 
-Q_LOGGING_CATEGORY(appearanceWork, "interactive.appearance.work", QtWarningMsg)
-
 void PropertyNotifications::initialize(QObject *object, const QStringList &names)
 {
     properties = names;
@@ -33,8 +31,7 @@ void PropertyNotifications::initialize(QObject *object, const QStringList &names
 
 void PropertyNotifications::installed(QObject *object)
 {
-    const AppearanceWorkScope timing("notification-compare", object);
-    TraceSpan span(TraceScope::NotificationCompare, object);
+    TraceSpan span(TraceScope::NotificationCompare, object, AppearanceWork::NotificationCompare);
     quint32 compared = 0;
     for (const auto &property : metadata) {
         ++compared;
@@ -46,8 +43,7 @@ void PropertyNotifications::installed(QObject *object)
 
 void PropertyNotifications::drain(QObject *object)
 {
-    const AppearanceWorkScope timing("notification-drain", object);
-    TraceSpan span(TraceScope::NotificationDrain, object);
+    TraceSpan span(TraceScope::NotificationDrain, object, AppearanceWork::NotificationDrain);
     quint32 emitted = 0;
     if (draining)
         return;
@@ -301,7 +297,7 @@ std::shared_ptr<const StateTableData> PaletteState::stateTable(ControlFamily fam
         : tone == Presentation::Caution ? 3 : 0;
     auto &table = m_stateTables[(size_t(family) * 4 + t) * 3 + size_t(validation)];
     if (!table) {
-        qCDebug(appearanceWork).nospace() << "owner=" << this << " operation=state-table-build";
+        AppearanceTrace::work(AppearanceWork::StateTableBuild);
         const auto mapping = controlColorMapping(family, tone, validation);
         ControlColorValues values;
         for (size_t i = 0; i < ControlColorCount; ++i)
@@ -344,10 +340,8 @@ PaletteUpdate PaletteUpdate::between(const AppearanceStatePtr &before, const App
 std::shared_ptr<const PaletteState> PaletteState::calculate(const ResolvedAppearance &prepared,
     const std::shared_ptr<const PaletteState> &previous, const void *owner, quint64 revision)
 {
-    const AppearanceWorkScope timing("shared-palette", owner);
-    TraceSpan span(TraceScope::PaletteBuild, owner);
-    qCDebug(appearanceWork).nospace() << "owner=" << owner << " revision=" << revision
-        << " operation=shared-palette-build";
+    Q_UNUSED(revision);
+    TraceSpan span(TraceScope::PaletteBuild, owner, AppearanceWork::SharedPaletteBuild);
     auto input = prepared;
     input.diagnostics.clear();
     const auto output = PaletteBuilder::calculatePalette(std::move(input));
@@ -383,10 +377,8 @@ std::shared_ptr<const PaletteState> PaletteState::calculate(const ResolvedAppear
             }
         }
         if (!reused) {
-            qCDebug(appearanceWork).nospace() << "owner=" << owner << " revision=" << revision
-                << " operation=shared-pair-measurement foreground=" << int(foreground)
-                << " background=" << int(background);
-            AppearanceTrace::counter(TraceScope::PaletteBuild, owner, 2); // measured pair
+            AppearanceTrace::counter(TraceScope::PaletteBuild, owner, 2,
+                AppearanceWork::SharedPairMeasurement); // measured pair
             TokenValidation::checkContrast(&pair.findings, {}, state->color(foreground),
                 focus ? state->backdrop : ColorMath::composite(state->color(background), state->backdrop), required);
         } else {
