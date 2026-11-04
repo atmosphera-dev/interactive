@@ -19,15 +19,21 @@ QColor LocalColorOverrides::Branch::evaluate(const BranchInputs &next,
 }
 
 std::shared_ptr<const StateTableData> LocalColorOverrides::buildStateTable(
-    const ControlColorValues &values, std::shared_ptr<const ControlFindings> findings)
+    const ControlColorValues &values, std::shared_ptr<const ControlFindings> findings,
+    const StateTableSharedColors &sharedColors)
 {
     auto table = std::make_shared<StateTableData>();
     table->values = values;
+    table->sharedColors = sharedColors;
     table->findings = std::move(findings);
     const auto entry = [&](ControlColor background, ControlColor foreground, bool disabled = false) {
         return StateColors(values.value(background), values.value(foreground),
             values.value(disabled ? ControlColor::disabledBorderColor : ControlColor::borderColor),
-            values.value(ControlColor::focusColor));
+            values.value(ControlColor::focusColor),
+            values.value(disabled ? ControlColor::disabledForegroundColor : ControlColor::fillColor),
+            values.value(disabled ? ControlColor::disabledBackgroundColor : ControlColor::borderColor),
+            disabled ? values.value(ControlColor::disabledForegroundColor)
+                     : sharedColors[size_t(StateTableColor::Placeholder)]);
     };
     const auto rest = entry(ControlColor::backgroundColor, ControlColor::foregroundColor);
     const auto hover = entry(ControlColor::hoverBackgroundColor, ControlColor::foregroundColor);
@@ -160,10 +166,11 @@ std::shared_ptr<const StateTableData> LocalColorOverrides::install(const Palette
             values.set(ControlColor(i), shared->values.values[i]);
     }
     const std::shared_ptr<const ControlFindings> findings = localFindings ? localFindings : shared->findings;
-    if (!m_table || !(m_table->values == values) || *m_table->findings != *findings) {
+    if (!m_table || !(m_table->values == values) || *m_table->findings != *findings
+        || m_table->sharedColors != shared->sharedColors) {
         qCDebug(appearanceWork).nospace() << "owner=" << owner << " revision=" << revision
             << " operation=private-state-table-build";
-        m_table = buildStateTable(values, findings);
+        m_table = buildStateTable(values, findings, shared->sharedColors);
     }
     return m_table;
 }

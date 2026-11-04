@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
+pragma ComponentBehavior: Bound
 import QtQuick
 
 Rectangle {
@@ -15,17 +16,13 @@ Rectangle {
     property real focusInset: -Appearance.metrics.focusWidth
     readonly property bool showsPressedFill: down && !pressInset
     readonly property real contentShift: pressInset && down && controlEnabled ? Appearance.metrics.pressContentShift : 0
-    readonly property color foregroundColor: !controlEnabled ? resolvedAppearance.disabledForegroundColor
-        : showsPressedFill ? resolvedAppearance.foregroundColor
-        : selected ? (active ? resolvedAppearance.selectedForegroundColor : resolvedAppearance.inactiveForegroundColor)
-        : resolvedAppearance.foregroundColor
+    readonly property stateColors colors: resolvedAppearance.stateTable.colors(
+        ControlState.of(controlEnabled, down, hovered, selected, active, pressInset))
+    readonly property color foregroundColor: colors.foregroundColor
     objectName: "iaBackground"
     radius: resolvedAppearance.controlRadius
-    color: !controlEnabled ? resolvedAppearance.disabledBackgroundColor
-         : showsPressedFill ? resolvedAppearance.pressedBackgroundColor
-         : selected ? (active ? resolvedAppearance.selectedBackgroundColor : resolvedAppearance.inactiveBackgroundColor)
-         : hovered ? resolvedAppearance.hoverBackgroundColor : resolvedAppearance.backgroundColor
-    border.color: controlEnabled ? resolvedAppearance.borderColor : resolvedAppearance.disabledBorderColor
+    color: colors.backgroundColor
+    border.color: colors.borderColor
     border.width: outlined ? Appearance.metrics.borderWidth : 0
     Rectangle {
         id: inset
@@ -35,7 +32,30 @@ Rectangle {
         radius: Math.max(0, root.radius - root.border.width)
         visible: root.pressInset && root.down && root.controlEnabled
         Accessible.ignored: true
-        gradient: Gradient {
+        // Keep the named inset item for introspection, but no unused gradient/stops.
+        property bool complete: false
+        property Gradient pressGradient: null
+        function updateGradient(): void {
+            if (!complete)
+                return;
+            if (pressGradient) {
+                gradient = null;
+                pressGradient.destroy();
+                pressGradient = null;
+            }
+            if (root.pressInset) {
+                pressGradient = gradientComponent.createObject(inset) as Gradient;
+                if (!pressGradient)
+                    throw new Error(gradientComponent.errorString());
+                gradient = pressGradient;
+            }
+        }
+        Component.onCompleted: { complete = true; updateGradient(); }
+    }
+    onPressInsetChanged: inset.updateGradient()
+    Component {
+        id: gradientComponent
+        Gradient {
             GradientStop { position: 0; color: Qt.rgba(0, 0, 0, Appearance.motion.pressInsetOpacity) }
             GradientStop {
                 position: Math.min(0.5, Appearance.metrics.pressInsetDepth / Math.max(1, inset.height))
@@ -49,7 +69,7 @@ Rectangle {
         visible: root.focused
         color: Appearance.colors.transparent
         radius: Math.max(0, root.radius - root.focusInset)
-        border.color: root.resolvedAppearance.focusColor
+        border.color: root.colors.focusColor
         border.width: Appearance.metrics.focusWidth
     }
 }

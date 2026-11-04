@@ -303,6 +303,12 @@ void ControlAppearance::resolve(const PaletteUpdate &update, bool forceNoncolors
         dependencies.set(size_t(role));
     dependencies.set(size_t(ColorRole::content));
     dependencies.set(size_t(ColorRole::canvas));
+    if (state.family == ControlFamily::Field) {
+        dependencies.set(size_t(ColorRole::placeholderText));
+        dependencies.set(size_t(ColorRole::onAccent));
+    }
+    if (state.family == ControlFamily::Label)
+        dependencies.set(size_t(ColorRole::link));
     const auto &before = *state.palette;
     const auto &after = *newest->palette;
     const bool colors = ((effective.changedRoles | effective.changedPresence) & dependencies).any()

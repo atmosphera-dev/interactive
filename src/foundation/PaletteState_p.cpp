@@ -303,7 +303,15 @@ std::shared_ptr<const StateTableData> PaletteState::stateTable(ControlFamily fam
         ControlColorValues values;
         for (size_t i = 0; i < ControlColorCount; ++i)
             values.set(ControlColor(i), color(mapping[i]));
-        table = LocalColorOverrides::buildStateTable(values, controlFindings(mapping));
+        StateTableSharedColors sharedColors;
+        if (family == ControlFamily::Field) {
+            sharedColors[size_t(StateTableColor::Placeholder)] = color(ColorRole::placeholderText);
+            sharedColors[size_t(StateTableColor::Selection)] = color(ColorRole::accent);
+            sharedColors[size_t(StateTableColor::SelectionText)] = color(ColorRole::onAccent);
+        }
+        if (family == ControlFamily::Label)
+            sharedColors[size_t(StateTableColor::Link)] = color(ColorRole::link);
+        table = LocalColorOverrides::buildStateTable(values, controlFindings(mapping), sharedColors);
     }
     return table;
 }

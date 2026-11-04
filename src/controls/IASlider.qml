@@ -19,7 +19,13 @@ T.Slider {
     property alias fillColor: appearance.fillColor
     readonly property alias appearanceDiagnostics: appearance.diagnostics
     function resetAppearance(): void { appearance.resetOverrides(); }
-    IA.ControlAppearance { id: appearance; source: IA.Appearance; family: "button" }
+    IA.ControlAppearance {
+        id: appearance
+        source: IA.Appearance
+        family: "button"
+        readonly property IA.stateColors colors: stateTable.colors(
+            IA.ControlState.of(control.enabled, false, false, false, true, false))
+    }
     implicitWidth: Math.max(horizontal ? IA.Appearance.metrics.sliderLength : minimumHeight,
                             implicitHandleWidth + leftPadding + rightPadding)
     implicitHeight: Math.max(horizontal ? minimumHeight : IA.Appearance.metrics.sliderLength,
@@ -41,7 +47,7 @@ T.Slider {
             width: control.horizontal ? Math.max(0, lane.width - thumb.width) : IA.Appearance.metrics.trackHeight
             height: control.horizontal ? IA.Appearance.metrics.trackHeight : Math.max(0, lane.height - thumb.height)
             radius: Math.min(width, height) / 2
-            color: control.enabled ? control.borderColor : control.disabledBackgroundColor
+            color: appearance.colors.trackColor
             Rectangle {
                 objectName: "iaFill"
                 width: control.horizontal ? track.width * control.position : track.width
@@ -49,7 +55,7 @@ T.Slider {
                 x: control.horizontal && control.mirrored ? track.width - width : 0
                 y: control.horizontal ? 0 : track.height - height
                 radius: track.radius
-                color: control.enabled ? control.fillColor : control.disabledForegroundColor
+                color: appearance.colors.fillColor
             }
         }
     }

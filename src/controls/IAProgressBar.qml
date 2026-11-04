@@ -13,7 +13,13 @@ T.ProgressBar {
     property alias fillColor: appearance.fillColor
     readonly property alias appearanceDiagnostics: appearance.diagnostics
     function resetAppearance(): void { appearance.resetOverrides(); }
-    IA.ControlAppearance { id: appearance; source: IA.Appearance; family: "button" }
+    IA.ControlAppearance {
+        id: appearance
+        source: IA.Appearance
+        family: "button"
+        readonly property IA.stateColors colors: stateTable.colors(
+            IA.ControlState.of(control.enabled, false, false, false, true, false))
+    }
     implicitWidth: IA.Appearance.metrics.progressWidth
     implicitHeight: IA.Appearance.metrics.progressHeight + topPadding + bottomPadding
     contentItem: Item {
@@ -26,7 +32,7 @@ T.ProgressBar {
             height: lane.height
             x: control.mirrored ? lane.width - width : 0
             radius: control.controlRadius
-            color: control.enabled ? control.fillColor : control.disabledForegroundColor
+            color: appearance.colors.fillColor
         }
         Rectangle {
             id: busy
@@ -36,7 +42,7 @@ T.ProgressBar {
             width: Math.min(lane.width, IA.Appearance.metrics.busySize)
             height: lane.height
             radius: control.controlRadius
-            color: control.enabled ? control.fillColor : control.disabledForegroundColor
+            color: appearance.colors.fillColor
             // A centered segment remains distinct from a zero or complete value without motion.
             x: IA.Appearance.reducedMotion || IA.Appearance.motion.busyDuration === 0 ? (lane.width - width) / 2
                 : (control.mirrored ? 1 - phase : phase) * (lane.width + width) - width
@@ -54,7 +60,7 @@ T.ProgressBar {
     }
     background: Rectangle {
         objectName: "iaBackground"
-        color: control.enabled ? control.backgroundColor : control.disabledBackgroundColor
+        color: appearance.colors.backgroundColor
         radius: control.controlRadius
     }
 }

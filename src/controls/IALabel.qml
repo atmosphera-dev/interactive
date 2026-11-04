@@ -21,8 +21,8 @@ T.Label {
         family: "label"
         tone: control.tone
     }
-    color: enabled ? foregroundColor : disabledForegroundColor
-    linkColor: IA.Appearance.colors.link
+    color: appearance.stateTable.colors(IA.ControlState.of(enabled, false, false, false, true, false)).foregroundColor
+    linkColor: appearance.stateTable.linkColor
     font: appearance.resolvedFont
     elide: Text.ElideRight
     background: Rectangle {

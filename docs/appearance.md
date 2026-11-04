@@ -539,7 +539,13 @@ change. Font/geometry edits do not rebuild the table. Shared pair diagnostics ar
 reused from the palette; locally affected pairs retain their dependency caches.
 
 The additive read-only value API is `appearance.stateTable.colors(state)`, returning
-`backgroundColor`, `foregroundColor`, `borderColor`, and `focusColor`. `stateTable`
+`backgroundColor`, `foregroundColor`, `borderColor`, `focusColor`, `fillColor`,
+`trackColor`, and `placeholderTextColor`. Fill uses the ordinary fill or disabled
+foreground; the slider track uses the ordinary border or disabled background.
+Field placeholders use the shared placeholder or local disabled foreground.
+The table also holds field `selectionColor`/`selectedTextColor` and label
+`linkColor`. These retain their shared application roles, independent of local
+fill/foreground overrides, exactly as before. `stateTable`
 is a small owning value around shared immutable storage, not another QObject or
 an eagerly boxed list per control. Its `stateTableChanged` signal tracks changed
 effective state colors, so reading the property establishes a QML binding
@@ -550,8 +556,20 @@ the existing visual expressions: hover retains ordinary foreground; selected
 hover retains the selected pair; selected pressed uses the ordinary pressed pair;
 inactive hover retains the inactive pair; disabled uses the disabled pair/border.
 Focus is unchanged in every entry. Press-inset controls still select their resting,
-hover or selected fill rather than the pressed fill. No color recipe is changed,
-and existing QML visuals and public facade properties are unchanged.
+hover or selected fill rather than the pressed fill. One pure Foundation QML
+function, `ControlState.of(enabled, down, hovered, selected, active, insetPress)`,
+maps the template flags to this index; it performs no C++ resolution or color
+math. Backgrounds and indicators read one indexed entry. Choice labels continue
+to use only enabled/disabled text, not the indicator's selected pair. Scrollbar
+tracks continue to ignore enabled, while their thumbs consume disabled text.
+
+Only the selected kind's check/mixed icon, radio dot or switch thumb is created.
+Inset backgrounds create their Gradient and stops only when `pressInset` is used;
+the named empty inset Rectangle remains available on other backgrounds. Changing
+the kind or inset trait replaces only that owned visual, not the control.
+No color recipe or public control property/alias is changed. A fill-only edit now
+emits `stateTableChanged` because fill is represented in the table; unrelated
+font/geometry changes still do not.
 
 Its semantic inputs are `source` (`Appearance*`), `family` (QString), `tone`
 (`Presentation::Tone`), and `validation` (`Presentation::Validation`). Enums are

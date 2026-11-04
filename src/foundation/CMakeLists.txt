@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
+set_source_files_properties(ControlState.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 qt_add_qml_module(interactive_foundation
     SHARED
     URI InterActive.Foundation
@@ -19,7 +20,7 @@ qt_add_qml_module(interactive_foundation
         Presentation.h Presentation.cpp
         ThemeIconItem.h ThemeIconItem.cpp
         IconSource.h
-    QML_FILES Icon.qml IconLabel.qml Separator.qml ControlBackground.qml ChoiceIndicator.qml
+    QML_FILES Icon.qml IconLabel.qml Separator.qml ControlState.qml ControlBackground.qml ChoiceIndicator.qml
     RESOURCES
         icons/check.svg icons/minus.svg icons/chevron-down.svg
         icons/chevron-right.svg icons/close.svg icons/search.svg

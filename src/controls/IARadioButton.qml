@@ -52,7 +52,7 @@ T.RadioButton {
         rightPadding: control.mirrored ? mark.width + (control.text.length ? control.spacing : 0) : 0
         text: control.text
         font: control.font
-        color: control.enabled ? control.foregroundColor : control.disabledForegroundColor
+        color: appearance.stateTable.colors(IA.ControlState.of(control.enabled, false, false, false, true, false)).foregroundColor
         textFormat: Text.PlainText
         elide: Text.ElideRight
         horizontalAlignment: control.mirrored ? Text.AlignRight : Text.AlignLeft

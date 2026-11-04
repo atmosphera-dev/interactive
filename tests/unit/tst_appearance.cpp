@@ -378,6 +378,8 @@ private slots:
     void stateTableSharingAndLifetime();
     void stateTableQmlBinding();
     void stateTableNotifications();
+    void supplementaryStateRoles();
+    void stateSweepDoesNoFoundationWork();
 };
 
 void AppearanceTests::stateTableEquivalence()
@@ -410,6 +412,8 @@ void AppearanceTests::stateTableEquivalence()
             QCOMPARE(entry.foregroundColor(), foreground);
             QCOMPARE(entry.borderColor(), flags.enabled ? control.borderColor() : control.disabledBorderColor());
             QCOMPARE(entry.focusColor(), control.focusColor());
+            QCOMPARE(entry.fillColor(), flags.enabled ? control.fillColor() : control.disabledForegroundColor());
+            QCOMPARE(entry.trackColor(), flags.enabled ? control.borderColor() : control.disabledBackgroundColor());
         }
     };
     Appearance appearance;
@@ -569,8 +573,16 @@ void AppearanceTests::stateTableNotifications()
     control.resetForegroundColor();
     QCOMPARE(changed.count(), 0);
     control.setSpacing(17);
-    control.setFillColor(QColor("red")); // fillColor is not one of the four state colors.
     QCOMPARE(changed.count(), 0);
+    control.setFontPixelSize(20); // Font/geometry still are not in the state table.
+    control.setControlRadius(9);
+    QCOMPARE(changed.count(), 0);
+    // S4 adds the fill role: its table consumers must be notified exactly once.
+    control.setFillColor(QColor("red"));
+    QCOMPARE(changed.count(), 1);
+    QCOMPARE(control.stateTable().colors(Presentation::Rest).fillColor(), QColor("red"));
+    QCOMPARE(control.stateTable().colors(Presentation::Disabled).fillColor(), control.disabledForegroundColor());
+    changed.clear();
     control.setBackgroundColor(QColor("purple"));
     QCOMPARE(changed.count(), 1);
     connect(&control, &ControlAppearance::stateTableChanged, &control, [&] {
@@ -581,6 +593,129 @@ void AppearanceTests::stateTableNotifications()
     QCOMPARE(changed.count(), 3); // Nested table installs retain their notification obligation.
     QCOMPARE(control.stateTable().colors(Presentation::Rest).backgroundColor(), QColor("green"));
     QVERIFY(control.stateTable() != original);
+}
+
+void AppearanceTests::supplementaryStateRoles()
+{
+    Appearance source;
+    ControlAppearance field, label;
+    field.setSource(&source);
+    field.setFamily(QStringLiteral("field"));
+    label.setSource(&source);
+    label.setFamily(QStringLiteral("label"));
+    QSignalSpy fieldChanged(&field, &ControlAppearance::stateTableChanged);
+    QSignalSpy labelChanged(&label, &ControlAppearance::stateTableChanged);
+    const auto verify = [&] {
+        QCOMPARE(field.stateTable().selectionColor(), source.colors()->accent());
+        QCOMPARE(field.stateTable().selectedTextColor(), source.colors()->onAccent());
+        QCOMPARE(label.stateTable().linkColor(), source.colors()->link());
+        for (int i = Presentation::Rest; i <= Presentation::Disabled; ++i) {
+            const bool disabled = i == Presentation::Disabled;
+            const auto colors = field.stateTable().colors(Presentation::State(i));
+            QCOMPARE(colors.fillColor(), disabled ? field.disabledForegroundColor() : field.fillColor());
+            QCOMPARE(colors.trackColor(), disabled ? field.disabledBackgroundColor() : field.borderColor());
+            QCOMPARE(colors.placeholderTextColor(), disabled ? field.disabledForegroundColor() : source.colors()->placeholderText());
+        }
+    };
+    verify();
+    field.setBackgroundColor(QColor("purple")); // Also exercise private-table invalidation.
+    verify();
+    fieldChanged.clear();
+    labelChanged.clear();
+    source.setInput(tokenInput(QStringLiteral("colors"), {{QStringLiteral("placeholderText"), QColor("green")},
+        {QStringLiteral("onAccent"), QColor("yellow")}, {QStringLiteral("link"), QColor("red")}}));
+    QCOMPARE(fieldChanged.count(), 1);
+    QCOMPARE(labelChanged.count(), 1);
+    verify();
+    source.setInput({{QStringLiteral("scheme"), QStringLiteral("dark")}});
+    verify();
+    field.setFillColor(QColor("blue")); // Field selection deliberately ignores local fill overrides.
+    verify();
+    field.resetOverrides();
+    verify();
+}
+
+void AppearanceTests::stateSweepDoesNoFoundationWork()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.setData(R"(
+        import QtQuick
+        import InterActive.Foundation
+        Item {
+            property bool available: true
+            property bool down: false
+            property bool hovered: false
+            property bool selected: false
+            property bool active: true
+            property bool inset: false
+            ControlAppearance { id: facade; source: Appearance }
+            ControlBackground {
+                id: surface
+                resolvedAppearance: facade
+                controlEnabled: parent.available
+                down: parent.down; hovered: parent.hovered
+                selected: parent.selected; active: parent.active; pressInset: parent.inset
+            }
+            ChoiceIndicator {
+                id: indicator
+                resolvedAppearance: facade
+                controlEnabled: parent.available
+                down: parent.down; hovered: parent.hovered
+                checked: parent.selected; active: parent.active
+            }
+            readonly property color observed: surface.color
+            readonly property color foreground: surface.foregroundColor
+            readonly property color observedChoice: indicator.color
+            readonly property color choiceForeground: indicator.markColor
+        }
+    )", QUrl(QStringLiteral("inmemory:/state-sweep.qml")));
+    QVERIFY(QTest::qWaitFor([&] { return !component.isLoading(); }, 10000));
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+    std::unique_ptr<QObject> object(component.create());
+    QVERIFY2(object, qPrintable(component.errorString()));
+    auto *facade = object->findChild<ControlAppearance *>();
+    QVERIFY(facade);
+    WorkRecorder work;
+    facade->setSpacing(facade->spacing() + 1);
+    QCOMPARE(work.count("timing scope=facade-update"), 1); // Positive control for the scope recorder.
+    work.clear();
+    for (int flags = 0; flags < 64; ++flags) {
+        const bool enabled = flags & 1, down = flags & 2, hover = flags & 4;
+        const bool selected = flags & 8, active = flags & 16, inset = flags & 32;
+        object->setProperty("available", enabled);
+        object->setProperty("down", down);
+        object->setProperty("hovered", hover);
+        object->setProperty("selected", selected);
+        object->setProperty("active", active);
+        object->setProperty("inset", inset);
+        const QColor background = !enabled ? facade->disabledBackgroundColor()
+            : down && !inset ? facade->pressedBackgroundColor()
+            : selected ? (active ? facade->selectedBackgroundColor() : facade->inactiveBackgroundColor())
+            : hover ? facade->hoverBackgroundColor() : facade->backgroundColor();
+        const QColor foreground = !enabled ? facade->disabledForegroundColor()
+            : down && !inset ? facade->foregroundColor()
+            : selected ? (active ? facade->selectedForegroundColor() : facade->inactiveForegroundColor())
+            : facade->foregroundColor();
+        QCOMPARE(object->property("observed").value<QColor>(), background);
+        QCOMPARE(object->property("foreground").value<QColor>(), foreground);
+        const QColor choiceBackground = !enabled ? facade->disabledBackgroundColor()
+            : down ? facade->pressedBackgroundColor()
+            : selected ? (active ? facade->selectedBackgroundColor() : facade->inactiveBackgroundColor())
+            : hover ? facade->hoverBackgroundColor() : facade->backgroundColor();
+        const QColor choiceForeground = !enabled ? facade->disabledForegroundColor()
+            : down ? facade->foregroundColor()
+            : selected ? (active ? facade->selectedForegroundColor() : facade->inactiveForegroundColor())
+            : facade->foregroundColor();
+        QCOMPARE(object->property("observedChoice").value<QColor>(), choiceBackground);
+        QCOMPARE(object->property("choiceForeground").value<QColor>(), choiceForeground);
+    }
+    QCOMPARE(work.count("timing scope=facade-update"), 0);
+    QCOMPARE(work.count("color-resolution"), 0);
+    QCOMPARE(work.count("local-derivation"), 0);
+    QCOMPARE(work.count("local-pair-measurement"), 0);
+    QCOMPARE(work.count("state-table-build"), 0);
+    QCOMPARE(work.count("private-state-table-build"), 0);
 }
 
 void AppearanceTests::familyDescriptorContract()

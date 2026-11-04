@@ -17,6 +17,17 @@ Item {
     Component { id: checkComponent; IACheckBox {} }
     Component { id: radioComponent; IARadioButton {} }
     Component { id: switchComponent; IASwitch {} }
+    Component {
+        id: indicatorComponent
+        IA.ChoiceIndicator {
+            resolvedAppearance: IA.ControlAppearance { source: IA.Appearance; family: "choice" }
+        }
+    }
+    Component { id: fieldComponent; IATextField {} }
+    Component { id: labelComponent; IALabel {} }
+    Component { id: progressComponent; IAProgressBar {} }
+    Component { id: sliderComponent; IASlider {} }
+    Component { id: scrollComponent; IAScrollBar {} }
     TestCase {
         name: "PressedStatePairs"
         when: windowShown
@@ -27,6 +38,76 @@ Item {
             TestProbe.move(scene, scene.width - 2, scene.height - 2);
             TestProbe.release(scene, scene.width - 2, scene.height - 2);
             IA.Appearance.input = {};
+        }
+
+        function test_onlyUsedVisuals(): void {
+            const indicator = createTemporaryObject(indicatorComponent, scene, {checked: true}) as IA.ChoiceIndicator;
+            verify(indicator !== null);
+            compare(indicator.children.length, 1, "Only the check mark is instantiated");
+            verify(indicator.children[0] instanceof IA.Icon);
+            compare(visualItemCount(indicator), 4);
+            indicator.partial = true;
+            compare((indicator.children[0] as IA.Icon).source, IA.Appearance.icons.minus);
+            indicator.kind = IA.ChoiceIndicator.Radio;
+            tryVerify(function() { return indicator.children.length === 1; });
+            verify(indicator.children[0] instanceof Rectangle);
+            compare(visualItemCount(indicator), 1);
+            verify(findChild(indicator, "iaThumb") === null);
+            indicator.kind = IA.ChoiceIndicator.Toggle;
+            tryVerify(function() { return indicator.children.length === 1; });
+            compare(indicator.children[0].objectName, "iaThumb");
+            compare(visualItemCount(indicator), 1);
+            indicator.kind = IA.ChoiceIndicator.Check;
+            tryVerify(function() { return indicator.children.length === 1; });
+            verify(indicator.children[0] instanceof IA.Icon);
+            compare(visualItemCount(indicator), 4);
+
+            for (const component of [buttonComponent, toolComponent, tabComponent, delegateComponent,
+                                     checkComponent, radioComponent, switchComponent]) {
+                const control = createTemporaryObject(component, scene) as T.AbstractButton;
+                const inset = findChild(control.background, "iaPressInset") as Rectangle;
+                verify(inset !== null);
+                const usesInset = component === buttonComponent || component === toolComponent;
+                compare(inset.gradient instanceof Gradient, usesInset,
+                        "No Gradient or stops are created for a non-inset family");
+            }
+        }
+
+        function test_supplementaryRoleConsumers(): void {
+            const field = createTemporaryObject(fieldComponent, scene, {placeholderText: "Placeholder"}) as IATextField;
+            const label = createTemporaryObject(labelComponent, scene) as IALabel;
+            const progress = createTemporaryObject(progressComponent, scene) as IAProgressBar;
+            const slider = createTemporaryObject(sliderComponent, scene) as IASlider;
+            const scroll = createTemporaryObject(scrollComponent, scene) as IAScrollBar;
+            verify(field !== null && label !== null && progress !== null && slider !== null && scroll !== null);
+            IA.Appearance.input = {tokens: {colors: {placeholderText: "green", onAccent: "yellow", link: "red"}}};
+            compare(field.placeholderTextColor, "#008000");
+            compare(field.selectedTextColor, "#ffff00");
+            compare(label.linkColor, "#ff0000");
+            for (const control of [progress, slider]) {
+                control.fillColor = "purple";
+                const fill = findChild(control, "iaFill") as Rectangle;
+                verify(fill !== null);
+                compare(fill.color, "#800080", "A fill-only edit updates the actual consumer");
+                control.enabled = false;
+                compare(fill.color, control.disabledForegroundColor);
+            }
+            field.enabled = false;
+            compare(field.color, field.disabledForegroundColor);
+            compare(field.placeholderTextColor, field.disabledForegroundColor);
+            const track = findChild(slider, "iaTrack") as Rectangle;
+            compare(track.color, slider.disabledBackgroundColor);
+            scroll.enabled = false;
+            compare((scroll.contentItem as Rectangle).color, scroll.disabledForegroundColor);
+            compare((scroll.background as Rectangle).color, scroll.backgroundColor,
+                    "The scrollbar track still ignores enabled");
+        }
+
+        function visualItemCount(item: Item): int {
+            let count = 0;
+            for (const child of item.children)
+                count += 1 + visualItemCount(child);
+            return count;
         }
 
         function test_pressedInset_data(): var {

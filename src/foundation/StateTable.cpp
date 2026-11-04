@@ -11,10 +11,26 @@ StateColors StateTable::colors(Presentation::State state) const
     return m_data->states[size_t(state)];
 }
 
+QColor StateTable::selectionColor() const
+{
+    return m_data ? m_data->sharedColors[size_t(StateTableColor::Selection)] : QColor();
+}
+
+QColor StateTable::selectedTextColor() const
+{
+    return m_data ? m_data->sharedColors[size_t(StateTableColor::SelectionText)] : QColor();
+}
+
+QColor StateTable::linkColor() const
+{
+    return m_data ? m_data->sharedColors[size_t(StateTableColor::Link)] : QColor();
+}
+
 bool StateTable::operator==(const StateTable &other) const
 {
     return m_data == other.m_data
-        || (m_data && other.m_data && m_data->states == other.m_data->states);
+        || (m_data && other.m_data && m_data->states == other.m_data->states
+            && m_data->sharedColors == other.m_data->sharedColors);
 }
 
 } // namespace InterActive

@@ -25,6 +25,8 @@ T.TextField {
         source: IA.Appearance
         family: "field"
         validation: control.validation
+        readonly property IA.stateColors colors: stateTable.colors(
+            IA.ControlState.of(control.enabled, false, false, false, true, false))
     }
     implicitWidth: Math.max(contentWidth, placeholder.implicitWidth, IA.Appearance.metrics.fieldWidth)
                    + leftPadding + rightPadding
@@ -34,10 +36,10 @@ T.TextField {
     topPadding: appearance.verticalPadding
     bottomPadding: appearance.verticalPadding
     font: appearance.resolvedFont
-    color: enabled ? foregroundColor : disabledForegroundColor
-    placeholderTextColor: enabled ? IA.Appearance.colors.placeholderText : disabledForegroundColor
-    selectionColor: IA.Appearance.colors.accent
-    selectedTextColor: IA.Appearance.colors.onAccent
+    color: appearance.colors.foregroundColor
+    placeholderTextColor: appearance.colors.placeholderTextColor
+    selectionColor: appearance.stateTable.selectionColor
+    selectedTextColor: appearance.stateTable.selectedTextColor
     verticalAlignment: TextInput.AlignVCenter
     selectByMouse: true
     Text {

@@ -24,12 +24,12 @@ T.ScrollBar {
         implicitWidth: IA.Appearance.metrics.scrollBarWidth
         implicitHeight: IA.Appearance.metrics.scrollBarWidth
         radius: control.controlRadius
-        color: !control.enabled ? control.disabledForegroundColor : control.foregroundColor
+        color: appearance.stateTable.colors(IA.ControlState.of(control.enabled, false, false, false, true, false)).foregroundColor
     }
     background: Rectangle {
         objectName: "iaTrack"
         radius: control.controlRadius
-        color: control.pressed ? control.pressedBackgroundColor
-             : control.hovered ? control.hoverBackgroundColor : control.backgroundColor
+        // The original track ignores enabled; only its thumb takes the disabled pair.
+        color: appearance.stateTable.colors(IA.ControlState.of(true, control.pressed, control.hovered, false, true, false)).backgroundColor
     }
 }

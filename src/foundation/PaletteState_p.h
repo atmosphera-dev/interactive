@@ -111,10 +111,14 @@ using ControlColorValues = SparseControlValues<QColor, ControlColorCount>;
 using ControlNoncolorOverrides = SparseControlValues<ControlNoncolorValue, ControlNoncolorCount>;
 using ControlInputErrors = SparseControlValues<QVariantMap, size_t(ControlInput::Count)>;
 
+enum class StateTableColor { Placeholder, Selection, SelectionText, Link, Count };
+using StateTableSharedColors = std::array<QColor, size_t(StateTableColor::Count)>;
+
 struct StateTableData {
     std::array<StateColors, size_t(Presentation::Disabled) + 1> states;
     // The unchanged facade properties and diagnostics share the same snapshot.
     ControlColorValues values;
+    StateTableSharedColors sharedColors;
     std::shared_ptr<const ControlFindings> findings;
 };
 
