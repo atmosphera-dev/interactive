@@ -8,10 +8,11 @@ namespace InterActive {
 class LocalColorOverrides
 {
 public:
-    void install(const PaletteState &palette, const ControlColorMapping &mapping,
-                 const ControlColorValues &overrides, bool coupleBorder, const void *owner, quint64 revision);
-    QColor color(ControlColor property, const PaletteState &palette, const ControlColorMapping &mapping) const;
-    std::shared_ptr<const ControlFindings> findings() const { return m_findings; }
+    std::shared_ptr<const StateTableData> install(const PaletteState &palette, const ControlColorMapping &mapping,
+        const std::shared_ptr<const StateTableData> &shared, const ControlColorValues &overrides,
+        bool coupleBorder, const void *owner, quint64 revision);
+    static std::shared_ptr<const StateTableData> buildStateTable(const ControlColorValues &values,
+        std::shared_ptr<const ControlFindings> findings);
 private:
     struct BranchInputs {
         std::array<QColor, 4> colors{};
@@ -49,8 +50,7 @@ private:
     };
     Branch m_resting, m_hover, m_pressed, m_foreground, m_selected, m_inactive;
     std::array<Pair, 6> m_pairs;
-    ControlColorValues m_values;
-    std::shared_ptr<const ControlFindings> m_findings;
+    std::shared_ptr<const StateTableData> m_table;
 };
 
 } // namespace InterActive

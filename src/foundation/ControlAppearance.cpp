@@ -32,7 +32,7 @@ struct ControlAppearancePrivate {
 #define IA_NOTIFY_INDEX(type, name, upper, group, token) name,
         IA_CONTROL_PROPERTIES(IA_NOTIFY_INDEX)
 #undef IA_NOTIFY_INDEX
-        resolvedFont, Count
+        resolvedFont, stateTable, Count
     };
     struct NotifiedValues {
         Appearance *source = nullptr;
@@ -43,6 +43,7 @@ struct ControlAppearancePrivate {
         IA_CONTROL_PROPERTIES(IA_NOTIFIED_VALUE)
 #undef IA_NOTIFIED_VALUE
         QFont resolvedFont;
+        StateTable stateTable;
     } last;
     struct FontInputs {
         QString family;
@@ -69,6 +70,7 @@ struct ControlAppearancePrivate {
     std::shared_ptr<const PaletteState> palette = PaletteState::fallback();
     ControlColorMapping mapping = controlColorMapping(ControlFamily::Button, Presentation::Auto, Presentation::None);
     LocalColorOverrides local;
+    std::shared_ptr<const StateTableData> table;
     ControlColorValues colorOverrides;
     ControlNoncolorOverrides noncolorOverrides;
     ControlNoncolorValues values;
@@ -153,14 +155,18 @@ QVariantList ControlAppearance::diagnostics() const
 }
 
 #define IA_COLOR_GETTER(type, name, upper, group, token) \
-    type ControlAppearance::name() const { return m_private->local.color(ControlColor::name, \
-        *m_private->palette, m_private->mapping); }
+    type ControlAppearance::name() const { return m_private->table->values.value(ControlColor::name); }
 IA_CONTROL_COLOR_PROPERTIES(IA_COLOR_GETTER)
 #undef IA_COLOR_GETTER
 #define IA_NONCOLOR_GETTER(type, name, upper, group, token) \
     type ControlAppearance::name() const { return std::get<type>(m_private->values[size_t(ControlNoncolor::name)]); }
 IA_CONTROL_NONCOLOR_PROPERTIES(IA_NONCOLOR_GETTER)
 #undef IA_NONCOLOR_GETTER
+
+StateTable ControlAppearance::stateTable() const
+{
+    return StateTable(m_private->table);
+}
 
 void ControlAppearance::setSource(Appearance *source)
 {
@@ -324,7 +330,13 @@ void ControlAppearance::resolveParts(bool colors, bool noncolors, bool selectors
         const bool colored = m_tone == Presentation::Primary || m_tone == Presentation::Destructive || m_tone == Presentation::Caution;
         const bool coupleBorder = colored && !descriptor.semanticTextOnly && m_validation == Presentation::None
             && !state.palette->explicitRole(state.mapping[size_t(ControlColor::borderColor)]);
-        state.local.install(*state.palette, state.mapping, state.colorOverrides, coupleBorder, this, state.revision);
+        const auto shared = state.palette->stateTable(state.family, m_tone, m_validation);
+        if (state.colorOverrides.presence.none()) {
+            state.table = shared;
+        } else {
+            state.table = state.local.install(*state.palette, state.mapping, shared,
+                state.colorOverrides, coupleBorder, this, state.revision);
+        }
     }
 
     if (noncolors) {
@@ -377,7 +389,7 @@ void ControlAppearance::resolveParts(bool colors, bool noncolors, bool selectors
         candidate[size_t(ControlNoncolor::minimumHeight)] = minimum;
         state.values = std::move(candidate);
     }
-    const ControlAppearancePrivate::Diagnostics diagnostics{state.invalidInputs, state.local.findings()};
+    const ControlAppearancePrivate::Diagnostics diagnostics{state.invalidInputs, state.table->findings};
     if (state.diagnostics != diagnostics) {
         state.diagnostics = diagnostics;
         state.diagnosticsCacheValid = false;
@@ -407,6 +419,7 @@ void ControlAppearance::initializeNotifications()
     IA_CONTROL_PROPERTIES(IA_INITIALIZE_PROPERTY)
 #undef IA_INITIALIZE_PROPERTY
     IA_INITIALIZE(resolvedFont, m_font)
+    IA_INITIALIZE(stateTable, stateTable())
 #undef IA_INITIALIZE
     state.notificationsInitialized = true;
 }
@@ -426,6 +439,7 @@ void ControlAppearance::installNotifications()
     IA_CONTROL_PROPERTIES(IA_COMPARE_PROPERTY)
 #undef IA_COMPARE_PROPERTY
     IA_COMPARE(resolvedFont, m_font)
+    IA_COMPARE(stateTable, stateTable())
 #undef IA_COMPARE
     span.setAux(quint32(Notification::Count));
 }
@@ -461,6 +475,7 @@ void ControlAppearance::drainNotifications()
         IA_CONTROL_PROPERTIES(IA_NOTIFY_PROPERTY)
 #undef IA_NOTIFY_PROPERTY
         IA_NOTIFY(resolvedFont, m_font)
+        IA_NOTIFY(stateTable, stateTable())
 #undef IA_NOTIFY
     }
     state.drainingNotifications = false;

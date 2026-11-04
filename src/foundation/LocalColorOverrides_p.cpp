@@ -18,25 +18,42 @@ QColor LocalColorOverrides::Branch::evaluate(const BranchInputs &next,
     return result;
 }
 
-QColor LocalColorOverrides::color(ControlColor property, const PaletteState &palette,
-                                  const ControlColorMapping &mapping) const
+std::shared_ptr<const StateTableData> LocalColorOverrides::buildStateTable(
+    const ControlColorValues &values, std::shared_ptr<const ControlFindings> findings)
 {
-    return m_values.contains(property) ? m_values.value(property) : palette.color(mapping[size_t(property)]);
+    auto table = std::make_shared<StateTableData>();
+    table->values = values;
+    table->findings = std::move(findings);
+    const auto entry = [&](ControlColor background, ControlColor foreground, bool disabled = false) {
+        return StateColors(values.value(background), values.value(foreground),
+            values.value(disabled ? ControlColor::disabledBorderColor : ControlColor::borderColor),
+            values.value(ControlColor::focusColor));
+    };
+    const auto rest = entry(ControlColor::backgroundColor, ControlColor::foregroundColor);
+    const auto hover = entry(ControlColor::hoverBackgroundColor, ControlColor::foregroundColor);
+    const auto pressed = entry(ControlColor::pressedBackgroundColor, ControlColor::foregroundColor);
+    const auto selected = entry(ControlColor::selectedBackgroundColor, ControlColor::selectedForegroundColor);
+    const auto inactive = entry(ControlColor::inactiveBackgroundColor, ControlColor::inactiveForegroundColor);
+    // Today's ControlBackground/ChoiceIndicator precedence, not a new recipe:
+    // pressed wins selection; hover never recolors an active/inactive selection.
+    table->states = {rest, hover, pressed, selected, selected, pressed, inactive, inactive,
+        entry(ControlColor::disabledBackgroundColor, ControlColor::disabledForegroundColor, true)};
+    return table;
 }
 
-void LocalColorOverrides::install(const PaletteState &palette, const ControlColorMapping &mapping,
+std::shared_ptr<const StateTableData> LocalColorOverrides::install(const PaletteState &palette,
+    const ControlColorMapping &mapping, const std::shared_ptr<const StateTableData> &shared,
     const ControlColorValues &overrides, bool coupleBorder, const void *owner, quint64 revision)
 {
     const AppearanceWorkScope timing("local-colors", owner);
     TraceSpan span(TraceScope::LocalInstall, owner);
     auto values = overrides;
-    m_findings = palette.controlFindings(mapping);
     if (values.presence.none()) {
         m_resting.valid = m_hover.valid = m_pressed.valid = m_foreground.valid = m_selected.valid = m_inactive.valid = false;
         for (auto &pair : m_pairs)
             pair.valid = false;
-        m_values.presence.reset();
-        return;
+        m_table.reset();
+        return shared;
     }
     const auto name = [](ControlColor property) -> const QString & { return controlColorKey(property); };
     const auto explicitLocal = [&](ControlColor property) { return overrides.contains(property); };
@@ -135,12 +152,20 @@ void LocalColorOverrides::install(const PaletteState &palette, const ControlColo
             pair.valid = true;
         }
         if (!localFindings)
-            localFindings = std::make_shared<ControlFindings>(*m_findings);
+            localFindings = std::make_shared<ControlFindings>(*shared->findings);
         (*localFindings)[i] = pair.findings;
     }
-    m_values = std::move(values);
-    if (localFindings)
-        m_findings = std::move(localFindings);
+    for (size_t i = 0; i < ControlColorCount; ++i) {
+        if (!values.presence.test(i))
+            values.set(ControlColor(i), shared->values.values[i]);
+    }
+    const std::shared_ptr<const ControlFindings> findings = localFindings ? localFindings : shared->findings;
+    if (!m_table || !(m_table->values == values) || *m_table->findings != *findings) {
+        qCDebug(appearanceWork).nospace() << "owner=" << owner << " revision=" << revision
+            << " operation=private-state-table-build";
+        m_table = buildStateTable(values, findings);
+    }
+    return m_table;
 }
 
 } // namespace InterActive

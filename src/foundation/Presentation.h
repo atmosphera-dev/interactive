@@ -17,6 +17,9 @@ public:
     Q_ENUM(Tone)
     enum Validation { None, Warning, Invalid };
     Q_ENUM(Validation)
+    enum State { Rest, Hover, Pressed, Selected, SelectedHover, SelectedPressed,
+                 Inactive, InactiveHover, Disabled };
+    Q_ENUM(State)
 };
 
 } // namespace InterActive

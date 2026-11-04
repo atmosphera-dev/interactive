@@ -374,7 +374,214 @@ private slots:
     void familyDescriptorContract();
     void typedFacadeNotificationOrder();
     void typedFacadePendingReversion();
+    void stateTableEquivalence();
+    void stateTableSharingAndLifetime();
+    void stateTableQmlBinding();
+    void stateTableNotifications();
 };
+
+void AppearanceTests::stateTableEquivalence()
+{
+    // Independent transcription of the unchanged QML, deliberately expressed in
+    // template flags rather than in terms of the table's implementation.
+    const auto verify = [](const ControlAppearance &control) {
+        struct Flags { Presentation::State state; bool enabled, down, hover, selected, active; };
+        const Flags cases[]{
+            {Presentation::Rest, true, false, false, false, true},
+            {Presentation::Hover, true, false, true, false, true},
+            {Presentation::Pressed, true, true, false, false, true},
+            {Presentation::Selected, true, false, false, true, true},
+            {Presentation::SelectedHover, true, false, true, true, true},
+            {Presentation::SelectedPressed, true, true, true, true, true},
+            {Presentation::Inactive, true, false, false, true, false},
+            {Presentation::InactiveHover, true, false, true, true, false},
+            {Presentation::Disabled, false, true, true, true, false}};
+        for (const auto &flags : cases) {
+            const auto entry = control.stateTable().colors(flags.state);
+            const QColor background = !flags.enabled ? control.disabledBackgroundColor()
+                : flags.down ? control.pressedBackgroundColor()
+                : flags.selected ? (flags.active ? control.selectedBackgroundColor() : control.inactiveBackgroundColor())
+                : flags.hover ? control.hoverBackgroundColor() : control.backgroundColor();
+            const QColor foreground = !flags.enabled ? control.disabledForegroundColor()
+                : flags.down ? control.foregroundColor()
+                : flags.selected ? (flags.active ? control.selectedForegroundColor() : control.inactiveForegroundColor())
+                : control.foregroundColor();
+            QCOMPARE(entry.backgroundColor(), background);
+            QCOMPARE(entry.foregroundColor(), foreground);
+            QCOMPARE(entry.borderColor(), flags.enabled ? control.borderColor() : control.disabledBorderColor());
+            QCOMPARE(entry.focusColor(), control.focusColor());
+        }
+    };
+    Appearance appearance;
+    for (const auto *scheme : {"light", "dark"}) {
+        for (const auto *contrast : {"normal", "high"}) {
+            appearance.setInput({{QStringLiteral("scheme"), QLatin1String(scheme)},
+                {QStringLiteral("contrast"), QLatin1String(contrast)}});
+            for (const auto *family : {"button", "tool", "field", "surface", "popup", "label",
+                     "delegate", "tab", "choice", "tooltip"}) {
+                ControlAppearance control;
+                control.setSource(&appearance);
+                control.setFamily(QLatin1String(family));
+                for (const auto tone : {Presentation::Auto, Presentation::Neutral, Presentation::Primary,
+                         Presentation::Destructive, Presentation::Caution}) {
+                    control.setTone(tone);
+                    for (const auto validation : {Presentation::None, Presentation::Warning, Presentation::Invalid}) {
+                        control.setValidation(validation);
+                        verify(control);
+                        control.setBackgroundColor(QColor("#8657b8")); // derived ordinary states/text/border
+                        verify(control);
+                        control.resetOverrides();
+                        control.setHoverBackgroundColor(QColor("#303040")); // partially inherited ordinary pair
+                        control.setPressedBackgroundColor(QColor("#202030"));
+                        verify(control);
+                        control.resetOverrides();
+                        control.setSelectedBackgroundColor(QColor("#153b57")); // independently derived pairs
+                        control.setInactiveBackgroundColor(QColor("#421b35"));
+                        control.setDisabledBackgroundColor(QColor("#595966"));
+                        control.setDisabledForegroundColor(QColor("#eeeeee"));
+                        control.setBorderColor(QColor("#449955"));
+                        control.setFocusColor(QColor("#5599cc"));
+                        verify(control);
+                        control.resetOverrides();
+                        int colorIndex = 0;
+#define IA_STATE_OVERRIDE(type, name, upper, group, token) \
+                        control.set##upper(QColor::fromHsv((colorIndex++ * 23) % 360, 120, 190).toRgb());
+                        IA_CONTROL_COLOR_PROPERTIES(IA_STATE_OVERRIDE)
+#undef IA_STATE_OVERRIDE
+                        verify(control); // every explicit pair is retained, even when low contrast
+                        control.resetOverrides();
+                        verify(control);
+                    }
+                }
+            }
+        }
+    }
+}
+
+void AppearanceTests::stateTableSharingAndLifetime()
+{
+    StateTable retained;
+    QColor before;
+    {
+        Appearance appearance;
+        ControlAppearance first, second;
+        first.setSource(&appearance);
+        second.setSource(&appearance);
+        WorkRecorder work;
+        first.setFamily(QStringLiteral("choice"));
+        QCOMPARE(work.count("state-table-build"), 1);
+        second.setFamily(QStringLiteral("choice"));
+        QCOMPARE(work.count("state-table-build"), 1);
+        second.setTone(Presentation::Neutral); // Auto is the same memoization slot
+        QCOMPARE(work.count("state-table-build"), 1);
+        QCOMPARE(work.count("private-state-table-build"), 0);
+        QCOMPARE(first.stateTable(), second.stateTable());
+        retained = first.stateTable();
+        before = retained.colors(Presentation::Rest).backgroundColor();
+        first.setBackgroundColor(QColor("purple"));
+        QCOMPARE(work.count("private-state-table-build"), 1);
+        QVERIFY(first.stateTable() != second.stateTable());
+        QCOMPARE(second.stateTable().colors(Presentation::Rest).backgroundColor(), before);
+        QCOMPARE(retained.colors(Presentation::Rest).backgroundColor(), before);
+        const auto privateSnapshot = first.stateTable();
+        work.clear();
+        first.setSpacing(17);
+        first.setFontPixelSize(20);
+        first.setBackgroundColor(QColor()); // invalid input affects diagnostics only
+        QCOMPARE(work.count("state-table-build"), 0);
+        QCOMPARE(work.count("private-state-table-build"), 0);
+        QCOMPARE(first.stateTable(), privateSnapshot);
+        first.resetOverrides();
+        QCOMPARE(first.stateTable(), second.stateTable());
+        QCOMPARE(work.count("state-table-build"), 0);
+        QCOMPARE(work.count("private-state-table-build"), 0);
+        work.clear();
+        for (int i = 0; i < 100; ++i) {
+            for (int state = Presentation::Rest; state <= Presentation::Disabled; ++state)
+                QVERIFY(first.stateTable().colors(Presentation::State(state)).backgroundColor().isValid());
+        }
+        QCOMPARE(work.count("color-resolution"), 0);
+        QCOMPARE(work.count("local-derivation"), 0);
+        QCOMPARE(work.count("local-pair-measurement"), 0);
+        QCOMPARE(work.count("state-table-build"), 0);
+        QCOMPARE(work.count("private-state-table-build"), 0);
+        // The public default/invalid index is safe and never indexes past the array.
+        QVERIFY(!StateTable().colors(Presentation::Rest).backgroundColor().isValid());
+        QVERIFY(!first.stateTable().colors(Presentation::State(-1)).backgroundColor().isValid());
+        QVERIFY(!first.stateTable().colors(Presentation::State(9)).backgroundColor().isValid());
+    }
+    QCOMPARE(retained.colors(Presentation::Rest).backgroundColor(), before);
+}
+
+void AppearanceTests::stateTableQmlBinding()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.setData(R"(
+        import QtQuick
+        import InterActive.Foundation
+        ControlAppearance {
+            source: Appearance
+            property int currentState: Presentation.Rest
+            readonly property color observedBackground: stateTable.colors(currentState).backgroundColor
+            readonly property color observedForeground: stateTable.colors(currentState).foregroundColor
+            readonly property color observedBorder: stateTable.colors(currentState).borderColor
+            readonly property color observedFocus: stateTable.colors(currentState).focusColor
+        }
+    )", QUrl(QStringLiteral("inmemory:/state-table.qml")));
+    QVERIFY(QTest::qWaitFor([&] { return !component.isLoading(); }, 10000));
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+    std::unique_ptr<QObject> object(component.create());
+    QVERIFY2(object, qPrintable(component.errorString()));
+    auto *control = qobject_cast<ControlAppearance *>(object.get());
+    QVERIFY(control);
+    const auto check = [&] {
+        const auto entry = control->stateTable().colors(Presentation::State(control->property("currentState").toInt()));
+        QCOMPARE(control->property("observedBackground").value<QColor>(), entry.backgroundColor());
+        QCOMPARE(control->property("observedForeground").value<QColor>(), entry.foregroundColor());
+        QCOMPARE(control->property("observedBorder").value<QColor>(), entry.borderColor());
+        QCOMPARE(control->property("observedFocus").value<QColor>(), entry.focusColor());
+    };
+    check();
+    control->setBackgroundColor(QColor("purple"));
+    check(); // A binding must update on a table change without a state change.
+    for (int state = Presentation::Rest; state <= Presentation::Disabled; ++state) {
+        QVERIFY(control->setProperty("currentState", state));
+        check();
+    }
+    control->source()->setInput({{QStringLiteral("scheme"), QStringLiteral("dark")}});
+    check();
+    control->resetOverrides();
+    control->setTone(Presentation::Primary);
+    control->setValidation(Presentation::Invalid);
+    check();
+}
+
+void AppearanceTests::stateTableNotifications()
+{
+    ControlAppearance control;
+    QSignalSpy changed(&control, &ControlAppearance::stateTableChanged);
+    const StateTable original = control.stateTable();
+    // Equal foreground ownership leaves all state colors equal. Equal base
+    // ownership would legitimately rederive the neutral hover/pressed recipe.
+    control.setForegroundColor(control.foregroundColor());
+    QCOMPARE(changed.count(), 0); // Ownership alone does not change effective colors.
+    control.resetForegroundColor();
+    QCOMPARE(changed.count(), 0);
+    control.setSpacing(17);
+    control.setFillColor(QColor("red")); // fillColor is not one of the four state colors.
+    QCOMPARE(changed.count(), 0);
+    control.setBackgroundColor(QColor("purple"));
+    QCOMPARE(changed.count(), 1);
+    connect(&control, &ControlAppearance::stateTableChanged, &control, [&] {
+        if (control.stateTable().colors(Presentation::Rest).backgroundColor() == QColor("blue"))
+            control.setBackgroundColor(QColor("green"));
+    });
+    control.setBackgroundColor(QColor("blue"));
+    QCOMPARE(changed.count(), 3); // Nested table installs retain their notification obligation.
+    QCOMPARE(control.stateTable().colors(Presentation::Rest).backgroundColor(), QColor("green"));
+    QVERIFY(control.stateTable() != original);
+}
 
 void AppearanceTests::familyDescriptorContract()
 {
@@ -763,23 +970,36 @@ void AppearanceTests::mixedFacadeWorkDoesNotScale()
     const Presentation::Tone tones[]{Presentation::Neutral, Presentation::Primary,
         Presentation::Caution, Presentation::Destructive};
     const char *operations[]{"shared-palette-build", "local-derivation",
-        "local-pair-measurement", "font-measurement", "geometry-calculation"};
+        "local-pair-measurement", "font-measurement", "geometry-calculation", "state-table-build"};
     QList<int> baselineAccent, baselineMetrics;
     for (const int count : {10, 100}) {
         Appearance appearance;
         std::vector<std::unique_ptr<ControlAppearance>> facades;
+        QSet<QString> combinations;
         for (int i = 0; i < count; ++i) {
+            // Both populations use exactly the same ten selector combinations.
+            const int combination = i % 10;
             auto facade = std::make_unique<ControlAppearance>();
-            facade->setFamily(families[i % families.size()]);
-            facade->setTone(tones[i % 4]);
+            facade->setFamily(families[combination % families.size()]);
+            facade->setTone(tones[combination % 4]);
+            facade->setValidation(Presentation::Validation(combination % 3));
             facade->setSource(&appearance);
-            QCOMPARE(facade->family(), families[i % families.size()]);
+            QCOMPARE(facade->family(), families[combination % families.size()]);
+            combinations.insert(facade->family() + QString::number(facade->tone())
+                + QString::number(facade->validation()));
             facades.push_back(std::move(facade));
         }
         WorkRecorder work; // Exclude construction and selector initialization.
         auto input = tokenInput(QStringLiteral("colors"), {{QStringLiteral("accent"), QColor("#8657b8")}});
         appearance.setInput(input);
         QCOMPARE(work.count("shared-palette-build"), 1);
+        QVERIFY(work.count("state-table-build") > 0);
+        QVERIFY(work.count("state-table-build") <= combinations.size());
+        QCOMPARE(work.count("private-state-table-build"), 0);
+        QCOMPARE(work.count("local-derivation"), 0);
+        QCOMPARE(work.count("local-pair-measurement"), 0);
+        QCOMPARE(work.count("font-measurement"), 0);
+        QCOMPARE(work.count("geometry-calculation"), 0);
         QList<int> accentCounts, metricsCounts;
         for (const auto *operation : operations)
             accentCounts.append(work.count(operation));
@@ -791,6 +1011,8 @@ void AppearanceTests::mixedFacadeWorkDoesNotScale()
         input.insert(QStringLiteral("tokens"), tokens);
         appearance.setInput(input);
         QCOMPARE(work.count("color-resolution"), 0);
+        QCOMPARE(work.count("state-table-build"), 0);
+        QCOMPARE(work.count("private-state-table-build"), 0);
         for (const auto *operation : operations)
             metricsCounts.append(work.count(operation));
         for (const auto &facade : facades)

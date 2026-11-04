@@ -136,7 +136,10 @@ private slots:
 void PerformanceTests::mixedControls()
 {
     BatchSamples create, accent, hover, idle;
-    for (int round = 0; round < 5; ++round) {
+    // Run the identical workload once before the five measured rounds. Fresh
+    // scene-graph/shader/font caches otherwise skew the first hover batch.
+    for (int round = -1; round < 5; ++round) {
+        BatchSamples warmup;
         QElapsedTimer clock;
         qint64 cpuStart = processCpuNanoseconds();
         QVERIFY2(cpuStart >= 0, "CLOCK_PROCESS_CPUTIME_ID is unavailable");
@@ -156,7 +159,7 @@ void PerformanceTests::mixedControls()
             view.show();
             QVERIFY2(first.wait(), "No first frame swapped within 15 seconds");
         }
-        QVERIFY2(create.record(clock, cpuStart), "Could not measure process CPU time");
+        QVERIFY2((round < 0 ? warmup : create).record(clock, cpuStart), "Could not measure process CPU time");
         QVERIFY(view.isExposed());
         QCOMPARE(view.format().swapInterval(), 0);
         QCOMPARE(view.rendererInterface()->graphicsApi(), QSGRendererInterface::OpenGL);
@@ -177,13 +180,13 @@ void PerformanceTests::mixedControls()
             NextFrame frame(&view);
             // Appearance normalizes input to RGB; QColor equality also compares
             // the color specification, not just the displayed RGB components.
-            const QColor color = QColor::fromHsv((i * 6 + round) % 360, 150, 210).toRgb();
+            const QColor color = QColor::fromHsv((i * 6 + std::max(0, round)) % 360, 150, 210).toRgb();
             appearance->setInput({{QStringLiteral("tokens"), QVariantMap{
                 {QStringLiteral("colors"), QVariantMap{{QStringLiteral("accent"), color}}}}}});
             QVERIFY2(frame.wait(), "Accent frame did not swap within 15 seconds");
             QCOMPARE(appearance->colors()->accent(), color);
         }
-        QVERIFY2(accent.record(clock, cpuStart), "Could not measure process CPU time");
+        QVERIFY2((round < 0 ? warmup : accent).record(clock, cpuStart), "Could not measure process CPU time");
         cpuStart = processCpuNanoseconds();
         clock.restart();
         for (const auto *control : controls) {
@@ -192,7 +195,7 @@ void PerformanceTests::mixedControls()
             QVERIFY2(frame.wait(), "Hover frame did not swap within 15 seconds");
             QVERIFY2(control->property("hovered").toBool(), "Pointer move did not reach the control");
         }
-        QVERIFY2(hover.record(clock, cpuStart), "Could not measure process CPU time");
+        QVERIFY2((round < 0 ? warmup : hover).record(clock, cpuStart), "Could not measure process CPU time");
         {
             NextFrame frame(&view);
             movePointer(&view, QPointF(20, view.height() - 24));
@@ -204,7 +207,7 @@ void PerformanceTests::mixedControls()
             movePointer(&view, QPointF(20 + i % 100, view.height() - 24));
         // Wall ns / 1000 events / 1000 ns/us has the same numeric divisor
         // as ms for this fixed batch. CPU remains total ms for all 1000 events.
-        QVERIFY2(idle.record(clock, cpuStart), "Could not measure process CPU time");
+        QVERIFY2((round < 0 ? warmup : idle).record(clock, cpuStart), "Could not measure process CPU time");
     }
     const QJsonDocument results(QJsonObject{
         {QStringLiteral("create_ms"), create.json(QStringLiteral("wall_ms"))},

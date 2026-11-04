@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 #include "PaletteState_p.h"
 #include "AppearanceTrace_p.h"
+#include "LocalColorOverrides_p.h"
 #include <QPointer>
 #include <algorithm>
 
@@ -288,6 +289,23 @@ std::shared_ptr<const ControlFindings> PaletteState::controlFindings(const Contr
     }
     m_controlFindings.emplace(mapping, findings);
     return findings;
+}
+
+std::shared_ptr<const StateTableData> PaletteState::stateTable(ControlFamily family,
+    Presentation::Tone tone, Presentation::Validation validation) const
+{
+    const size_t t = tone == Presentation::Primary ? 1 : tone == Presentation::Destructive ? 2
+        : tone == Presentation::Caution ? 3 : 0;
+    auto &table = m_stateTables[(size_t(family) * 4 + t) * 3 + size_t(validation)];
+    if (!table) {
+        qCDebug(appearanceWork).nospace() << "owner=" << this << " operation=state-table-build";
+        const auto mapping = controlColorMapping(family, tone, validation);
+        ControlColorValues values;
+        for (size_t i = 0; i < ControlColorCount; ++i)
+            values.set(ControlColor(i), color(mapping[i]));
+        table = LocalColorOverrides::buildStateTable(values, controlFindings(mapping));
+    }
+    return table;
 }
 
 PaletteUpdate PaletteUpdate::between(const AppearanceStatePtr &before, const AppearanceStatePtr &after)

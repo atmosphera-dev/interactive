@@ -5,6 +5,7 @@
 #include "TokenDefinitions.h"
 #include "TokenSchema.h"
 #include "Presentation.h"
+#include "StateTable.h"
 #include <QLoggingCategory>
 #include <QElapsedTimer>
 #include <QMetaProperty>
@@ -110,6 +111,13 @@ using ControlColorValues = SparseControlValues<QColor, ControlColorCount>;
 using ControlNoncolorOverrides = SparseControlValues<ControlNoncolorValue, ControlNoncolorCount>;
 using ControlInputErrors = SparseControlValues<QVariantMap, size_t(ControlInput::Count)>;
 
+struct StateTableData {
+    std::array<StateColors, size_t(Presentation::Disabled) + 1> states;
+    // The unchanged facade properties and diagnostics share the same snapshot.
+    ControlColorValues values;
+    std::shared_ptr<const ControlFindings> findings;
+};
+
 // Decode the schema boundary once per accepted snapshot, not once per facade.
 struct MetricRecord {
 #define IA_METRIC_FIELD(name, ...) qreal name = 0;
@@ -187,11 +195,15 @@ struct PaletteState {
     QVariantList pairFindings(ColorRole foreground, ColorRole background,
                               const QString &path, bool focus = false) const;
     std::shared_ptr<const ControlFindings> controlFindings(const ControlColorMapping &mapping) const;
+    std::shared_ptr<const StateTableData> stateTable(ControlFamily family, Presentation::Tone tone,
+        Presentation::Validation validation) const;
     static std::shared_ptr<const PaletteState> calculate(const ResolvedAppearance &prepared,
         const std::shared_ptr<const PaletteState> &previous, const void *owner, quint64 revision);
     static const std::shared_ptr<const PaletteState> &fallback();
 private:
-    // GUI-thread memoization of diagnostic projections only, not color/state tables.
+    // GUI-thread-only lazy memoization within this immutable palette. Auto and
+    // Neutral share a slot; only combinations actually requested are built.
+    mutable std::array<std::shared_ptr<const StateTableData>, ControlFamilyCount * 4 * 3> m_stateTables;
     mutable std::map<ControlColorMapping, std::shared_ptr<const ControlFindings>> m_controlFindings;
 };
 

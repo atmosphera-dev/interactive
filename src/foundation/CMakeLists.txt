@@ -15,6 +15,7 @@ qt_add_qml_module(interactive_foundation
         FontEnvironment_p.h FontEnvironment_p.cpp
         AirmailProfiles.h AirmailProfiles.cpp
         ControlAppearance.h ControlAppearance.cpp
+        StateTable.h StateTable.cpp
         Presentation.h Presentation.cpp
         ThemeIconItem.h ThemeIconItem.cpp
         IconSource.h

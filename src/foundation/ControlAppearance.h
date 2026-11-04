@@ -3,6 +3,7 @@
 
 #include "Appearance.h"
 #include "Presentation.h"
+#include "StateTable.h"
 #include <QFont>
 #include <QPointer>
 
@@ -25,6 +26,7 @@ class INTERACTIVE_FOUNDATION_EXPORT ControlAppearance : public QObject
 #undef IA_LOCAL_PROPERTY
     Q_PROPERTY(QFont resolvedFont READ resolvedFont NOTIFY resolvedFontChanged FINAL)
     Q_PROPERTY(QVariantList diagnostics READ diagnostics NOTIFY diagnosticsChanged FINAL)
+    Q_PROPERTY(InterActive::StateTable stateTable READ stateTable NOTIFY stateTableChanged FINAL)
 public:
     explicit ControlAppearance(QObject *parent = nullptr);
     ~ControlAppearance() override;
@@ -44,6 +46,7 @@ public:
 #undef IA_LOCAL_METHODS
     QFont resolvedFont() const { return m_font; }
     QVariantList diagnostics() const;
+    StateTable stateTable() const;
     Q_INVOKABLE void resetOverrides();
 signals:
     void resolvedChanged();
@@ -53,6 +56,7 @@ signals:
     void validationChanged();
     void resolvedFontChanged();
     void diagnosticsChanged();
+    void stateTableChanged();
 #define IA_LOCAL_SIGNAL(type, name, upper, group, token) void name##Changed();
     IA_CONTROL_PROPERTIES(IA_LOCAL_SIGNAL)
 #undef IA_LOCAL_SIGNAL

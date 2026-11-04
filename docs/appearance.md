@@ -528,8 +528,30 @@ local values/overrides, with typed font, geometry and color-branch cache keys.
 Facade notifications compare typed last-notified values and drain pending bits in
 the existing property order, re-reading effective values after nested callbacks;
 they do not read properties reflectively. The application/token-group publication
-path remains separate. This does not add interaction-state tables or move visual
-flags out of QML.
+path remains separate. Visual flags and the decision of which interaction state
+is active remain in the controls.
+
+Each immutable palette lazily memoizes one immutable state table per
+`(family, tone, validation)` combination (`Auto` shares `Neutral`). Facades without
+color overrides retain that shared table; local color overrides produce a private
+copy through the same builder, reusing it until its effective colors/findings
+change. Font/geometry edits do not rebuild the table. Shared pair diagnostics are
+reused from the palette; locally affected pairs retain their dependency caches.
+
+The additive read-only value API is `appearance.stateTable.colors(state)`, returning
+`backgroundColor`, `foregroundColor`, `borderColor`, and `focusColor`. `stateTable`
+is a small owning value around shared immutable storage, not another QObject or
+an eagerly boxed list per control. Its `stateTableChanged` signal tracks changed
+effective state colors, so reading the property establishes a QML binding
+dependency before the indexed lookup. Stored value copies retain their snapshot.
+`Presentation.State` exposes `Rest`, `Hover`, `Pressed`, `Selected`, `SelectedHover`,
+`SelectedPressed`, `Inactive`, `InactiveHover`, and `Disabled`. These entries encode
+the existing visual expressions: hover retains ordinary foreground; selected
+hover retains the selected pair; selected pressed uses the ordinary pressed pair;
+inactive hover retains the inactive pair; disabled uses the disabled pair/border.
+Focus is unchanged in every entry. Press-inset controls still select their resting,
+hover or selected fill rather than the pressed fill. No color recipe is changed,
+and existing QML visuals and public facade properties are unchanged.
 
 Its semantic inputs are `source` (`Appearance*`), `family` (QString), `tone`
 (`Presentation::Tone`), and `validation` (`Presentation::Validation`). Enums are
