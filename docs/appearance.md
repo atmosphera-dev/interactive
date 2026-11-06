@@ -411,6 +411,7 @@ unscaled by `fontScale`; controls grow from actual font metrics instead.
 | 19 | `pressContentShift` | 1 | `[0, 8]` |
 | 20 | `choiceGap` | 2 | `[0, 128]` |
 | 21 | `choiceCenterRadius` | 2 | `[0, 128]` |
+| 22 | `dialogMinWidth` | 180 | `[0, 2048]` |
 
 `hairlineWidth` is the one exception to logical-pixel dimensions: a decorative
 separator divides it by the effective DPR. Structural alignment and slider-value
@@ -826,6 +827,26 @@ equal-valued assignments/replacements with no specific value notification.
 `resetOverrides()` clears all local values/errors in one aggregate operation,
 without changing source, family, tone, validation, global input or interaction data.
 IA controls expose this as `resetAppearance()`.
+
+## Dialog Composition
+
+`IADialogButtonBox.principalAction` controls visual prominence of its standard
+buttons, independently of Qt's roles, signals, ordering and keyboard behavior.
+The default `-1` selects exactly one completion: the first present button in
+Ok/Open/Save/SaveAll/Retry/Ignore order, then Yes/YesToAll, then Apply. Set a
+standard-button enum to choose another completion, or `NoButton` for none.
+Missing or non-completion choices produce no Primary button; Cancel/Close stay
+neutral and Discard stays Destructive. Custom buttons retain their own tones.
+
+`IADialog` uses `dialogMinWidth`, not the menu width floor. Its popup padding
+defines the header, content and footer edges; the owned footer takes those same
+four insets explicitly, without offsets. `ControlAppearance.headingPixelSize`
+and `headingWeight` expose the shared heading/emphasis roles for owned title
+text. Explicit local `fontPixelSize`/`fontWeight`, including equal-valued
+assignments, win for both ordinary text and the heading; reset resumes the live
+roles. The dialog forwards ordinary typography to its standard buttons and
+heading typography to its title. Surface/radius overrides remain on the dialog
+surface, not its buttons; application content remains application-owned.
 
 ## Verification Boundary
 

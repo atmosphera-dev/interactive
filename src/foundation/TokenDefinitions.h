@@ -95,6 +95,7 @@ inline constexpr double LabelContrastTarget = 7;
     X(rowHeight, 30, 0, 512) \
     X(popupPadding, 8, 0, 128) \
     X(menuMinWidth, 180, 0, 2048) \
+    X(dialogMinWidth, 180, 0, 2048) \
     X(targetSize, 28, 0, 512) \
     X(horizontalPadding, 12, 0, 128) \
     X(verticalPadding, 6, 0, 128) \

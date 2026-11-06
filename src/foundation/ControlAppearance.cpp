@@ -34,7 +34,7 @@ struct ControlAppearancePrivate {
 #define IA_NOTIFY_INDEX(type, name, upper, group, token) name,
         IA_CONTROL_PROPERTIES(IA_NOTIFY_INDEX)
 #undef IA_NOTIFY_INDEX
-        resolvedFont, stateTable, Count
+        resolvedFont, headingPixelSize, headingWeight, stateTable, Count
     };
     struct NotifiedValues {
         Appearance *source = nullptr;
@@ -45,6 +45,8 @@ struct ControlAppearancePrivate {
         IA_CONTROL_PROPERTIES(IA_NOTIFIED_VALUE)
 #undef IA_NOTIFIED_VALUE
         QFont resolvedFont;
+        qreal headingPixelSize = 0;
+        int headingWeight = 0;
         StateTable stateTable;
     } last;
     struct FontInputs {
@@ -169,6 +171,22 @@ StateTable ControlAppearance::stateTable() const
 {
     const auto &metrics = m_private->sourceState ? m_private->sourceState->metrics : m_private->defaults.metrics;
     return StateTable(m_private->table, metrics.focusWidth);
+}
+
+qreal ControlAppearance::headingPixelSize() const
+{
+    const auto &state = *m_private;
+    const auto &typography = state.sourceState ? state.sourceState->typography : state.defaults.typography;
+    return state.noncolorOverrides.contains(ControlNoncolor::fontPixelSize)
+        ? fontPixelSize() : typography.headingSize;
+}
+
+int ControlAppearance::headingWeight() const
+{
+    const auto &state = *m_private;
+    const auto &typography = state.sourceState ? state.sourceState->typography : state.defaults.typography;
+    return state.noncolorOverrides.contains(ControlNoncolor::fontWeight)
+        ? fontWeight() : typography.emphasisWeight;
 }
 
 void ControlAppearance::setSource(Appearance *source)
@@ -440,6 +458,8 @@ void ControlAppearance::initializeNotifications()
     IA_CONTROL_PROPERTIES(IA_INITIALIZE_PROPERTY)
 #undef IA_INITIALIZE_PROPERTY
     IA_INITIALIZE(resolvedFont, m_font)
+    IA_INITIALIZE(headingPixelSize, headingPixelSize())
+    IA_INITIALIZE(headingWeight, headingWeight())
     IA_INITIALIZE(stateTable, stateTable())
 #undef IA_INITIALIZE
     state.notificationsInitialized = true;
@@ -459,6 +479,8 @@ void ControlAppearance::installNotifications()
     IA_CONTROL_PROPERTIES(IA_COMPARE_PROPERTY)
 #undef IA_COMPARE_PROPERTY
     IA_COMPARE(resolvedFont, m_font)
+    IA_COMPARE(headingPixelSize, headingPixelSize())
+    IA_COMPARE(headingWeight, headingWeight())
     IA_COMPARE(stateTable, stateTable())
 #undef IA_COMPARE
     span.setAux(quint32(Notification::Count));
@@ -494,6 +516,8 @@ void ControlAppearance::drainNotifications()
         IA_CONTROL_PROPERTIES(IA_NOTIFY_PROPERTY)
 #undef IA_NOTIFY_PROPERTY
         IA_NOTIFY(resolvedFont, m_font)
+        IA_NOTIFY(headingPixelSize, headingPixelSize())
+        IA_NOTIFY(headingWeight, headingWeight())
         IA_NOTIFY(stateTable, stateTable())
 #undef IA_NOTIFY
     }

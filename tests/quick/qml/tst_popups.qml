@@ -2,6 +2,7 @@
 import QtQuick
 import QtQuick.Templates as T
 import QtTest
+import InterActive
 import InterActive.Foundation as IA
 import InterActive.Tests
 
@@ -10,6 +11,8 @@ Item {
     width: 800
     height: 640
     Component { id: popupComponent; PopupFixture {} }
+    Component { id: buttonBoxComponent; IADialogButtonBox {} }
+    Component { id: emptyDialogComponent; IADialog {} }
 
     TestCase {
         name: "PopupConsumers"
@@ -145,6 +148,146 @@ Item {
         }
 
         function test_dialogApplyCancelAndModalBlock_data(): var { return modes(); }
+
+        function test_principalAction_data(): var {
+            return [
+                {tag: "accept", buttons: T.DialogButtonBox.Ok | T.DialogButtonBox.Cancel, principal: -1, expected: T.DialogButtonBox.Ok},
+                {tag: "save", buttons: T.DialogButtonBox.Save | T.DialogButtonBox.Close, principal: -1, expected: T.DialogButtonBox.Save},
+                {tag: "yes", buttons: T.DialogButtonBox.Yes | T.DialogButtonBox.No, principal: -1, expected: T.DialogButtonBox.Yes},
+                {tag: "apply-only", buttons: T.DialogButtonBox.Apply | T.DialogButtonBox.Cancel, principal: -1, expected: T.DialogButtonBox.Apply},
+                {tag: "accept-and-apply", buttons: T.DialogButtonBox.Save | T.DialogButtonBox.Apply, principal: -1, expected: T.DialogButtonBox.Save},
+                {tag: "multiple-accept", buttons: T.DialogButtonBox.Ok | T.DialogButtonBox.Save | T.DialogButtonBox.Yes, principal: -1, expected: T.DialogButtonBox.Ok},
+                {tag: "override", buttons: T.DialogButtonBox.Save | T.DialogButtonBox.Apply, principal: T.DialogButtonBox.Apply, expected: T.DialogButtonBox.Apply},
+                {tag: "none", buttons: T.DialogButtonBox.Save | T.DialogButtonBox.Apply | T.DialogButtonBox.Discard, principal: T.DialogButtonBox.NoButton, expected: T.DialogButtonBox.NoButton},
+                {tag: "cancel-only", buttons: T.DialogButtonBox.Cancel | T.DialogButtonBox.Close, principal: -1, expected: T.DialogButtonBox.NoButton},
+                {tag: "cancel-override", buttons: T.DialogButtonBox.Save | T.DialogButtonBox.Cancel, principal: T.DialogButtonBox.Cancel, expected: T.DialogButtonBox.NoButton},
+                {tag: "missing-override", buttons: T.DialogButtonBox.Save, principal: T.DialogButtonBox.Apply, expected: T.DialogButtonBox.NoButton},
+                {tag: "destructive", buttons: T.DialogButtonBox.Save | T.DialogButtonBox.Discard, principal: -1, expected: T.DialogButtonBox.Save}
+            ];
+        }
+
+        function assertPrincipal(box: IADialogButtonBox, expected: int): void {
+            let primaryCount = 0;
+            for (let index = 0; index < box.count; ++index) {
+                const button = box.itemAt(index) as IAButton;
+                verify(button !== null);
+                const destructive = button.T.DialogButtonBox.buttonRole === T.DialogButtonBox.DestructiveRole;
+                const primary = expected !== T.DialogButtonBox.NoButton && button === box.standardButton(expected);
+                compare(button.tone, destructive ? IA.Presentation.Destructive
+                    : primary ? IA.Presentation.Primary : IA.Presentation.Neutral);
+                if (primary) {
+                    ++primaryCount;
+                    compare((button.background as Rectangle).color, IA.Appearance.colors.primarySurface,
+                            "The principal action consumes the shared solid Primary fill");
+                }
+            }
+            compare(primaryCount, expected === T.DialogButtonBox.NoButton ? 0 : 1);
+        }
+
+        function test_principalAction(data: var): void {
+            const box = createTemporaryObject(buttonBoxComponent, fixture, {
+                standardButtons: data.buttons, principalAction: data.principal
+            }) as IADialogButtonBox;
+            verify(box !== null);
+            verify(TestProbe.render(box));
+            assertPrincipal(box, data.expected);
+            // Rebuilding Qt's standard-button model must not leave a stale choice.
+            box.principalAction = -1;
+            box.standardButtons = T.DialogButtonBox.Apply | T.DialogButtonBox.Cancel;
+            verify(TestProbe.render(box));
+            assertPrincipal(box, T.DialogButtonBox.Apply);
+            box.standardButtons |= T.DialogButtonBox.Ok;
+            verify(TestProbe.render(box));
+            assertPrincipal(box, T.DialogButtonBox.Ok);
+            box.principalAction = T.DialogButtonBox.NoButton;
+            assertPrincipal(box, T.DialogButtonBox.NoButton);
+        }
+
+        function test_dialogHeadingAndEdges_data(): var {
+            const rows = [];
+            for (const host of modes()) {
+                for (const density of ["compact", "touch"]) {
+                    for (const scale of [1, 1.5])
+                        rows.push({tag: host.tag + "-" + density + "-" + scale,
+                            mode: host.mode, density: density, scale: scale});
+                }
+            }
+            return rows;
+        }
+
+        function assertDialogEdges(dialog: IADialog): void {
+            const footer = dialog.footer as IADialogButtonBox;
+            verify(footer !== null);
+            verify(TestProbe.render(footer));
+            const content = dialog.contentItem;
+            const background = dialog.background;
+            const contentLeft = content.mapToItem(background, 0, 0).x;
+            const contentRight = content.mapToItem(background, content.width, 0).x;
+            fuzzyCompare(footer.mapToItem(background, footer.leftPadding, 0).x, contentLeft, 1,
+                         "Footer and content share the leading inset");
+            fuzzyCompare(footer.mapToItem(background, footer.width - footer.rightPadding, 0).x, contentRight, 1,
+                         "Footer and content share the trailing inset");
+            fuzzyCompare(footer.contentItem.mapToItem(background, footer.contentItem.width, 0).x, contentRight, 1,
+                         "The real button row ends at the content edge");
+            let buttonRight = 0;
+            for (let index = 0; index < footer.count; ++index) {
+                const button = footer.itemAt(index);
+                buttonRight = Math.max(buttonRight, button.mapToItem(background, button.width, 0).x);
+            }
+            fuzzyCompare(buttonRight, contentRight, 1, "The actual trailing button ends at the content edge");
+            const title = dialog.header as IALabel;
+            verify(title !== null);
+            fuzzyCompare(title.mapToItem(background, title.leftPadding, 0).x, contentLeft, 1,
+                         "Title and content share the leading inset");
+            compare(footer.topPadding, dialog.topPadding);
+            compare(footer.bottomPadding, dialog.bottomPadding);
+        }
+
+        function test_dialogHeadingAndEdges(data: var): void {
+            IA.Appearance.input = {density: data.density, fontScale: data.scale,
+                tokens: {typography: {headingSize: 21, emphasisWeight: 650}, metrics: {popupPadding: 13}}};
+            openWithKeyboard(fixture.dialogOpener, fixture.dialog, data.mode);
+            const dialog = fixture.dialog;
+            const title = findChild(dialog, "iaTitle") as IALabel;
+            verify(title !== null);
+            compare(title.font.pixelSize, Math.round(21 * data.scale));
+            compare(title.font.weight, 650);
+            compare(dialog.standardButton(T.Dialog.Apply).font.pixelSize, Math.round(13 * data.scale));
+            assertDialogEdges(dialog);
+            dialog.leftPadding = 17;
+            dialog.rightPadding = 23;
+            dialog.topPadding = 11;
+            dialog.bottomPadding = 19;
+            verify(TestProbe.render(dialog.contentItem));
+            assertDialogEdges(dialog);
+            // Equal-to-default assignments are genuine local ownership, not a
+            // value comparison against the current ordinary typography role.
+            dialog.fontPixelSize = IA.Appearance.typography.controlSize;
+            dialog.fontWeight = IA.Appearance.typography.controlWeight;
+            const localSize = dialog.fontPixelSize;
+            const localWeight = dialog.fontWeight;
+            IA.Appearance.input = {scheme: "dark", fontScale: 2,
+                tokens: {typography: {headingSize: 24, emphasisWeight: 700}}};
+            verify(TestProbe.render(dialog.contentItem));
+            compare(title.font.pixelSize, Math.round(localSize));
+            compare(title.font.weight, localWeight);
+            compare(dialog.standardButton(T.Dialog.Apply).font.pixelSize, Math.round(localSize));
+            dialog.resetAppearance();
+            verify(TestProbe.render(dialog.contentItem));
+            compare(title.font.pixelSize, 48);
+            compare(title.font.weight, 700);
+            compare(dialog.standardButton(T.Dialog.Apply).font.pixelSize, 26);
+        }
+
+        function test_dialogWidthRole(): void {
+            IA.Appearance.input = {tokens: {metrics: {dialogMinWidth: 260, menuMinWidth: 700}}};
+            const dialog = createTemporaryObject(emptyDialogComponent, fixture) as IADialog;
+            verify(dialog !== null);
+            compare(dialog.implicitWidth, 260);
+            IA.Appearance.input = {tokens: {metrics: {dialogMinWidth: 300, menuMinWidth: 20}}};
+            compare(dialog.implicitWidth, 300);
+        }
+
         function test_dialogApplyCancelAndModalBlock(data: var): void {
             openWithKeyboard(fixture.dialogOpener, fixture.dialog, data.mode);
             tryCompare(fixture.dialogEditor, "activeFocus", true);

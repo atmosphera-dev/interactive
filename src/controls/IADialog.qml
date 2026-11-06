@@ -18,7 +18,7 @@ T.Dialog {
     function resetAppearance(): void { appearance.resetOverrides(); }
     IA.ControlAppearance { id: appearance; source: IA.Appearance; family: "popup" }
     implicitWidth: Math.max(implicitContentWidth + leftPadding + rightPadding,
-                            implicitHeaderWidth, implicitFooterWidth, IA.Appearance.metrics.menuMinWidth)
+                            implicitHeaderWidth, implicitFooterWidth, IA.Appearance.metrics.dialogMinWidth)
     implicitHeight: implicitContentHeight + topPadding + bottomPadding
                     + implicitHeaderHeight + implicitFooterHeight
                     + (implicitHeaderHeight > 0 ? spacing : 0) + (implicitFooterHeight > 0 ? spacing : 0)
@@ -33,8 +33,8 @@ T.Dialog {
         visible: control.title.length > 0
         text: control.title
         fontFamily: control.fontFamily
-        fontPixelSize: control.fontPixelSize
-        fontWeight: control.fontWeight
+        fontPixelSize: appearance.headingPixelSize
+        fontWeight: appearance.headingWeight
         foregroundColor: control.foregroundColor
         leftPadding: control.leftPadding
         rightPadding: control.rightPadding
@@ -48,6 +48,10 @@ T.Dialog {
         visible: count > 0
         // The dialog owns the complete surface and outline, including beneath the footer.
         background: null
+        leftPadding: control.leftPadding
+        rightPadding: control.rightPadding
+        topPadding: control.topPadding
+        bottomPadding: control.bottomPadding
         fontFamily: control.fontFamily
         fontPixelSize: control.fontPixelSize
         fontWeight: control.fontWeight

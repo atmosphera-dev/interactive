@@ -335,6 +335,7 @@ private slots:
     void fontEnvironmentDuringSourceUpdate();
     void lazyControlDiagnostics();
     void propertySpecificNotifications();
+    void headingTypographyRoles();
     void localWorkIsolation();
     void fontAndGeometryWork();
     void reentrantNotifications();
@@ -1698,6 +1699,41 @@ void AppearanceTests::propertySpecificNotifications()
     control.resetBackgroundColor();
     QCOMPARE(snapshots.count(), 2);
     QCOMPARE(neutral.count(), 0);
+}
+
+void AppearanceTests::headingTypographyRoles()
+{
+    Appearance appearance;
+    ControlAppearance control;
+    control.setSource(&appearance);
+    QCOMPARE(control.headingPixelSize(), appearance.typography()->headingSize());
+    QCOMPARE(control.headingWeight(), appearance.typography()->emphasisWeight());
+    QSignalSpy size(&control, &ControlAppearance::headingPixelSizeChanged);
+    QSignalSpy weight(&control, &ControlAppearance::headingWeightChanged);
+    appearance.setInput(tokenInput(QStringLiteral("colors"), {{QStringLiteral("accent"), QColor("#8657b8")}}));
+    QCOMPARE(size.count(), 0);
+    QCOMPARE(weight.count(), 0);
+    // Equal-valued ordinary overrides also own the corresponding title role.
+    control.setFontPixelSize(control.fontPixelSize());
+    control.setFontWeight(control.fontWeight());
+    QCOMPARE(control.headingPixelSize(), 13.0);
+    QCOMPARE(control.headingWeight(), 400);
+    QCOMPARE(size.count(), 1);
+    QCOMPARE(weight.count(), 1);
+    appearance.setInput(tokenInput(QStringLiteral("typography"), {
+        {QStringLiteral("headingSize"), 24}, {QStringLiteral("emphasisWeight"), 700}}));
+    QCOMPARE(control.headingPixelSize(), 13.0);
+    QCOMPARE(control.headingWeight(), 400);
+    QCOMPARE(size.count(), 1);
+    QCOMPARE(weight.count(), 1);
+    control.resetOverrides();
+    QCOMPARE(control.headingPixelSize(), 24.0);
+    QCOMPARE(control.headingWeight(), 700);
+    QCOMPARE(size.count(), 2);
+    QCOMPARE(weight.count(), 2);
+    control.setSource(nullptr);
+    QCOMPARE(control.headingPixelSize(), 16.0);
+    QCOMPARE(control.headingWeight(), 600);
 }
 
 void AppearanceTests::localWorkIsolation()
