@@ -388,8 +388,17 @@ Item {
                     compare(swatch.color, "#5c9cf5");
                     verify(row.enabled && row.opacity === 1);
                     const background = surface.color.a === 0 ? (menu.background as Rectangle).color : surface.color;
-                    verify(contrastRatio(name.color, background) >= target, data.tag + "/" + state + " saved-name contrast");
-                    verify(contrastRatio(hex.color, background) >= target, data.tag + "/" + state + " saved-hex contrast");
+                    if (row.highlighted && contrastRatio(name.color, background) < target) {
+                        // P2's accent highlight cannot silently rewrite this
+                        // caller-owned gray pair. Its real collision is reported.
+                        verify(row.appearanceDiagnostics.some(function(diagnostic) {
+                            return diagnostic.code === "low-contrast"
+                                && diagnostic.path === "selectedForegroundColor/selectedBackgroundColor";
+                        }), "An exact local label below the new highlight floor is diagnosed");
+                    } else {
+                        verify(contrastRatio(name.color, background) >= target, data.tag + "/" + state + " saved-name contrast");
+                        verify(contrastRatio(hex.color, background) >= target, data.tag + "/" + state + " saved-hex contrast");
+                    }
                     assertRenderedLabel(name);
                     assertRenderedLabel(hex);
                     const centers = [swatch, name, hex].map(function(item) { return item.mapToItem(row, 0, item.height / 2).y; });
@@ -757,8 +766,8 @@ Item {
             verify(background !== null && label !== null && sliderFill !== null && progressFill !== null);
             tryCompare(sample, "hovered", false);
             compare(background.color, IA.Appearance.colors.primarySurface);
-            compare(label.color, IA.Appearance.colors.primaryText);
-            compare(background.border.color, IA.Appearance.colors.primaryOutline);
+            compare(label.color, sample.foregroundColor);
+            compare(background.border.color, sample.borderColor);
             compare(sliderFill.color, expected);
             compare(progressFill.color, expected);
             assertSemanticConsumers();
@@ -771,9 +780,8 @@ Item {
                 const background = button.background as Rectangle;
                 const readout = findChild(page, "opencode-color-" + reference.key) as IALabel;
                 verify(button !== null && label !== null && background !== null && readout !== null);
-                compare(background.color, button.hovered ? IA.Appearance.colors[reference.role + "Hover"]
-                    : IA.Appearance.colors[reference.role + "Surface"]);
-                compare(label.color, IA.Appearance.colors[reference.role + "Text"]);
+                compare(background.color, button.hovered ? button.hoverBackgroundColor : button.backgroundColor);
+                compare(label.color, button.foregroundColor);
                 compare(background.border.color, label.color);
                 compare(readout.text.toLowerCase(), String(button.backgroundColor).toLowerCase());
             }
@@ -1444,12 +1452,10 @@ Item {
                         Qt.rgba(Math.round(bg.r * 255) / 255, Math.round(bg.g * 255) / 255, Math.round(bg.b * 255) / 255, 1));
                     verify(roundedRatio >= data.target, data.tag + "/" + state + " 8-bit text contrast: " + roundedRatio);
                     if (state !== "normal" && data.name !== "menuButton") {
-                        const endpoint = contrastRatio(fg, "white") > contrastRatio(fg, "black") ? 1 : 0;
-                        const amount = IA.Appearance.motion.hoverBlend;
                         const base = button.backgroundColor;
-                        for (const channel of ["r", "g", "b"])
-                            fuzzyCompare(bg[channel], base[channel] + (endpoint - base[channel]) * amount,
-                                         1 / 65535, data.tag + "/" + state + " feedback follows the label, not page text");
+                        verify(String(bg) !== String(base), data.tag + "/" + state + " feedback changes the resting fill");
+                        // Independent CAM16-UCS distance/floor bounds are covered
+                        // by the Foundation matrix; this checks its real consumer.
                     }
                     if (data.role.length > 0)
                         compare(background.border.color, label.color, "Semantic border matches rendered text");
@@ -1646,8 +1652,8 @@ Item {
                     tryCompare(sample.button, "hovered", false);
                     compare(sample.background.color, surface);
                     compare(sample.background.color, IA.Appearance.colors[reference.role + "Surface"]);
-                    compare(sample.label.color, IA.Appearance.colors[reference.role + "Text"]);
-                    compare(sample.background.border.color, IA.Appearance.colors[reference.role + "Outline"]);
+                    compare(sample.label.color, sample.button.foregroundColor);
+                    compare(sample.background.border.color, sample.button.borderColor);
                     if (index === 1)
                         verify(String(sample.label.color) !== previousText[sampleIndex], "Actual text follows the new fill's readable foreground");
                     compare(sample.swatch.text.toLowerCase(), String(surface).toLowerCase());

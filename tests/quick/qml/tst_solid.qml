@@ -263,8 +263,8 @@ Item {
                 IA.Appearance.input = {scheme: scheme};
                 const colors = IA.Appearance.colors;
                 const surface = colors[data.role + "Surface"];
-                const hover = colors[data.role + "Hover"];
-                const pressed = colors[data.role + "Pressed"];
+                const hover = solid.hoverBackgroundColor;
+                const selected = solid.selectedBackgroundColor;
                 const text = colors[data.role + "Text"];
                 const outline = colors[data.role + "Outline"];
                 verify(TestProbe.move(scene, scene.width - 2, scene.height - 2));
@@ -300,16 +300,16 @@ Item {
                 tryCompare(solid, "down", false);
                 tryCompare(solid, "checked", true);
                 verify(TestProbe.move(scene, scene.width - 2, scene.height - 2));
-                verifyVisual(solid, pressed, text, originalGeometry);
+                verifyVisual(solid, selected, text, originalGeometry);
 
                 // Enter with a real Tab so the single keyboard focus border is exercised.
                 verify(TestProbe.move(neutral, neutral.width / 2, neutral.height / 2));
                 tryCompare(neutral, "hovered", true);
-                verifyVisual(neutral, colors.controlHover, colors.text, originalGeometry);
+                verifyVisual(neutral, neutral.hoverBackgroundColor, colors.text, originalGeometry);
                 verify(TestProbe.press(neutral, neutral.width / 2, neutral.height / 2));
                 try {
                     tryCompare(neutral, "down", true);
-                    verifyVisual(neutral, colors.controlHover, colors.text, originalGeometry);
+                    verifyVisual(neutral, neutral.hoverBackgroundColor, colors.text, originalGeometry);
                 } finally {
                     verify(TestProbe.release(neutral, neutral.width / 2, neutral.height / 2));
                 }
@@ -319,14 +319,14 @@ Item {
                 verify(TestProbe.keyClick(neutral, Qt.Key_Tab));
                 tryCompare(solid, "activeFocus", true);
                 tryCompare(solid, "visualFocus", true);
-                verifyVisual(solid, pressed, text, originalGeometry);
+                verifyVisual(solid, selected, text, originalGeometry);
                 const background = solid.background as Rectangle;
                 for (const child of background.children) {
                     const rectangle = child as Rectangle;
                     if (rectangle !== null)
                         compare(rectangle.objectName, "iaPressInset", "Only the press inset, no additional focus perimeter");
                 }
-                compare(background.border.color, contrastRatio(colors.focus, pressed) >= 3 ? colors.focus : text);
+                compare(background.border.color, contrastRatio(colors.focus, selected) >= 3 ? colors.focus : text);
                 compare(background.border.width, IA.Appearance.metrics.focusWidth);
                 verify(TestProbe.keyClick(solid, Qt.Key_Space));
                 tryCompare(solid, "checked", false);

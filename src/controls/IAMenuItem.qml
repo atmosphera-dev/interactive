@@ -32,7 +32,7 @@ T.MenuItem {
     readonly property bool showsIcon: hasIcon && display !== T.AbstractButton.TextOnly
     readonly property real leadingPadding: Math.max(implicitTextPadding, textPadding)
     function resetAppearance(): void { appearance.resetOverrides(); }
-    IA.ControlAppearance { id: appearance; source: IA.Appearance; family: "delegate"; tone: control.tone }
+    IA.ControlAppearance { id: appearance; source: IA.Appearance; family: "menuItem"; tone: control.tone }
     implicitWidth: implicitContentWidth + leftPadding + rightPadding
     implicitHeight: Math.max(implicitContentHeight + topPadding + bottomPadding, minimumHeight)
     implicitTextPadding: (checkable ? IA.Appearance.metrics.indicatorSize + spacing : 0)

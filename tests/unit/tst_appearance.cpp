@@ -119,6 +119,52 @@ qreal visibleDistance(const QColor &a, const QColor &b, const QColor &backdrop)
         + std::pow(first.astar - second.astar, 2) + std::pow(first.bstar - second.bstar, 2));
 }
 
+// Independent RGB/compositing/CAM oracle for the bounded table-time recipe.
+QColor stateFeedback(const QColor &base, const QColor &text, qreal amount, const QColor &backdrop,
+                     qreal floor, QList<QColor> reserved = {}, bool retain = false)
+{
+    if (reserved.isEmpty())
+        reserved.append(base);
+    const auto distance = [&](const QColor &fill) {
+        qreal result = std::numeric_limits<qreal>::infinity();
+        for (const auto &other : reserved)
+            result = std::min(result, visibleDistance(fill, other, backdrop));
+        return result;
+    };
+    const auto readable = [&](const QColor &fill) {
+        const QColor visible = opaqueOver(fill, backdrop);
+        return rgbContrast(text, visible) >= floor
+            && rgbContrast(QColor::fromRgba(text.rgba()), QColor::fromRgb(visible.rgb())) >= floor;
+    };
+    if (retain && readable(base) && distance(base) >= 4)
+        return base;
+    QColor best = base;
+    qreal bestDistance = distance(base);
+    bool bestReadable = readable(base);
+    const QColor visible = opaqueOver(base, backdrop);
+    const QColor toward = opaqueOver(text, visible);
+    const QColor away(rgbContrast(text, QColor(Qt::white)) >= rgbContrast(text, QColor(Qt::black)) ? Qt::white : Qt::black);
+    for (const auto &endpoint : {toward, away}) {
+        for (int i = 0; i <= 8; ++i) {
+            const qreal strength = std::clamp(amount * (1 + i / 4.0), 0.0, 1.0);
+            const auto mix = [&](qreal a, qreal b) { return a + (b - a) * strength; };
+            const QColor candidate = QColor::fromRgbF(mix(visible.redF(), endpoint.redF()),
+                mix(visible.greenF(), endpoint.greenF()), mix(visible.blueF(), endpoint.blueF()));
+            if (!readable(candidate))
+                continue;
+            const qreal measured = distance(candidate);
+            if (measured >= 4)
+                return candidate;
+            if (!bestReadable || measured > bestDistance) {
+                best = candidate;
+                bestDistance = measured;
+                bestReadable = true;
+            }
+        }
+    }
+    return best;
+}
+
 bool gray(const QColor &color)
 {
     return color.red() == color.green() && color.green() == color.blue();
@@ -305,6 +351,8 @@ private slots:
     void supplementaryStateRoles();
     void focusedBorderInputs();
     void neutralFocusBorder();
+    void stateFeedbackMatrix();
+    void menuHighlightPairs();
     void stateSweepDoesNoFoundationWork();
     void appearanceMetaObjectIsPublic();
 };
@@ -319,6 +367,129 @@ void AppearanceTests::appearanceMetaObjectIsPublic()
             QVERIFY2(!type.contains("PaletteUpdate"), type.constData());
     }
     QVERIFY(meta.indexOfSignal("resolvedChanged()") >= 0);
+}
+
+void AppearanceTests::stateFeedbackMatrix()
+{
+    Appearance source;
+    for (const auto *scheme : {"light", "dark"}) {
+        for (const auto *contrast : {"normal", "high"}) {
+            source.setInput(paletteInput(QLatin1String(scheme), QLatin1String(contrast), {}));
+            const qreal floor = QLatin1String(contrast) == QLatin1String("high") ? 7 : 5;
+            const QColor backdrop = opaqueOver(source.colors()->content(),
+                opaqueOver(source.colors()->canvas(), QColor(Qt::white)));
+            for (const auto *family : {"button", "tool", "field", "delegate", "tab", "choice", "menuItem"}) {
+                ControlAppearance control;
+                control.setSource(&source);
+                control.setFamily(QLatin1String(family));
+                for (const auto tone : {Presentation::Neutral, Presentation::Primary, Presentation::Destructive, Presentation::Caution}) {
+                    control.setTone(tone);
+                    const QString context = QStringLiteral("%1/%2/%3/%4").arg(QLatin1String(scheme), QLatin1String(contrast),
+                        QLatin1String(family)).arg(int(tone));
+                    const auto check = [&](bool local) {
+                        const auto table = control.stateTable();
+                        const auto rest = table.colors(Presentation::Rest);
+                        const auto hover = table.colors(Presentation::Hover);
+                        const qreal distance = visibleDistance(rest.backgroundColor(), hover.backgroundColor(), backdrop);
+                        QVERIFY2(distance >= 4, qPrintable(context + QStringLiteral(" rest/hover=%1 local=%2").arg(distance).arg(local)));
+                        verifyReadableContrast(hover.foregroundColor(), hover.backgroundColor(), backdrop, floor, context);
+                        {
+                            const auto pressed = table.colors(Presentation::Pressed);
+                            QVERIFY2(visibleDistance(rest.backgroundColor(), pressed.backgroundColor(), backdrop) >= 4, qPrintable(context));
+                            verifyReadableContrast(pressed.foregroundColor(), pressed.backgroundColor(), backdrop, floor, context);
+                        }
+                        if (QLatin1String(family) != QLatin1String("field") && QLatin1String(family) != QLatin1String("menuItem")) {
+                            const Presentation::State states[]{Presentation::Rest, Presentation::Hover,
+                                Presentation::Selected, Presentation::SelectedHover};
+                            for (size_t i = 0; i < std::size(states); ++i) {
+                                const auto a = table.colors(states[i]);
+                                verifyReadableContrast(a.foregroundColor(), a.backgroundColor(), backdrop, floor, context);
+                                for (size_t j = i + 1; j < std::size(states); ++j) {
+                                    const qreal separation = visibleDistance(a.backgroundColor(), table.colors(states[j]).backgroundColor(), backdrop);
+                                    QVERIFY2(separation >= 4, qPrintable(context + QStringLiteral(" %1/%2=%3").arg(int(states[i])).arg(int(states[j])).arg(separation)));
+                                }
+                            }
+                        }
+                        if (rest.backgroundColor().alpha() == 0)
+                            QCOMPARE(table.colors(Presentation::Disabled).backgroundColor().alpha(), 0);
+                    };
+                    check(false);
+                    if (QLatin1String(family) == QLatin1String("menuItem")) {
+                        const auto band = control.stateTable().colors(Presentation::Selected);
+                        QCOMPARE(band.foregroundColor(), QColor(Qt::white));
+                        verifyReadableContrast(band.foregroundColor(), band.backgroundColor(), backdrop, 7, context);
+                        QCOMPARE(control.stateTable().colors(Presentation::SelectedHover), control.stateTable().colors(Presentation::Selected));
+                    }
+                    for (const QColor &fill : {QColor(Qt::white), QColor(Qt::black)}) {
+                        control.setBackgroundColor(fill);
+                        check(true);
+                        QCOMPARE(control.stateTable().colors(Presentation::Rest).backgroundColor(), fill);
+                        control.resetOverrides();
+                    }
+                    const QColor exact("#80445566");
+                    control.setHoverBackgroundColor(exact);
+                    control.setPressedBackgroundColor(exact);
+                    control.setSelectedBackgroundColor(exact);
+                    control.setDisabledBackgroundColor(exact);
+                    QCOMPARE(control.stateTable().colors(Presentation::Hover).backgroundColor(), exact);
+                    QCOMPARE(control.stateTable().colors(Presentation::Pressed).backgroundColor(), exact);
+                    QCOMPARE(control.stateTable().colors(Presentation::Selected).backgroundColor(), exact);
+                    QCOMPARE(control.stateTable().colors(Presentation::Disabled).backgroundColor(), exact);
+                    const auto retained = control.stateTable();
+                    control.setFontPixelSize(control.fontPixelSize() + 1);
+                    QCOMPARE(control.stateTable(), retained);
+                    control.resetOverrides();
+                }
+            }
+        }
+    }
+    source.setInput(tokenInput(QStringLiteral("motion"), {{QStringLiteral("hoverBlend"), 0}}));
+    ControlAppearance impossible;
+    impossible.setSource(&source);
+    QVERIFY(hasDiagnostic(impossible.diagnostics(), QStringLiteral("low-feedback")));
+}
+
+void AppearanceTests::menuHighlightPairs()
+{
+    Appearance source;
+    ControlAppearance control;
+    control.setSource(&source);
+    control.setFamily(QStringLiteral("menuItem"));
+    for (const auto *scheme : {"light", "dark"}) {
+        for (const auto *contrast : {"normal", "high"}) {
+            for (const QColor &accent : {QColor("#5c9cf5"), QColor("#ffff00"), QColor("#800020")}) {
+                source.setInput(paletteInput(QLatin1String(scheme), QLatin1String(contrast), {{QStringLiteral("accent"), accent}}));
+                QCOMPARE(source.colors()->accent(), accent); // The accent token itself stays exact.
+                const QColor backdrop = opaqueOver(source.colors()->content(), source.colors()->canvas());
+                for (const auto tone : {Presentation::Neutral, Presentation::Primary, Presentation::Caution, Presentation::Destructive}) {
+                    control.setTone(tone);
+                    const auto band = control.stateTable().colors(Presentation::Selected);
+                    QCOMPARE(band.foregroundColor(), QColor(Qt::white));
+                    verifyReadableContrast(band.foregroundColor(), band.backgroundColor(), backdrop, 7);
+                    const mcu::Hct seed(accent.rgb()), fill(band.backgroundColor().rgb());
+                    const qreal hueDifference = std::abs(seed.get_hue() - fill.get_hue());
+                    QVERIFY(std::min(hueDifference, 360 - hueDifference) < 5);
+                    QVERIFY(fill.get_tone() <= seed.get_tone() + 0.1);
+                    for (const auto state : {Presentation::SelectedHover, Presentation::SelectedPressed,
+                             Presentation::Inactive, Presentation::InactiveHover}) {
+                        const auto entry = control.stateTable().colors(state);
+                        QCOMPARE(entry.backgroundColor(), band.backgroundColor());
+                        QCOMPARE(entry.foregroundColor(), band.foregroundColor());
+                    }
+                    control.setBorderColor(QColor("#123456")); // Private and shared builders agree.
+                    QCOMPARE(control.stateTable().colors(Presentation::Selected).backgroundColor(), band.backgroundColor());
+                    QCOMPARE(control.stateTable().colors(Presentation::Selected).foregroundColor(), band.foregroundColor());
+                    control.resetOverrides();
+                    control.setSelectedBackgroundColor(QColor("#abcd12"));
+                    QCOMPARE(control.selectedBackgroundColor(), QColor("#abcd12"));
+                    verifyReadableContrast(control.selectedForegroundColor(), control.selectedBackgroundColor(), backdrop, 7);
+                    control.setSelectedForegroundColor(QColor("#123456"));
+                    QCOMPARE(control.selectedForegroundColor(), QColor("#123456"));
+                    control.resetOverrides();
+                }
+            }
+        }
+    }
 }
 
 void AppearanceTests::stateTableEquivalence()
@@ -338,7 +509,17 @@ void AppearanceTests::stateTableEquivalence()
             {Presentation::Disabled, false, true, true, true, false}};
         for (const auto &flags : cases) {
             const auto entry = control.stateTable().colors(flags.state);
-            const QColor background = !flags.enabled ? control.disabledBackgroundColor()
+            const auto *source = control.source();
+            const QColor backdrop = opaqueOver(source->colors()->content(),
+                opaqueOver(source->colors()->canvas(), QColor(Qt::white)));
+            const bool selectable = control.family() == QLatin1String("button") || control.family() == QLatin1String("tool")
+                || control.family() == QLatin1String("delegate") || control.family() == QLatin1String("tab")
+                || control.family() == QLatin1String("choice");
+            const QColor background = flags.state == Presentation::SelectedHover && selectable
+                ? stateFeedback(control.selectedBackgroundColor(), control.selectedForegroundColor(), source->motion()->hoverBlend(),
+                    backdrop, source->contrast() == QLatin1String("high") ? 7 : 5,
+                    {control.backgroundColor(), control.hoverBackgroundColor(), control.selectedBackgroundColor()})
+                : !flags.enabled ? control.disabledBackgroundColor()
                 : flags.down ? control.pressedBackgroundColor()
                 : flags.selected ? (flags.active ? control.selectedBackgroundColor() : control.inactiveBackgroundColor())
                 : flags.hover ? control.hoverBackgroundColor() : control.backgroundColor();
@@ -350,13 +531,10 @@ void AppearanceTests::stateTableEquivalence()
             QCOMPARE(entry.foregroundColor(), foreground);
             QCOMPARE(entry.borderColor(), flags.enabled ? control.borderColor() : control.disabledBorderColor());
             QCOMPARE(entry.focusColor(), control.focusColor());
-            const auto *source = control.source();
-            const QColor backdrop = opaqueOver(source->colors()->content(),
-                opaqueOver(source->colors()->canvas(), QColor(Qt::white)));
             const bool invalidField = control.family() == QLatin1String("field")
                 && control.validation() == Presentation::Invalid;
             const QColor expectedFocus = invalidField ? entry.borderColor()
-                : rgbContrast(control.focusColor(), background, backdrop) >= 3 ? control.focusColor() : foreground;
+                : rgbContrast(control.focusColor(), entry.backgroundColor(), backdrop) >= 3 ? control.focusColor() : foreground;
             QCOMPARE(entry.focusedBorderColor(), expectedFocus);
             QCOMPARE(entry.focusedBorderWidth(), source->metrics()->focusWidth());
             QCOMPARE(entry.fillColor(), flags.enabled ? control.fillColor() : control.disabledForegroundColor());
@@ -432,8 +610,10 @@ void AppearanceTests::neutralFocusBorder()
                     control.setFamily(QLatin1String(family));
                     for (int i = Presentation::Rest; i < Presentation::Disabled; ++i) {
                         const auto entry = control.stateTable().colors(Presentation::State(i));
-                        QCOMPARE(entry.focusedBorderColor(), focus);
-                        QVERIFY(rgbContrast(focus, entry.backgroundColor(), backdrop) >= 3);
+                        const QColor expected = rgbContrast(focus, entry.backgroundColor(), backdrop) >= 3
+                            ? focus : entry.foregroundColor();
+                        QCOMPARE(entry.focusedBorderColor(), expected);
+                        QVERIFY(rgbContrast(expected, entry.backgroundColor(), backdrop) >= 3);
                     }
                     // Local colors still use the entry's foreground when shared
                     // focus is unreadable on the explicitly chosen fill.
@@ -734,7 +914,9 @@ void AppearanceTests::stateSweepDoesNoFoundationWork()
         object->setProperty("selected", selected);
         object->setProperty("active", active);
         object->setProperty("inset", inset);
-        const QColor background = !enabled ? facade->disabledBackgroundColor()
+        const QColor background = enabled && selected && active && hover && (!down || inset)
+            ? facade->stateTable().colors(Presentation::SelectedHover).backgroundColor()
+            : !enabled ? facade->disabledBackgroundColor()
             : down && !inset ? facade->pressedBackgroundColor()
             : selected ? (active ? facade->selectedBackgroundColor() : facade->inactiveBackgroundColor())
             : hover ? facade->hoverBackgroundColor() : facade->backgroundColor();
@@ -744,7 +926,9 @@ void AppearanceTests::stateSweepDoesNoFoundationWork()
             : facade->foregroundColor();
         QCOMPARE(object->property("observed").value<QColor>(), background);
         QCOMPARE(object->property("foreground").value<QColor>(), foreground);
-        const QColor choiceBackground = !enabled ? facade->disabledBackgroundColor()
+        const QColor choiceBackground = enabled && selected && active && hover && !down
+            ? facade->stateTable().colors(Presentation::SelectedHover).backgroundColor()
+            : !enabled ? facade->disabledBackgroundColor()
             : down ? facade->pressedBackgroundColor()
             : selected ? (active ? facade->selectedBackgroundColor() : facade->inactiveBackgroundColor())
             : hover ? facade->hoverBackgroundColor() : facade->backgroundColor();
@@ -830,9 +1014,18 @@ void AppearanceTests::familyDescriptorContract()
                         control.setValidation(validation);
                         QCOMPARE(control.backgroundColor(), color(background));
                         QCOMPARE(control.foregroundColor(), color(foreground));
-                        QCOMPARE(control.hoverBackgroundColor(), color(hover));
-                        QCOMPARE(control.pressedBackgroundColor(), color(pressed));
-                        QCOMPARE(control.selectedBackgroundColor(), color(colored && !label ? semantic + QStringLiteral("Pressed") : QStringLiteral("selection")));
+                        const QColor backdrop = opaqueOver(appearance.colors()->content(), opaqueOver(appearance.colors()->canvas(), QColor(Qt::white)));
+                        const QColor expectedHover = family.interactive
+                            ? stateFeedback(color(background), color(foreground), appearance.motion()->hoverBlend(), backdrop, 5)
+                            : color(hover);
+                        QCOMPARE(control.hoverBackgroundColor(), expectedHover);
+                        QCOMPARE(control.pressedBackgroundColor(), family.interactive
+                            ? stateFeedback(color(background), color(foreground), appearance.motion()->pressedBlend(), backdrop, 5) : color(pressed));
+                        const QColor selectedSeed = color(colored && !label ? semantic + QStringLiteral("Pressed") : QStringLiteral("selection"));
+                        const bool selectable = family.interactive && control.family() != QLatin1String("field");
+                        QCOMPARE(control.selectedBackgroundColor(), selectable
+                            ? stateFeedback(selectedSeed, control.selectedForegroundColor(), appearance.motion()->pressedBlend(), backdrop, 5,
+                                {color(background), expectedHover}, true) : selectedSeed);
                         QCOMPARE(control.inactiveBackgroundColor(), color(colored && !label ? semantic + QStringLiteral("Surface") : QStringLiteral("inactiveSelection")));
                         QCOMPARE(control.selectedForegroundColor(), color(colored && !label ? foreground : QStringLiteral("text")));
                         QCOMPARE(control.inactiveForegroundColor(), control.selectedForegroundColor());
@@ -841,7 +1034,8 @@ void AppearanceTests::familyDescriptorContract()
                             : colored && !label ? semantic + QStringLiteral("Outline") : QStringLiteral("outline");
                         QCOMPARE(control.borderColor(), color(border));
                         QCOMPARE(control.disabledBorderColor(), color(validation == Presentation::None ? QStringLiteral("outline") : border));
-                        QCOMPARE(control.disabledBackgroundColor(), appearance.colors()->disabledSurface());
+                        QCOMPARE(control.disabledBackgroundColor(), color(background).alpha() == 0
+                            ? QColor(Qt::transparent) : appearance.colors()->disabledSurface());
                         QCOMPARE(control.disabledForegroundColor(), appearance.colors()->disabledText());
                         QCOMPARE(control.focusColor(), appearance.colors()->focus());
                         QCOMPARE(control.fillColor(), appearance.colors()->accent());
@@ -1121,7 +1315,9 @@ void AppearanceTests::sharedPaletteWork()
     QCOMPARE(work.count(AppearanceWork::GeometryCalculation), 0);
     for (const auto &facade : facades) {
         QCOMPARE(facade->backgroundColor(), appearance.colors()->primarySurface());
-        QCOMPARE(facade->selectedBackgroundColor(), appearance.colors()->primaryPressed());
+        const QColor backdrop = opaqueOver(appearance.colors()->content(), opaqueOver(appearance.colors()->canvas(), QColor(Qt::white)));
+        QCOMPARE(facade->selectedBackgroundColor(), stateFeedback(appearance.colors()->primaryPressed(), facade->selectedForegroundColor(),
+            appearance.motion()->pressedBlend(), backdrop, 5, {facade->backgroundColor(), facade->hoverBackgroundColor()}, true));
         QCOMPARE(facade->inactiveForegroundColor(), appearance.colors()->primaryText());
     }
     work.clear();
@@ -1366,7 +1562,9 @@ void AppearanceTests::localWorkIsolation()
     QCOMPARE(ordinary(), before);
     QCOMPARE(work.count(AppearanceWork::LocalDerivation), 0);
     QCOMPARE(local.fillColor(), appearance.colors()->accent());
-    QCOMPARE(local.selectedBackgroundColor(), appearance.colors()->primaryPressed());
+    const QColor backdrop = opaqueOver(appearance.colors()->content(), opaqueOver(appearance.colors()->canvas(), QColor(Qt::white)));
+    QCOMPARE(local.selectedBackgroundColor(), stateFeedback(appearance.colors()->primaryPressed(), local.selectedForegroundColor(),
+        appearance.motion()->pressedBlend(), backdrop, 5, {local.backgroundColor(), local.hoverBackgroundColor()}, true));
     QCOMPARE(local.inactiveBackgroundColor(), appearance.colors()->primarySurface());
     local.setBackgroundColor(QColor("#101020"));
     QVERIFY(ordinary() != before);
@@ -2409,9 +2607,10 @@ void AppearanceTests::derivedLabelTarget()
                 local.setSource(&appearance);
                 local.setBackgroundColor(fill);
                 const qreal floor = contrast == QLatin1String("high") ? 7 : 5;
-                const QColor previousResting = TokenSchema::contrastingText(fill, {fill}, appearance.colors()->content(), floor);
-                QCOMPARE(local.hoverBackgroundColor(), rgbFeedback(fill, previousResting, appearance.motion()->hoverBlend()));
-                QCOMPARE(local.pressedBackgroundColor(), rgbFeedback(fill, previousResting, appearance.motion()->pressedBlend()));
+                QCOMPARE(local.hoverBackgroundColor(), stateFeedback(fill, local.foregroundColor(), appearance.motion()->hoverBlend(),
+                    appearance.colors()->content(), floor));
+                QCOMPARE(local.pressedBackgroundColor(), stateFeedback(fill, local.foregroundColor(), appearance.motion()->pressedBlend(),
+                    appearance.colors()->content(), floor));
                 local.setHoverBackgroundColor(fill);
                 local.setPressedBackgroundColor(fill);
                 local.setSelectedBackgroundColor(fill);
@@ -2994,10 +3193,10 @@ void AppearanceTests::localDerivationAndDiagnostics()
     control.setBackgroundColor(QColor("#101020"));
     for (const auto &background : {control.backgroundColor(), control.hoverBackgroundColor(), control.pressedBackgroundColor()})
         verifyReadableContrast(control.foregroundColor(), background, appearance.colors()->content(), 5);
-    const QColor baseText = TokenSchema::contrastingText(control.backgroundColor(), {control.backgroundColor()},
-                                                       appearance.colors()->content(), 7);
-    QCOMPARE(control.hoverBackgroundColor(), rgbFeedback(control.backgroundColor(), baseText, 0.08));
-    QCOMPARE(control.pressedBackgroundColor(), rgbFeedback(control.backgroundColor(), baseText, 0.16));
+    QCOMPARE(control.hoverBackgroundColor(), stateFeedback(control.backgroundColor(), control.foregroundColor(), 0.08,
+        appearance.colors()->content(), 5));
+    QCOMPARE(control.pressedBackgroundColor(), stateFeedback(control.backgroundColor(), control.foregroundColor(), 0.16,
+        appearance.colors()->content(), 5));
     QCOMPARE(control.disabledBackgroundColor(), appearance.colors()->disabledSurface());
     QCOMPARE(control.inactiveBackgroundColor(), appearance.colors()->inactiveSelection());
     control.setHoverBackgroundColor(QColor("#303040"));
@@ -3044,26 +3243,20 @@ void AppearanceTests::localPurple()
             control.setSource(&appearance);
             sibling.setSource(&appearance);
             const QColor backdrop = opaqueOver(appearance.colors()->content(), opaqueOver(appearance.colors()->canvas(), QColor(Qt::white)));
-            const QColor baseText = TokenSchema::contrastingText(purple, {purple}, backdrop, 7);
             control.setBackgroundColor(purple);
             QCOMPARE(control.backgroundColor(), purple);
-            QCOMPARE(control.hoverBackgroundColor(), rgbFeedback(purple, baseText, appearance.motion()->hoverBlend()));
-            QCOMPARE(control.pressedBackgroundColor(), rgbFeedback(purple, baseText, appearance.motion()->pressedBlend()));
+            QCOMPARE(control.hoverBackgroundColor(), stateFeedback(purple, control.foregroundColor(), appearance.motion()->hoverBlend(), backdrop, target));
+            QCOMPARE(control.pressedBackgroundColor(), stateFeedback(purple, control.foregroundColor(), appearance.motion()->pressedBlend(), backdrop, target));
             QVERIFY(rgbLuminance(control.foregroundColor()) > rgbLuminance(purple));
-            QVERIFY(rgbLuminance(control.pressedBackgroundColor()) < rgbLuminance(control.hoverBackgroundColor()));
-            QVERIFY(rgbLuminance(control.hoverBackgroundColor()) < rgbLuminance(purple));
-            QVERIFY(rgbContrast(control.foregroundColor(), control.pressedBackgroundColor())
-                    > rgbContrast(control.foregroundColor(), control.hoverBackgroundColor()));
-            QVERIFY(rgbContrast(control.foregroundColor(), control.hoverBackgroundColor())
-                    > rgbContrast(control.foregroundColor(), purple));
+            QVERIFY(visibleDistance(purple, control.hoverBackgroundColor(), backdrop) >= 4);
             for (const auto *state : {"backgroundColor", "hoverBackgroundColor", "pressedBackgroundColor"}) {
                 const QColor background = control.property(state).value<QColor>();
                 verifyReadableContrast(control.foregroundColor(), background, backdrop, target, QLatin1String(state));
                 verifyContrastDiagnostic(control.diagnostics(), QStringLiteral("foregroundColor/") + QLatin1String(state),
                                          control.foregroundColor(), background, backdrop, target);
             }
-            QCOMPARE(control.foregroundColor(), TokenSchema::contrastingText(purple,
-                {purple, control.hoverBackgroundColor(), control.pressedBackgroundColor()}, backdrop, 7));
+            // P2 keeps the shared label while trading contrast down to the
+            // selected readability floor for perceptible feedback.
             QVERIFY(control.diagnostics().isEmpty());
             QCOMPARE(control.resolvedFont(), sibling.resolvedFont());
             for (const auto *property : {"controlRadius", "minimumHeight", "horizontalPadding", "verticalPadding", "spacing"})
@@ -3264,9 +3457,10 @@ void AppearanceTests::solidRecipes()
     neutral.setSource(&appearance);
     control.setTone(primary ? Presentation::Primary : caution ? Presentation::Caution : Presentation::Destructive);
     QCOMPARE(control.backgroundColor(), surface);
-    QCOMPARE(control.hoverBackgroundColor(), hover);
-    QCOMPARE(control.pressedBackgroundColor(), pressed);
-    QCOMPARE(control.selectedBackgroundColor(), pressed);
+    QCOMPARE(control.hoverBackgroundColor(), stateFeedback(surface, text, motion->hoverBlend(), backdrop, target));
+    QCOMPARE(control.pressedBackgroundColor(), stateFeedback(surface, text, motion->pressedBlend(), backdrop, target));
+    QCOMPARE(control.selectedBackgroundColor(), stateFeedback(pressed, text, motion->pressedBlend(), backdrop, target,
+        {surface, control.hoverBackgroundColor()}, true));
     QCOMPARE(control.inactiveBackgroundColor(), surface);
     QCOMPARE(control.foregroundColor(), text);
     QCOMPARE(control.selectedForegroundColor(), text);
@@ -3285,17 +3479,18 @@ void AppearanceTests::solidRecipes()
     }
     verifyReadableContrast(control.selectedForegroundColor(), control.selectedBackgroundColor(), backdrop, target);
     verifyReadableContrast(control.inactiveForegroundColor(), control.inactiveBackgroundColor(), backdrop, target);
-    verifyContrastDiagnostic(control.diagnostics(), QStringLiteral("selectedForegroundColor/selectedBackgroundColor"), text, pressed, backdrop, target);
+    verifyContrastDiagnostic(control.diagnostics(), QStringLiteral("selectedForegroundColor/selectedBackgroundColor"), text, control.selectedBackgroundColor(), backdrop, target);
     verifyContrastDiagnostic(control.diagnostics(), QStringLiteral("inactiveForegroundColor/inactiveBackgroundColor"), text, surface, backdrop, target);
     QVERIFY(control.diagnostics().isEmpty());
     QCOMPARE(control.resolvedFont(), neutral.resolvedFont());
     for (const auto *property : {"controlRadius", "minimumHeight", "horizontalPadding", "verticalPadding", "spacing"})
         QCOMPARE(control.property(property), neutral.property(property));
     QCOMPARE(neutral.backgroundColor(), colors->control());
-    QCOMPARE(neutral.hoverBackgroundColor(), colors->controlHover());
-    QCOMPARE(neutral.pressedBackgroundColor(), colors->controlPressed());
+    QCOMPARE(neutral.hoverBackgroundColor(), stateFeedback(colors->control(), colors->text(), motion->hoverBlend(), backdrop, target));
+    QCOMPARE(neutral.pressedBackgroundColor(), stateFeedback(colors->control(), colors->text(), motion->pressedBlend(), backdrop, target));
     QCOMPARE(neutral.foregroundColor(), colors->text());
-    QCOMPARE(neutral.selectedBackgroundColor(), colors->selection());
+    QCOMPARE(neutral.selectedBackgroundColor(), stateFeedback(colors->selection(), colors->text(), motion->pressedBlend(), backdrop, target,
+        {neutral.backgroundColor(), neutral.hoverBackgroundColor()}, true));
     QCOMPARE(neutral.inactiveBackgroundColor(), colors->inactiveSelection());
     QCOMPARE(neutral.borderColor(), colors->outline());
     const auto rawColors = AirmailProfiles::profile(scheme, appearance.typography()->family()).value(QStringLiteral("colors")).toMap();
@@ -3447,16 +3642,14 @@ void AppearanceTests::solidOverrides()
         const QColor semantic = tone == Presentation::Primary ? appearance.colors()->accent()
             : tone == Presentation::Caution ? appearance.colors()->warning() : appearance.colors()->error();
         QCOMPARE(control.backgroundColor(), semantic);
-        const QColor baseText = TokenSchema::contrastingText(semantic, {semantic}, appearance.colors()->content(), 7);
-        QCOMPARE(control.hoverBackgroundColor(), rgbFeedback(semantic, baseText, 0.04));
-        QCOMPARE(control.pressedBackgroundColor(), rgbFeedback(semantic, baseText, 0.12));
+        QCOMPARE(control.hoverBackgroundColor(), stateFeedback(semantic, control.foregroundColor(), 0.04, appearance.colors()->content(), 7));
+        QCOMPARE(control.pressedBackgroundColor(), stateFeedback(semantic, control.foregroundColor(), 0.12, appearance.colors()->content(), 7));
         for (const auto &background : {control.backgroundColor(), control.hoverBackgroundColor(), control.pressedBackgroundColor()})
             verifyReadableContrast(control.foregroundColor(), background, appearance.colors()->content(), 7);
         QCOMPARE(control.borderColor(), appearance.colors()->values().value(prefix + QStringLiteral("Outline")).value<QColor>());
         control.setBackgroundColor(QColor("purple"));
-        const QColor localBaseText = TokenSchema::contrastingText(QColor("purple"), {QColor("purple")}, appearance.colors()->content(), 7);
-        QCOMPARE(control.hoverBackgroundColor(), rgbFeedback(QColor("purple"), localBaseText, 0.04));
-        QCOMPARE(control.pressedBackgroundColor(), rgbFeedback(QColor("purple"), localBaseText, 0.12));
+        QCOMPARE(control.hoverBackgroundColor(), stateFeedback(QColor("purple"), control.foregroundColor(), 0.04, appearance.colors()->content(), 7));
+        QCOMPARE(control.pressedBackgroundColor(), stateFeedback(QColor("purple"), control.foregroundColor(), 0.12, appearance.colors()->content(), 7));
         appearance.setInput({{QStringLiteral("scheme"), QStringLiteral("light")}});
         QCOMPARE(control.backgroundColor(), QColor("purple"));
         control.resetOverrides();
@@ -3570,7 +3763,9 @@ void AppearanceTests::solidBackdropConsistency()
         const QColor backdrop = opaqueOver(colors->content(), opaqueOver(colors->canvas(), QColor(Qt::white)));
         const QString context = QStringLiteral("%1 scheme=%2 contrast=%3 seed=%4 content=%5 canvas=%6")
             .arg(prefix, scheme, contrast, seed.name(QColor::HexArgb), colors->content().name(QColor::HexArgb), colors->canvas().name(QColor::HexArgb));
-        const QList<QColor> surfaces{control.backgroundColor(), control.hoverBackgroundColor(), control.pressedBackgroundColor()};
+        const QList<QColor> surfaces{colors->values().value(prefix + QStringLiteral("Surface")).value<QColor>(),
+            colors->values().value(prefix + QStringLiteral("Hover")).value<QColor>(),
+            colors->values().value(prefix + QStringLiteral("Pressed")).value<QColor>()};
         QCOMPARE(surfaces.first(), seed);
         const QColor derived = colors->values().value(prefix + QStringLiteral("Text")).value<QColor>();
         QCOMPARE(control.foregroundColor(), derived);
@@ -3609,15 +3804,18 @@ void AppearanceTests::solidBackdropConsistency()
                 const QColor background = values.value(globalRole).value<QColor>();
                 QCOMPARE(background, expectedSurfaces[i]);
                 QCOMPARE(values.value(semanticState).value<QColor>(), background);
-                QCOMPARE(control.property(localStates[i]).value<QColor>(), background);
+                const QColor localBackground = control.property(localStates[i]).value<QColor>();
+                if (i == 0)
+                    QCOMPARE(localBackground, seed);
+                else
+                    QCOMPARE(localBackground.rgba(), stateFeedback(seed, control.foregroundColor(),
+                        i == 1 ? appearance.motion()->hoverBlend() : appearance.motion()->pressedBlend(), backdrop, target).rgba());
                 const QString globalPath = QStringLiteral("tokens.colors.") + prefix + QStringLiteral("Text/") + globalRole;
                 const QString localPath = QStringLiteral("foregroundColor/") + QLatin1String(localStates[i]);
                 verifyContrastDiagnostic(appearance.diagnostics(), globalPath, text, background, backdrop, target);
                 verifyContrastDiagnostic(appearance.diagnostics(), QStringLiteral("tokens.colors.") + onRole + QLatin1Char('/') + semanticState,
                                          text, background, backdrop, target);
-                verifyContrastDiagnostic(control.diagnostics(), localPath, text, background, backdrop, target);
-                QCOMPARE(hasDiagnostic(appearance.diagnostics(), QStringLiteral("low-contrast"), globalPath),
-                         hasDiagnostic(control.diagnostics(), QStringLiteral("low-contrast"), localPath));
+                verifyContrastDiagnostic(control.diagnostics(), localPath, control.foregroundColor(), localBackground, backdrop, target);
                 if (explicitPair)
                     QVERIFY2(rgbContrast(text, background, backdrop) < target, qPrintable(context + QLatin1Char(' ') + globalRole));
             }

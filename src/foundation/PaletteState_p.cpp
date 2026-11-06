@@ -146,7 +146,9 @@ constexpr std::array<FamilyDescriptor, ControlFamilyCount> Families{{
         &MetricRecord::horizontalPadding, &MetricRecord::verticalPadding, &TypographyRecord::controlSize, true, false},
     {"tooltip", neutralRoles(ColorRole::tooltipBackground, ColorRole::tooltipBackground,
         ColorRole::tooltipBackground, ColorRole::tooltipText), nullptr, &MetricRecord::controlRadius,
-        &MetricRecord::horizontalPadding, &MetricRecord::verticalPadding, &TypographyRecord::supportingSize, false, false}
+        &MetricRecord::horizontalPadding, &MetricRecord::verticalPadding, &TypographyRecord::supportingSize, false, false},
+    {"menuItem", neutralRoles(ColorRole::transparent), &MetricRecord::rowHeight, &MetricRecord::controlRadius,
+        &MetricRecord::horizontalPadding, &MetricRecord::verticalPadding, &TypographyRecord::controlSize, true, false}
 }};
 }
 
@@ -224,6 +226,12 @@ ControlColorMapping controlColorMapping(ControlFamily family, Presentation::Tone
     const size_t t = tone == Presentation::Primary ? 1 : tone == Presentation::Destructive ? 2
         : tone == Presentation::Caution ? 3 : 0;
     auto mapping = mappings[size_t(family)][t];
+    if (family == ControlFamily::MenuItem) {
+        mapping[size_t(ControlColor::selectedBackgroundColor)] = ColorRole::accent;
+        mapping[size_t(ControlColor::selectedForegroundColor)] = ColorRole::onAccent;
+        mapping[size_t(ControlColor::inactiveBackgroundColor)] = ColorRole::accent;
+        mapping[size_t(ControlColor::inactiveForegroundColor)] = ColorRole::onAccent;
+    }
     if (validation != Presentation::None) {
         const auto role = validation == Presentation::Invalid ? ColorRole::errorText : ColorRole::warningText;
         mapping[size_t(ControlColor::borderColor)] = role;
@@ -299,9 +307,39 @@ std::shared_ptr<const StateTableData> PaletteState::stateTable(ControlFamily fam
     if (!table) {
         AppearanceTrace::work(AppearanceWork::StateTableBuild);
         const auto mapping = controlColorMapping(family, tone, validation);
+        StateTableRecipe recipe;
+        recipe.family = family;
+        recipe.target = target;
+        recipe.hoverBlend = hoverBlend;
+        recipe.pressedBlend = pressedBlend;
+        recipe.accent = color(ColorRole::accent);
+        recipe.onAccent = color(ColorRole::onAccent);
+        recipe.coupleBorder = t != 0 && !familyDescriptor(family).semanticTextOnly
+            && validation == Presentation::None && !explicitRole(mapping[size_t(ControlColor::borderColor)]);
         ControlColorValues values;
-        for (size_t i = 0; i < ControlColorCount; ++i)
+        for (size_t i = 0; i < ControlColorCount; ++i) {
             values.set(ControlColor(i), color(mapping[i]));
+            recipe.owned.set(i, explicitRole(mapping[i]));
+        }
+        if (family == ControlFamily::MenuItem) {
+            // An explicit accent still seeds the derived menu band; it owns the
+            // accent token, not this distinct surface. Local band overrides are
+            // added to ownership by LocalColorOverrides::install afterwards.
+            recipe.owned.reset(size_t(ControlColor::selectedBackgroundColor));
+            recipe.owned.reset(size_t(ControlColor::inactiveBackgroundColor));
+        }
+        // An explicit semantic state also owns its action alias unless the
+        // caller supplied that action independently.
+        for (const auto pair : {std::pair{ColorRole::primaryHover, ColorRole::accentHover},
+                 std::pair{ColorRole::primaryPressed, ColorRole::accentPressed},
+                 std::pair{ColorRole::destructiveHover, ColorRole::errorHover},
+                 std::pair{ColorRole::destructivePressed, ColorRole::errorPressed},
+                 std::pair{ColorRole::cautionHover, ColorRole::warningHover},
+                 std::pair{ColorRole::cautionPressed, ColorRole::warningPressed}}) {
+            for (size_t i = 0; i < ControlColorCount; ++i)
+                if (mapping[i] == pair.first && explicitRole(pair.second))
+                    recipe.owned.set(i);
+        }
         StateTableSharedColors sharedColors;
         if (family == ControlFamily::Field) {
             sharedColors[size_t(StateTableColor::Placeholder)] = color(ColorRole::placeholderText);
@@ -311,7 +349,7 @@ std::shared_ptr<const StateTableData> PaletteState::stateTable(ControlFamily fam
         if (family == ControlFamily::Label)
             sharedColors[size_t(StateTableColor::Link)] = color(ColorRole::link);
         table = LocalColorOverrides::buildStateTable(values, controlFindings(mapping), sharedColors,
-            backdrop, family == ControlFamily::Field && validation == Presentation::Invalid);
+            backdrop, family == ControlFamily::Field && validation == Presentation::Invalid, recipe);
     }
     return table;
 }

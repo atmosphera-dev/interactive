@@ -28,6 +28,7 @@ Item {
     Component { id: progressComponent; IAProgressBar {} }
     Component { id: sliderComponent; IASlider {} }
     Component { id: scrollComponent; IAScrollBar {} }
+    Component { id: menuItemComponent; IAMenuItem {} }
     TestCase {
         name: "PressedStatePairs"
         when: windowShown
@@ -101,6 +102,72 @@ Item {
             compare((scroll.contentItem as Rectangle).color, scroll.disabledForegroundColor);
             compare((scroll.background as Rectangle).color, scroll.backgroundColor,
                     "The scrollbar track still ignores enabled");
+        }
+
+        function test_menuHighlightPair_data(): var {
+            const rows = [];
+            for (const scheme of ["light", "dark"]) {
+                for (const contrast of ["normal", "high"]) {
+                    for (const accent of ["#5c9cf5", "#ffff00", "#800020"])
+                        rows.push({tag: scheme + "-" + contrast + "-" + accent,
+                            scheme: scheme, contrast: contrast, accent: accent});
+                }
+            }
+            return rows;
+        }
+
+        function menuPairContrast(text: color, fill: color): real {
+            const luminances = [];
+            for (const value of [text, fill]) {
+                compare(value.a, 1);
+                const channels = [value.r, value.g, value.b];
+                for (let index = 0; index < channels.length; ++index) {
+                    const channel = channels[index];
+                    channels[index] = channel <= 0.04045 ? channel / 12.92
+                        : Math.pow((channel + 0.055) / 1.055, 2.4);
+                }
+                luminances.push(0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]);
+            }
+            return (Math.max(luminances[0], luminances[1]) + 0.05)
+                / (Math.min(luminances[0], luminances[1]) + 0.05);
+        }
+
+        function test_menuHighlightPair(data: var): void {
+            IA.Appearance.input = {scheme: data.scheme, contrast: data.contrast,
+                tokens: {colors: {accent: data.accent}}};
+            const item = createTemporaryObject(menuItemComponent, scene, {
+                x: 20, y: 20, width: 240, text: "Command", checkable: true, checked: true
+            }) as IAMenuItem;
+            verify(item !== null);
+            const background = item.background as IA.ControlBackground;
+            const mark = item.indicator as IA.Icon;
+            verify(background !== null && mark !== null);
+            verify(TestProbe.render(item));
+            compare(background.color.a, 0, "Checking alone does not add a band");
+            verify(mark.visible);
+            item.highlighted = true;
+            compare(background.color, item.selectedBackgroundColor);
+            compare(background.foregroundColor, "#ffffff");
+            compare(mark.color, background.foregroundColor);
+            const label = findChild(item, "iaLabel") as Text;
+            verify(label !== null);
+            compare(label.color, background.foregroundColor);
+            verify(menuPairContrast(label.color, background.color) >= 7,
+                "Actual menu label reaches the 7:1 target on its band");
+            background.active = false;
+            compare(background.color, item.selectedBackgroundColor, "Menu highlight is not inactive selection");
+            compare(label.color, "#ffffff");
+            verify(menuPairContrast(label.color, background.color) >= 7);
+            item.enabled = false;
+            compare(background.color.a, 0, "Disabled wins even over a highlighted checked row");
+            compare(background.foregroundColor, item.disabledForegroundColor);
+            verify(mark.visible, "Disabling does not erase the checked mark");
+            item.inactiveBackgroundColor = "#123456";
+            item.inactiveForegroundColor = "#ffffff";
+            item.enabled = true;
+            compare(background.color, "#123456", "Explicit inactive colors still own that pair");
+            compare(background.foregroundColor, "#ffffff");
+            item.destroy();
         }
 
         function visualItemCount(item: Item): int {
@@ -265,7 +332,14 @@ Item {
             try {
                 tryCompare(control, "down", true);
                 verify(TestProbe.render(control));
-                compare(background.color, data.inset ? "#000000" : "#dddddd");
+                if (data.inset) {
+                    const surface = background as IA.ControlBackground;
+                    const state = TestProbe.hostWindow(control).active ? IA.Presentation.SelectedHover : IA.Presentation.InactiveHover;
+                    compare(background.color, surface.resolvedAppearance.stateTable.colors(state).backgroundColor);
+                    verify(background.color !== "#000000", "Checked hover composes with the inset press");
+                } else {
+                    compare(background.color, "#dddddd");
+                }
                 const inset = findChild(control.background, "iaPressInset") as Rectangle;
                 verify(inset !== null);
                 compare(inset.visible, Boolean(data.inset));

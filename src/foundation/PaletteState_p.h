@@ -91,14 +91,34 @@ using ControlInputErrors = SparseControlValues<QVariantMap, size_t(ControlInput:
 enum class StateTableColor { Placeholder, Selection, SelectionText, Link, Count };
 using StateTableSharedColors = std::array<QColor, size_t(StateTableColor::Count)>;
 
+enum class ControlFamily { Button, Tool, Field, Surface, Popup, Label, Delegate, Tab, Choice, Tooltip, MenuItem, Count };
+constexpr size_t ControlFamilyCount = size_t(ControlFamily::Count);
+
+struct StateTableRecipe {
+    ControlFamily family = ControlFamily::Button;
+    std::bitset<ControlColorCount> owned;
+    qreal target = 5, hoverBlend = 0.08, pressedBlend = 0.16;
+    QColor accent, onAccent;
+    bool coupleBorder = false;
+    bool operator==(const StateTableRecipe &other) const
+    {
+        return family == other.family && owned == other.owned && target == other.target
+            && hoverBlend == other.hoverBlend && pressedBlend == other.pressedBlend
+            && accent == other.accent && onAccent == other.onAccent && coupleBorder == other.coupleBorder;
+    }
+};
+
 struct StateTableData {
     std::array<StateColors, size_t(Presentation::Disabled) + 1> states;
     // The unchanged facade properties and diagnostics share the same snapshot.
     ControlColorValues values;
+    ControlColorValues sourceValues;
+    StateTableRecipe recipe;
     StateTableSharedColors sharedColors;
     QColor backdrop;
     bool invalidFocus = false;
     std::shared_ptr<const ControlFindings> findings;
+    std::shared_ptr<const ControlFindings> sourceFindings;
 };
 
 // Decode the schema boundary once per accepted snapshot, not once per facade.
@@ -122,8 +142,6 @@ struct TypographyRecord {
     bool operator==(const TypographyRecord &other) const;
 };
 
-enum class ControlFamily { Button, Tool, Field, Surface, Popup, Label, Delegate, Tab, Choice, Tooltip, Count };
-constexpr size_t ControlFamilyCount = size_t(ControlFamily::Count);
 struct FamilyDescriptor {
     const char *name;
     ControlColorMapping colors;

@@ -13,7 +13,7 @@ public:
         bool coupleBorder, const void *owner, quint64 revision);
     static std::shared_ptr<const StateTableData> buildStateTable(const ControlColorValues &values,
         std::shared_ptr<const ControlFindings> findings, const StateTableSharedColors &sharedColors,
-        const QColor &backdrop, bool invalidFocus);
+        const QColor &backdrop, bool invalidFocus, const StateTableRecipe &recipe);
 private:
     struct BranchInputs {
         std::array<QColor, 4> colors{};

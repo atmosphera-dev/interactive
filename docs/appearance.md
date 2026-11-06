@@ -154,7 +154,8 @@ Nested signal order beyond that snapshot guarantee is not fixed.
 
 Diagnostics have `path`, `code`, `severity`, and `message`. Codes are
 `unknown-field`, `invalid-value`, `rejected-input`, `low-contrast`,
-`translucent-canvas`, `palette-collision`, and `palette-generation-exhausted`.
+`translucent-canvas`, `palette-collision`, `palette-generation-exhausted`, and
+`low-feedback` (on control state-table diagnostics).
 Rejections have severity `error`; other diagnostics have
 severity `warning`. Contrast entries also contain numeric `ratio` and `target`.
 Diagnostics describe the latest attempt rather than accumulating indefinitely.
@@ -532,8 +533,8 @@ own construction-time font family and local overrides.
 
 Internally, a single data-only family descriptor table selects color roles and
 metric/typography fields. The public family string is validated and converted to
-an internal enum by its setter; the accepted strings and invalid-input diagnostics
-are unchanged. Accepted source snapshots decode metric and typography records
+an internal enum by its setter; existing family strings and invalid-input diagnostics
+are unchanged, with the menu-specific `menuItem` family added. Accepted source snapshots decode metric and typography records
 once. Facades use X-macro-generated indexed arrays and explicit presence bits for
 local values/overrides, with typed font, geometry and color-branch cache keys.
 Facade notifications compare typed last-notified values and drain pending bits in
@@ -564,9 +565,11 @@ effective state colors or focus width, so reading the property establishes a QML
 dependency before the indexed lookup. Stored value copies retain their snapshot.
 `Presentation.State` exposes `Rest`, `Hover`, `Pressed`, `Selected`, `SelectedHover`,
 `SelectedPressed`, `Inactive`, `InactiveHover`, and `Disabled`. These entries encode
-the existing visual expressions: hover retains ordinary foreground; selected
-hover retains the selected pair; selected pressed uses the ordinary pressed pair;
-inactive hover retains the inactive pair; disabled uses the disabled pair/border.
+the family state recipe: hover retains ordinary foreground; selected hover has a
+distinct fill with the selected foreground; selected pressed uses the ordinary
+pressed pair; inactive hover retains the inactive pair; disabled uses the disabled
+pair/border. Menu navigation uses its highlighted pair for selected, selected
+hover/press and inactive-highlight entries, independently of its checked mark.
 Each entry's focused border uses `focusColor` when it has at least 3:1 contrast
 against that entry's fill (composited over content/canvas), otherwise that entry's
 foreground. This choice is computed only by the shared/private table builder.
@@ -580,6 +583,43 @@ maps the template flags to this index; it performs no C++ resolution or color
 math. Backgrounds and indicators read one indexed entry. Choice labels continue
 to use only enabled/disabled text, not the indicator's selected pair. Scrollbar
 tracks continue to ignore enabled, while their thumbs consume disabled text.
+
+Interactive table construction derives Hover and Pressed fills from Rest,
+targeting raw Euclidean CAM16-UCS distance **4** after
+backdrop compositing and RGB8 rounding. It tries nine fixed strengths from the
+corresponding `hoverBlend`/`pressedBlend` token through 3× that strength, first
+toward the paired label, then away toward its higher-contrast black/white
+endpoint. Candidates must retain the 5:1 normal / 7:1 high readability floor at
+full and RGB8 precision. If a generated label leaves no feedback headroom, the
+builder may finalize that unowned pair jointly against a stronger bounded
+proposal; caller-owned labels and surfaces are never rewritten. Exhaustion
+retains deterministic best effort and reports `low-feedback` with measured
+`distance` and `target`. These are IA trial distinction measurements, not WCAG
+criteria. Passive families, including tooltips, do not acquire hover behavior.
+
+Button, tool, delegate, tab and choice tables reserve pairwise distance 4 among
+Rest, Hover, Selected and SelectedHover. An already-distinct selected seed is
+retained; otherwise the same bounded search starts from it with `pressedBlend`,
+reserving Rest and Hover. SelectedHover derives from that selected fill with
+`hoverBlend`, reserving all three siblings. Ordinary row/tab fills remain neutral;
+no accent tint is added. Inset press behavior is unchanged. A transparent resting
+background keeps a transparent disabled background unless explicitly overridden.
+Only table construction performs these searches: unmodified controls share the
+palette's memoized table, genuine local branches cache their own finished table,
+and hover/press still perform only the indexed lookup.
+
+`IAMenuItem` selects the Foundation `menuItem` family, keeping its previous row
+geometry and resting tone mapping. Its navigation highlight uses the accent's
+hue/chroma with a tone adjusted for a light (white) paired label at the 7:1 label
+target in all four modes, not the ordinary neutral selection band. The existing
+HCT helper measures quantized proposals and retains the strongest available pair
+if the target is impossible. This happens only in the memoized table builder;
+the global accent/on-accent tokens remain unchanged. Selected and inactive
+highlight entries use the same recipe. Explicit selected/inactive colors and an
+explicit application on-accent label remain exact; incompatible pairs produce
+the usual contrast diagnostic. Disabled entries never use the band, and
+checking an item still changes only its mark. Destructive resting presentation is
+a separate subsequent stage.
 
 Only the selected kind's check/mixed icon, radio dot or switch thumb is created.
 Inset backgrounds create their Gradient and stops only when `pressInset` is used;
@@ -612,6 +652,7 @@ delegates/menu items do not reinterpret navigation highlight as Primary.
 | 7 | `delegate`, `tab` | Transparent / text; `rowHeight` |
 | 8 | `choice` | Transparent / text; `controlHeight` |
 | 9 | `tooltip` | Tooltip background/text; `supportingSize`; no hover/press recoloring |
+| 10 | `menuItem` | Delegate geometry/resting mapping; accent-tone/light-label navigation highlight |
 
 Primary/Caution/Destructive choose their solid surface, text and outline roles.
 Hover and pressed use the matching semantic states; selection uses the pressed
@@ -659,12 +700,11 @@ another override map.
 
 The disabled, inactive and selected backgrounds have their own paired foregrounds;
 visuals must consume the corresponding pair instead of placing on-accent text on
-a neutral inactive surface. A local `backgroundColor` override derives missing
-hover/pressed backgrounds with the same label-directed feedback as semantic
-fills: toward white for dark labels or black for light labels, whichever endpoint
-has greater foreground contrast. It does not use the page's main text as a blend
-endpoint. Explicit state backgrounds remain unchanged. Selected, inactive and
-disabled backgrounds remain separate from that base override.
+a neutral inactive surface. A local `backgroundColor` override roots its missing
+ordinary states and label locally. The completed table applies the bounded
+feedback recipe above; it does not use the page's main text as a blend endpoint.
+Explicit state backgrounds remain unchanged. Selected, inactive and disabled
+backgrounds remain separate from that base override.
 
 After applying all local background and state overrides and deriving missing
 states, the resolver HCT-derives an unspecified `foregroundColor` from the

@@ -3,6 +3,10 @@
 #include "ColorMath_p.h"
 #include "TokenValidation_p.h"
 #include "AppearanceTrace_p.h"
+#include "cpp/cam/cam.h"
+#include <algorithm>
+#include <cmath>
+#include <limits>
 
 namespace InterActive {
 
@@ -22,39 +26,217 @@ QColor LocalColorOverrides::Branch::evaluate(const BranchInputs &next,
 }
 
 std::shared_ptr<const StateTableData> LocalColorOverrides::buildStateTable(
-    const ControlColorValues &values, std::shared_ptr<const ControlFindings> findings,
-    const StateTableSharedColors &sharedColors, const QColor &backdrop, bool invalidFocus)
+    const ControlColorValues &input, std::shared_ptr<const ControlFindings> findings,
+    const StateTableSharedColors &sharedColors, const QColor &backdrop, bool invalidFocus,
+    const StateTableRecipe &recipe)
 {
     auto table = std::make_shared<StateTableData>();
-    table->values = values;
+    table->sourceValues = input;
+    table->sourceFindings = findings;
+    table->recipe = recipe;
     table->sharedColors = sharedColors;
     table->backdrop = backdrop;
     table->invalidFocus = invalidFocus;
-    table->findings = std::move(findings);
-    const auto entry = [&](ControlColor background, ControlColor foreground, bool disabled = false) {
-        const QColor fill = values.value(background);
+    auto values = input;
+    std::shared_ptr<ControlFindings> changedFindings;
+    const auto finding = [&](size_t pair, const QVariantMap &diagnostic) {
+        if (!changedFindings)
+            changedFindings = std::make_shared<ControlFindings>(*findings);
+        (*changedFindings)[pair].append(diagnostic);
+    };
+    namespace mcu = material_color_utilities;
+    const QColor canvas = ColorMath::composite(backdrop, QColor(Qt::white));
+    const auto visible = [&](const QColor &fill) { return ColorMath::composite(fill, canvas); };
+    const auto cam = [&](const QColor &fill) { return mcu::CamFromInt(visible(fill).rgb()); };
+    const auto readable = [&](const QColor &fill, const QColor &text) {
+        const QColor surface = visible(fill);
+        return ColorMath::contrastRatio(text, surface) >= recipe.target
+            && ColorMath::contrastRatio(QColor::fromRgba(text.rgba()), QColor::fromRgb(surface.rgb())) >= recipe.target;
+    };
+    // Finite, palette-time search only. Cache the reservation CAMs for this
+    // search; runtime interaction merely indexes the completed array below.
+    const auto feedback = [&](const QColor &base, const QColor &text, qreal strength,
+                              const QList<QColor> &reserved, const QString &path, size_t pair,
+                              bool retainBase = false, bool report = true) {
+        QList<mcu::Cam> reservations;
+        for (const auto &fill : reserved)
+            reservations.append(cam(fill));
+        const auto separation = [&](const QColor &fill) {
+            const auto candidate = cam(fill);
+            qreal minimum = std::numeric_limits<qreal>::infinity();
+            for (const auto &other : reservations)
+                minimum = std::min(minimum, std::sqrt(std::pow(candidate.jstar - other.jstar, 2)
+                    + std::pow(candidate.astar - other.astar, 2) + std::pow(candidate.bstar - other.bstar, 2)));
+            return minimum;
+        };
+        QColor best = base;
+        qreal bestDistance = separation(base);
+        bool bestReadable = readable(base, text);
+        if (retainBase && bestDistance >= 4 && bestReadable)
+            return base;
+        const QColor toward = ColorMath::composite(text, visible(base));
+        const QColor away = ColorMath::contrastRatio(text, QColor(Qt::white))
+                >= ColorMath::contrastRatio(text, QColor(Qt::black)) ? QColor(Qt::white) : QColor(Qt::black);
+        // Prefer the label direction, then the contrast-preserving endpoint.
+        // Nine fixed proposals per direction, token strength through 3x.
+        for (const QColor &endpoint : {toward, away}) {
+            for (int step = 0; step <= 8; ++step) {
+                const QColor candidate = ColorMath::blend(visible(base), endpoint, strength * (1 + step / qreal(4)));
+                if (!readable(candidate, text))
+                    continue;
+                const qreal distance = separation(candidate);
+                if (distance >= 4)
+                    return candidate;
+                if (!bestReadable || distance > bestDistance) {
+                    best = candidate;
+                    bestDistance = distance;
+                    bestReadable = true;
+                }
+            }
+        }
+        if (report) {
+            auto diagnostic = TokenValidation::diagnostic(path, QStringLiteral("low-feedback"),
+                QStringLiteral("Bounded state feedback could not satisfy both distinction and readability; retained a best-effort fill."));
+            diagnostic.insert(QStringLiteral("distance"), bestDistance);
+            diagnostic.insert(QStringLiteral("target"), 4.0);
+            finding(pair, diagnostic);
+        }
+        return best;
+    };
+    const auto owned = [&](ControlColor property) { return recipe.owned.test(size_t(property)); };
+    const auto put = [&](ControlColor property, const QColor &color) { values.set(property, color); };
+    const auto diagnoseOwned = [&](ControlColor property, const QList<QColor> &reserved, size_t pair) {
+        if (!owned(property))
+            return;
+        const auto candidate = cam(values.value(property));
+        for (const auto &fill : reserved) {
+            const auto other = cam(fill);
+            const qreal distance = std::sqrt(std::pow(candidate.jstar - other.jstar, 2)
+                + std::pow(candidate.astar - other.astar, 2) + std::pow(candidate.bstar - other.bstar, 2));
+            if (distance >= 4)
+                continue;
+            auto diagnostic = TokenValidation::diagnostic(controlColorKey(property), QStringLiteral("low-feedback"),
+                QStringLiteral("Explicit state color is retained below the CAM16-UCS distance target."));
+            diagnostic.insert(QStringLiteral("distance"), distance);
+            diagnostic.insert(QStringLiteral("target"), 4.0);
+            finding(pair, diagnostic);
+            break;
+        }
+    };
+    const bool interactive = familyDescriptor(recipe.family).interactive;
+    const bool selection = recipe.family == ControlFamily::Button || recipe.family == ControlFamily::Tool
+        || recipe.family == ControlFamily::Delegate || recipe.family == ControlFamily::Tab
+        || recipe.family == ControlFamily::Choice;
+    const QColor rest = values.value(ControlColor::backgroundColor);
+    QColor text = values.value(ControlColor::foregroundColor);
+    if (interactive) {
+        if (!owned(ControlColor::foregroundColor) && !owned(ControlColor::hoverBackgroundColor)) {
+            const QColor initial = feedback(rest, text, recipe.hoverBlend, {rest}, {}, 1, false, false);
+            const auto a = cam(rest), b = cam(initial);
+            const qreal distance = std::sqrt(std::pow(a.jstar - b.jstar, 2)
+                + std::pow(a.astar - b.astar, 2) + std::pow(a.bstar - b.bstar, 2));
+            if (distance < 4) {
+                // Finalize an unowned pair jointly when a floor-edge label
+                // leaves no feedback headroom (including, but not limited to,
+                // endpoint fills). Existing owned state surfaces constrain it.
+                const QColor strongest = ColorMath::contrastRatio(QColor(Qt::black), visible(rest))
+                    >= ColorMath::contrastRatio(QColor(Qt::white), visible(rest)) ? QColor(Qt::black) : QColor(Qt::white);
+                QList<QColor> surfaces{rest, ColorMath::blend(visible(rest), strongest, 3 * recipe.hoverBlend)};
+                if (owned(ControlColor::pressedBackgroundColor))
+                    surfaces.append(values.value(ControlColor::pressedBackgroundColor));
+                const QColor label = ColorMath::contrastingText(text, surfaces, canvas, LabelContrastTarget);
+                if (std::all_of(surfaces.cbegin(), surfaces.cend(), [&](const QColor &fill) { return readable(fill, label); })) {
+                    text = label;
+                    put(ControlColor::foregroundColor, text);
+                }
+            }
+        }
+        if (!owned(ControlColor::hoverBackgroundColor))
+            put(ControlColor::hoverBackgroundColor, feedback(rest, text, recipe.hoverBlend,
+                {rest}, QStringLiteral("hoverBackgroundColor"), 1));
+        diagnoseOwned(ControlColor::hoverBackgroundColor, {rest}, 1);
+        // Inset consumers still select rest/hover during press. The button
+        // family also supplies a real pressed fill to slider thumbs.
+        if (!owned(ControlColor::pressedBackgroundColor))
+            put(ControlColor::pressedBackgroundColor, feedback(rest, text, recipe.pressedBlend,
+                {rest}, QStringLiteral("pressedBackgroundColor"), 2));
+        diagnoseOwned(ControlColor::pressedBackgroundColor, {rest}, 2);
+    }
+    QColor selectedHover = values.value(ControlColor::selectedBackgroundColor);
+    if (selection) {
+        const QColor hover = values.value(ControlColor::hoverBackgroundColor);
+        if (!owned(ControlColor::selectedBackgroundColor))
+            put(ControlColor::selectedBackgroundColor, feedback(selectedHover,
+                values.value(ControlColor::selectedForegroundColor), recipe.pressedBlend,
+                {rest, hover}, QStringLiteral("selectedBackgroundColor"), 3, true));
+        const QColor selected = values.value(ControlColor::selectedBackgroundColor);
+        selectedHover = feedback(selected, values.value(ControlColor::selectedForegroundColor), recipe.hoverBlend,
+            {rest, hover, selected}, QStringLiteral("selectedHoverBackgroundColor"), 3);
+        diagnoseOwned(ControlColor::selectedBackgroundColor, {rest, hover}, 3);
+    }
+    if (recipe.family == ControlFamily::MenuItem) {
+        // The accent is a hue/chroma seed, not a fixed highlight surface.
+        // Solve its tone against light text, using the existing quantized HCT
+        // target/best-effort helper. Explicit selected/inactive pairs still win.
+        const auto highlight = [&](ControlColor background, ControlColor foreground) {
+            if (!owned(background) && !owned(foreground))
+                put(foreground, QColor(Qt::white));
+            if (!owned(background))
+                put(background, ColorMath::contrastingText(recipe.accent,
+                    {values.value(foreground)}, canvas, LabelContrastTarget));
+        };
+        highlight(ControlColor::selectedBackgroundColor, ControlColor::selectedForegroundColor);
+        highlight(ControlColor::inactiveBackgroundColor, ControlColor::inactiveForegroundColor);
+        selectedHover = values.value(ControlColor::selectedBackgroundColor);
+    }
+    if (rest.alpha() == 0 && !owned(ControlColor::disabledBackgroundColor))
+        put(ControlColor::disabledBackgroundColor, QColor(Qt::transparent));
+    if (recipe.coupleBorder && !owned(ControlColor::borderColor))
+        put(ControlColor::borderColor, values.value(ControlColor::foregroundColor));
+
+    // Project diagnostics for the actual generated pairs, not the old palette
+    // seeds. Unchanged and explicitly owned pairs reuse their existing findings.
+    for (size_t i = 0; i < ControlDiagnosticPairs.size() - 1; ++i) {
+        const auto [foreground, background] = ControlDiagnosticPairs[i];
+        if (values.value(background) == input.value(background) && values.value(foreground) == input.value(foreground))
+            continue;
+        if (!changedFindings)
+            changedFindings = std::make_shared<ControlFindings>(*findings);
+        QVariantList contrast;
+        TokenValidation::checkContrast(&contrast, controlColorKey(foreground) + QLatin1Char('/') + controlColorKey(background),
+            values.value(foreground), visible(values.value(background)), recipe.target);
+        // Keep feedback warnings already added to this pair.
+        auto &pair = (*changedFindings)[i];
+        for (qsizetype j = pair.size(); j-- > 0;)
+            if (pair[j].toMap().value(QStringLiteral("code")) == QStringLiteral("low-contrast"))
+                pair.removeAt(j);
+        pair.append(contrast);
+    }
+    table->values = values;
+    table->findings = changedFindings ? changedFindings : std::move(findings);
+    const auto entry = [&](const QColor &fill, ControlColor foreground, bool disabled = false) {
         const QColor text = values.value(foreground);
         const QColor border = values.value(disabled ? ControlColor::disabledBorderColor : ControlColor::borderColor);
         const QColor focus = values.value(ControlColor::focusColor);
         const QColor surface = ColorMath::composite(fill, backdrop);
         const QColor focusedBorder = invalidFocus ? border
             : ColorMath::contrastRatio(focus, surface) >= 3 ? focus : text;
-        return StateColors(values.value(background), values.value(foreground),
+        return StateColors(fill, values.value(foreground),
             border, focus,
             values.value(disabled ? ControlColor::disabledForegroundColor : ControlColor::fillColor),
             values.value(disabled ? ControlColor::disabledBackgroundColor : ControlColor::borderColor),
             disabled ? values.value(ControlColor::disabledForegroundColor)
                      : sharedColors[size_t(StateTableColor::Placeholder)], focusedBorder);
     };
-    const auto rest = entry(ControlColor::backgroundColor, ControlColor::foregroundColor);
-    const auto hover = entry(ControlColor::hoverBackgroundColor, ControlColor::foregroundColor);
-    const auto pressed = entry(ControlColor::pressedBackgroundColor, ControlColor::foregroundColor);
-    const auto selected = entry(ControlColor::selectedBackgroundColor, ControlColor::selectedForegroundColor);
-    const auto inactive = entry(ControlColor::inactiveBackgroundColor, ControlColor::inactiveForegroundColor);
-    // Today's ControlBackground/ChoiceIndicator precedence, not a new recipe:
-    // pressed wins selection; hover never recolors an active/inactive selection.
-    table->states = {rest, hover, pressed, selected, selected, pressed, inactive, inactive,
-        entry(ControlColor::disabledBackgroundColor, ControlColor::disabledForegroundColor, true)};
+    const auto ordinary = entry(rest, ControlColor::foregroundColor);
+    const auto hover = entry(values.value(ControlColor::hoverBackgroundColor), ControlColor::foregroundColor);
+    const auto pressed = entry(values.value(ControlColor::pressedBackgroundColor), ControlColor::foregroundColor);
+    const auto selected = entry(values.value(ControlColor::selectedBackgroundColor), ControlColor::selectedForegroundColor);
+    const auto inactive = entry(values.value(ControlColor::inactiveBackgroundColor), ControlColor::inactiveForegroundColor);
+    table->states = {ordinary, hover, pressed, selected,
+        entry(selectedHover, ControlColor::selectedForegroundColor),
+        recipe.family == ControlFamily::MenuItem ? selected : pressed, inactive, inactive,
+        entry(values.value(ControlColor::disabledBackgroundColor), ControlColor::disabledForegroundColor, true)};
     return table;
 }
 
@@ -167,19 +349,24 @@ std::shared_ptr<const StateTableData> LocalColorOverrides::install(const Palette
             pair.valid = true;
         }
         if (!localFindings)
-            localFindings = std::make_shared<ControlFindings>(*shared->findings);
+            localFindings = std::make_shared<ControlFindings>(*shared->sourceFindings);
         (*localFindings)[i] = pair.findings;
     }
     for (size_t i = 0; i < ControlColorCount; ++i) {
         if (!values.presence.test(i))
-            values.set(ControlColor(i), shared->values.values[i]);
+            values.set(ControlColor(i), shared->sourceValues.values[i]);
     }
-    const std::shared_ptr<const ControlFindings> findings = localFindings ? localFindings : shared->findings;
-    if (!m_table || !(m_table->values == values) || *m_table->findings != *findings
+    const std::shared_ptr<const ControlFindings> findings = localFindings ? localFindings : shared->sourceFindings;
+    auto recipe = shared->recipe;
+    recipe.owned |= overrides.presence;
+    recipe.coupleBorder = coupleBorder && !explicitLocal(ControlColor::borderColor);
+    if (!m_table || !(m_table->sourceValues == values)
+        || !(m_table->recipe == recipe)
+        || *m_table->sourceFindings != *findings
         || m_table->sharedColors != shared->sharedColors || m_table->backdrop != shared->backdrop
         || m_table->invalidFocus != shared->invalidFocus) {
         AppearanceTrace::work(AppearanceWork::PrivateStateTableBuild);
-        m_table = buildStateTable(values, findings, shared->sharedColors, shared->backdrop, shared->invalidFocus);
+        m_table = buildStateTable(values, findings, shared->sharedColors, shared->backdrop, shared->invalidFocus, recipe);
     }
     return m_table;
 }
