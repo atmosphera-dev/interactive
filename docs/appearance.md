@@ -610,8 +610,7 @@ Only table construction performs these searches: unmodified controls share the
 palette's memoized table, genuine local branches cache their own finished table,
 and hover/press still perform only the indexed lookup.
 
-`IAMenuItem` selects the Foundation `menuItem` family, keeping its previous row
-geometry and resting tone mapping. Its navigation highlight uses the accent's
+`IAMenuItem` selects the Foundation `menuItem` family. Its navigation highlight uses the accent's
 hue/chroma with a tone adjusted for a light (white) paired label at the 7:1 label
 target in all four modes, not the ordinary neutral selection band. The existing
 HCT helper measures quantized proposals and retains the strongest available pair
@@ -620,8 +619,15 @@ the global accent/on-accent tokens remain unchanged. Selected and inactive
 highlight entries use the same recipe. Explicit selected/inactive colors and an
 explicit application on-accent label remain exact; incompatible pairs produce
 the usual contrast diagnostic. Disabled entries never use the band, and
-checking an item still changes only its mark. Destructive resting presentation is
-a separate subsequent stage.
+checking an item still changes only its mark. Destructive commands keep the ordinary
+transparent row with the `errorText` danger role; they use the same accent/light-label
+navigation band when highlighted, never a red fill. The existing table-time feedback
+recipe may finalize an unowned danger foreground for hover headroom; explicit
+`errorText` remains exact. Other action tones are unchanged.
+The native menu's shared `textPadding` reserves one leading lane across rows. Inside
+it, fixed check/icon slots collapse when absent; label, optional caller-supplied
+shortcut text and a row-height-square submenu slot share one structural row. The
+arrow is centered with equal facing-edge clearance, including RTL and touch density.
 
 Only the selected kind's check/mixed icon, radio dot or switch thumb is created.
 The three choice templates share Foundation's `ChoiceRow` text/indicator lane,
@@ -657,6 +663,23 @@ No public control property/alias is changed. A fill-only edit now
 emits `stateTableChanged` because fill is represented in the table; unrelated
 font/geometry changes still do not.
 
+`IATabBar` uses the passive `tabBar` family: one quiet track, `spacingXS` insets
+and no inter-segment gap or resting border. The `tab` family selects a raised
+`content` segment in light mode and `controlHover` in dark mode. The track is
+finalized once by the same bounded feedback recipe if its seed is too close to
+the segment. Hover reserves the raised segment before deriving its own fill, so
+feedback cannot consume the current segment's color. Tab feedback and focus are evaluated against that finished track,
+not the content surface behind the group. Explicit local colors remain exact;
+Qt still owns current index, keyboard navigation and scrolling.
+
+`IAMenuSeparator` and `IAToolSeparator` retain `foregroundColor`,
+`appearanceDiagnostics` and `resetAppearance()`, but use the sparse Foundation
+`SeparatorAppearance` color facade instead of a text/font facade. Their default
+and reset value is the live `separator` role and their override feeds the actual
+Foundation `Separator` line. Equal-valued assignments remain locally owned;
+`undefined`/RESET resumes the live role. Decorative lines do not acquire text
+contrast diagnostics, font measurement or control state tables.
+
 Its semantic inputs are `source` (`Appearance*`), `family` (QString), `tone`
 (`Presentation::Tone`), and `validation` (`Presentation::Validation`). Enums are
 `Presentation.Auto`, `Neutral`, `Primary`, `Destructive`, `Caution`, and
@@ -677,6 +700,7 @@ delegates/menu items do not reinterpret navigation highlight as Primary.
 | 8 | `choice` | Transparent / text; `controlHeight` |
 | 9 | `tooltip` | Tooltip background/text; `supportingSize`; no hover/press recoloring |
 | 10 | `menuItem` | Delegate geometry/resting mapping; accent-tone/light-label navigation highlight |
+| 11 | `tabBar` | Quiet `control`-seeded group track; `spacingXS` insets; no interaction recoloring |
 
 Primary/Caution/Destructive choose their solid surface, text and outline roles.
 Hover and pressed use the matching semantic states; selection uses the pressed

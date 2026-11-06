@@ -91,7 +91,7 @@ using ControlInputErrors = SparseControlValues<QVariantMap, size_t(ControlInput:
 enum class StateTableColor { Placeholder, Selection, SelectionText, Link, ChoiceTrack, ChoiceDisabledTrack, ChoiceGap, Count };
 using StateTableSharedColors = std::array<QColor, size_t(StateTableColor::Count)>;
 
-enum class ControlFamily { Button, Tool, Field, Surface, Popup, Label, Delegate, Tab, Choice, Tooltip, MenuItem, Count };
+enum class ControlFamily { Button, Tool, Field, Surface, Popup, Label, Delegate, Tab, Choice, Tooltip, MenuItem, TabBar, Count };
 constexpr size_t ControlFamilyCount = size_t(ControlFamily::Count);
 
 struct StateTableRecipe {
@@ -152,13 +152,18 @@ struct FamilyDescriptor {
     qreal TypographyRecord::*fontSize;
     bool interactive;
     bool semanticTextOnly;
+    bool destructiveTextOnly = false;
+    bool usesSemanticText(Presentation::Tone tone) const
+    {
+        return semanticTextOnly || (destructiveTextOnly && tone == Presentation::Destructive);
+    }
 };
 std::optional<ControlFamily> controlFamily(const QString &family);
 const FamilyDescriptor &familyDescriptor(ControlFamily family);
 const char *controlColorName(ControlColor color);
 const QString &controlColorKey(ControlColor color);
 ControlColorMapping controlColorMapping(ControlFamily family, Presentation::Tone tone,
-                                       Presentation::Validation validation);
+                                       Presentation::Validation validation, bool dark = false);
 
 struct PaletteInputs {
     QString scheme;
@@ -185,6 +190,7 @@ struct PaletteState {
     QVariantMap values;
     QVariantList diagnostics;
     QColor backdrop;
+    bool dark = false;
     qreal target = 5; // Readability/diagnostic floor, independent of label derivation.
     qreal labelTarget = LabelContrastTarget;
     qreal hoverBlend = 0.08;

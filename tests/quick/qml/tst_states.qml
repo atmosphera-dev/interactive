@@ -29,6 +29,33 @@ Item {
     Component { id: sliderComponent; IASlider {} }
     Component { id: scrollComponent; IAScrollBar {} }
     Component { id: menuItemComponent; IAMenuItem {} }
+    Component { id: menuSeparatorComponent; IAMenuSeparator { width: 200 } }
+    Component { id: toolSeparatorComponent; IAToolSeparator {} }
+    Component {
+        id: tabBarComponent
+        IATabBar {
+            width: 300
+            IATabButton { text: "Overview"; hoverEnabled: false }
+            IATabButton { text: "Details"; hoverEnabled: false }
+        }
+    }
+    Component {
+        id: slotMenuComponent
+        IAMenu {
+            width: 300
+            IAMenuItem { text: "Plain command"; hoverEnabled: false }
+            IAMenuItem { text: "Checked command"; checkable: true; checked: true; hoverEnabled: false }
+            IAMenuItem { text: "Icon command"; icon.source: IA.Appearance.icons.search; hoverEnabled: false }
+            IAMenuItem {
+                text: "Both slots"; checkable: true; checked: true
+                icon.source: IA.Appearance.icons.search; hoverEnabled: false
+            }
+            IAMenu {
+                title: "Submenu"
+                IAMenuItem { text: "Nested command" }
+            }
+        }
+    }
     TestCase {
         name: "PressedStatePairs"
         when: windowShown
@@ -117,6 +144,159 @@ Item {
                 }
             }
             return rows;
+        }
+
+        function test_segmentedTabs_data(): var { return test_choiceLocalOffTracks_data(); }
+
+        function test_segmentedTabs(data: var): void {
+            IA.Appearance.input = {scheme: data.scheme, contrast: data.contrast};
+            const bar = createTemporaryObject(tabBarComponent, scene) as IATabBar;
+            verify(bar !== null);
+            verify(TestProbe.render(bar));
+            verify(TestProbe.activate(bar));
+            const track = bar.background as IA.ControlBackground;
+            const first = bar.itemAt(0) as IATabButton;
+            const second = bar.itemAt(1) as IATabButton;
+            const segment = first.background as IA.ControlBackground;
+            compare(track.resolvedAppearance.family, "tabBar");
+            compare(track.color, bar.backgroundColor);
+            compare(track.border.width, 0);
+            compare(bar.leftPadding, IA.Appearance.metrics.spacingXS);
+            compare(bar.topPadding, bar.leftPadding);
+            compare(bar.spacing, 0);
+            compare(segment.color, data.scheme === "dark" ? IA.Appearance.colors.controlHover : IA.Appearance.colors.content);
+            compare(segment.border.width, 0);
+            compare((second.background as Rectangle).color.a, 0);
+            verify(segment.color !== track.color);
+            fuzzyCompare(first.mapToItem(bar, 0, 0).x, bar.leftPadding, 0.001);
+            fuzzyCompare(first.mapToItem(bar, 0, 0).y, bar.topPadding, 0.001);
+            first.forceActiveFocus(Qt.TabFocusReason);
+            verify(TestProbe.keyClick(first, Qt.Key_Right));
+            tryCompare(bar, "currentIndex", 1);
+            compare((first.background as Rectangle).color.a, 0);
+            compare((second.background as Rectangle).color, second.selectedBackgroundColor);
+            // Already-focused items keep their native focus reason. Enter with
+            // a real Tab event, as the existing capture/focus probes do.
+            scene.forceActiveFocus(Qt.OtherFocusReason);
+            tryCompare(scene, "activeFocus", true);
+            for (let i = 0; i < 24 && !second.activeFocus; ++i)
+                verify(TestProbe.keyClick(scene, Qt.Key_Tab));
+            tryCompare(second, "activeFocus", true);
+            tryCompare(second, "visualFocus", true);
+            compare((second.background as Rectangle).border.width, IA.Appearance.metrics.focusWidth);
+        }
+
+        function test_menuSlots_data(): var {
+            const rows = [];
+            for (const rtl of [false, true]) {
+                for (const touch of [false, true])
+                    rows.push({tag: rtl + "-" + touch, rtl: rtl, touch: touch});
+            }
+            return rows;
+        }
+
+        function test_menuSlots(data: var): void {
+            IA.Appearance.input = {density: data.touch ? "touch" : "compact", fontScale: data.touch ? 1.5 : 1};
+            const menu = createTemporaryObject(slotMenuComponent, scene, {parent: scene}) as IAMenu;
+            verify(menu !== null);
+            menu.open();
+            tryCompare(menu, "opened", true);
+            for (let i = 0; i < menu.count; ++i)
+                menu.itemAt(i).LayoutMirroring.enabled = data.rtl;
+            verify(TestProbe.render(menu.contentItem));
+            let labelEdge = null;
+            let iconEdge = null;
+            let markEdge = null;
+            for (let i = 0; i < menu.count; ++i) {
+                const row = menu.itemAt(i) as IAMenuItem;
+                const label = findChild(row, "iaLabel") as Text;
+                verify(label !== null);
+                const edge = label.mapToItem(menu.contentItem, data.rtl ? label.width : 0, 0).x;
+                if (labelEdge === null)
+                    labelEdge = edge;
+                fuzzyCompare(edge, labelEdge, 0.5, "Native menu text padding keeps every label in the same lane");
+                if (row.showsIcon) {
+                    const icon = findChild(row, "iaMenuIcon") as IA.Icon;
+                    verify(icon !== null);
+                    const position = icon.mapToItem(menu.contentItem, 0, 0).x;
+                    if (iconEdge === null)
+                        iconEdge = position;
+                    fuzzyCompare(position, iconEdge, 0.5, "Action icons retain their slot with or without a check mark");
+                }
+                if (row.checkable) {
+                    const position = row.indicator.mapToItem(menu.contentItem, 0, 0).x;
+                    if (markEdge === null)
+                        markEdge = position;
+                    fuzzyCompare(position, markEdge, 0.5, "Check marks retain their slot with or without an action icon");
+                }
+                if (row.subMenu !== null) {
+                    const arrow = row.arrow;
+                    const slot = findChild(row, "iaArrowSlot") as Item;
+                    verify(slot !== null);
+                    compare(slot.width, row.height);
+                    compare(slot.height, row.height);
+                    const box = arrow.mapToItem(row, 0, 0);
+                    const top = box.y, bottom = row.height - box.y - arrow.height;
+                    const end = data.rtl ? box.x : row.width - box.x - arrow.width;
+                    fuzzyCompare(top, bottom, 1);
+                    fuzzyCompare(end, top, 1, "Arrow has equal clearance to all facing row edges");
+                }
+            }
+            // A menu with no accessories collapses the shared leading lane.
+            for (let i = 0; i < menu.count; ++i) {
+                const row = menu.itemAt(i) as IAMenuItem;
+                row.checkable = false;
+                row.icon.source = "";
+            }
+            verify(TestProbe.render(menu.contentItem));
+            compare((menu.itemAt(0) as IAMenuItem).leadingPadding, 0);
+            menu.close();
+        }
+
+        function test_menuDangerAndSeparators_data(): var { return test_choiceLocalOffTracks_data(); }
+
+        function test_menuDangerAndSeparators(data: var): void {
+            IA.Appearance.input = {scheme: data.scheme, contrast: data.contrast};
+            const item = createTemporaryObject(menuItemComponent, scene, {
+                text: "Remove collection", width: 240, tone: IA.Presentation.Destructive, hoverEnabled: false
+            }) as IAMenuItem;
+            verify(item !== null);
+            const surface = item.background as IA.ControlBackground;
+            const label = findChild(item, "iaLabel") as Text;
+            verify(TestProbe.render(item));
+            compare(surface.color.a, 0);
+            compare(label.color, item.foregroundColor);
+            // P2 can finalize a generated danger label for hover headroom.
+            // An explicit semantic text role proves the role-to-pixel mapping.
+            IA.Appearance.input = {scheme: data.scheme, contrast: data.contrast,
+                tokens: {colors: {errorText: "#b03050", destructiveText: "#00ff00"}}};
+            compare(label.color, "#b03050");
+            compare(surface.color.a, 0);
+            IA.Appearance.input = {scheme: data.scheme, contrast: data.contrast};
+            item.highlighted = true;
+            compare(surface.color, item.selectedBackgroundColor);
+            compare(label.color, "#ffffff");
+            verify(menuPairContrast(label.color, surface.color) >= 7);
+            for (const component of [menuSeparatorComponent, toolSeparatorComponent]) {
+                const separator = createTemporaryObject(component, scene);
+                verify(separator !== null);
+                const line = findChild(separator, "iaSeparator") as Rectangle;
+                verify(line !== null);
+                compare(line.color, IA.Appearance.colors.separator);
+                separator.foregroundColor = "magenta";
+                verify(TestProbe.render(separator));
+                compare(line.color, "#ff00ff");
+                IA.Appearance.input = {scheme: data.scheme, contrast: data.contrast,
+                    tokens: {colors: {separator: "green", text: "red"}}};
+                compare(line.color, "#ff00ff", "Explicit line overrides stay owned");
+                separator.foregroundColor = undefined;
+                compare(line.color, "#008000", "RESET resumes the live separator role, not text");
+                separator.foregroundColor = "blue";
+                separator.resetAppearance();
+                compare(line.color, "#008000");
+                IA.Appearance.input = {scheme: data.scheme, contrast: data.contrast};
+                compare(line.color, IA.Appearance.colors.separator);
+            }
         }
 
         function test_choiceCenters(data: var): void {

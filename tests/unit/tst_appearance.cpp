@@ -2,6 +2,7 @@
 #include "Appearance.h"
 #include "AirmailProfiles.h"
 #include "ControlAppearance.h"
+#include "SeparatorAppearance.h"
 #include "TokenSchema.h"
 #include "AppearanceTrace_p.h"
 #include "TestTraceSetup.h"
@@ -353,6 +354,7 @@ private slots:
     void neutralFocusBorder();
     void stateFeedbackMatrix();
     void menuHighlightPairs();
+    void tabModeAndSeparatorContracts();
     void stateSweepDoesNoFoundationWork();
     void appearanceMetaObjectIsPublic();
 };
@@ -376,9 +378,14 @@ void AppearanceTests::stateFeedbackMatrix()
         for (const auto *contrast : {"normal", "high"}) {
             source.setInput(paletteInput(QLatin1String(scheme), QLatin1String(contrast), {}));
             const qreal floor = QLatin1String(contrast) == QLatin1String("high") ? 7 : 5;
-            const QColor backdrop = opaqueOver(source.colors()->content(),
+            const QColor contentBackdrop = opaqueOver(source.colors()->content(),
                 opaqueOver(source.colors()->canvas(), QColor(Qt::white)));
+            ControlAppearance track;
+            track.setSource(&source);
+            track.setFamily(QStringLiteral("tabBar"));
             for (const auto *family : {"button", "tool", "field", "delegate", "tab", "choice", "menuItem"}) {
+                const QColor backdrop = QLatin1String(family) == QLatin1String("tab")
+                    ? opaqueOver(track.backgroundColor(), contentBackdrop) : contentBackdrop;
                 ControlAppearance control;
                 control.setSource(&source);
                 control.setFamily(QLatin1String(family));
@@ -492,6 +499,47 @@ void AppearanceTests::menuHighlightPairs()
     }
 }
 
+void AppearanceTests::tabModeAndSeparatorContracts()
+{
+    Appearance source;
+    const auto frozenColors = source.colors()->values();
+    source.setInput(paletteInput(QStringLiteral("light"), QStringLiteral("normal"), frozenColors));
+    ControlAppearance tab, track;
+    tab.setSource(&source);
+    tab.setFamily(QStringLiteral("tab"));
+    track.setSource(&source);
+    track.setFamily(QStringLiteral("tabBar"));
+    const auto light = tab.stateTable();
+    QSignalSpy tabChanged(&tab, &ControlAppearance::stateTableChanged);
+    QSignalSpy trackChanged(&track, &ControlAppearance::stateTableChanged);
+    source.setInput(paletteInput(QStringLiteral("dark"), QStringLiteral("normal"), frozenColors));
+    QCOMPARE(source.colors()->values(), frozenColors);
+    QVERIFY(tab.stateTable() != light); // Mode is a selector even when every role is unchanged.
+    QVERIFY(tabChanged.count() > 0);
+    QVERIFY(trackChanged.count() > 0);
+
+    Appearance lineSource;
+    WorkRecorder work;
+    SeparatorAppearance line;
+    line.setSource(&lineSource);
+    QCOMPARE(line.foregroundColor(), lineSource.colors()->separator());
+    line.setForegroundColor(line.foregroundColor()); // An equal assignment is still owned.
+    lineSource.setInput(tokenInput(QStringLiteral("colors"), {{QStringLiteral("separator"), QColor("green")}}));
+    QCOMPARE(line.foregroundColor(), frozenColors.value(QStringLiteral("separator")).value<QColor>());
+    line.resetOverrides();
+    QCOMPARE(line.foregroundColor(), QColor("green"));
+    line.setForegroundColor(QColor());
+    QCOMPARE(line.foregroundColor(), QColor("green"));
+    QVERIFY(!line.diagnostics().isEmpty());
+    line.resetForegroundColor();
+    QVERIFY(line.diagnostics().isEmpty());
+    QCOMPARE(work.count(AppearanceWork::FontConstruction), 0);
+    QCOMPARE(work.count(AppearanceWork::FontMeasurement), 0);
+    QCOMPARE(work.count(AppearanceWork::GeometryCalculation), 0);
+    QCOMPARE(work.count(AppearanceWork::StateTableBuild), 0);
+    QCOMPARE(work.count(AppearanceWork::PrivateStateTableBuild), 0);
+}
+
 void AppearanceTests::stateTableEquivalence()
 {
     // Independent state and focused-border oracle, expressed in template flags.
@@ -510,8 +558,14 @@ void AppearanceTests::stateTableEquivalence()
         for (const auto &flags : cases) {
             const auto entry = control.stateTable().colors(flags.state);
             const auto *source = control.source();
-            const QColor backdrop = opaqueOver(source->colors()->content(),
+            QColor backdrop = opaqueOver(source->colors()->content(),
                 opaqueOver(source->colors()->canvas(), QColor(Qt::white)));
+            if (control.family() == QLatin1String("tab")) {
+                ControlAppearance track;
+                track.setSource(control.source());
+                track.setFamily(QStringLiteral("tabBar"));
+                backdrop = opaqueOver(track.backgroundColor(), backdrop);
+            }
             const bool selectable = control.family() == QLatin1String("button") || control.family() == QLatin1String("tool")
                 || control.family() == QLatin1String("delegate") || control.family() == QLatin1String("tab")
                 || control.family() == QLatin1String("choice");
@@ -1019,14 +1073,25 @@ void AppearanceTests::familyDescriptorContract()
                         control.setValidation(validation);
                         QCOMPARE(control.backgroundColor(), color(background));
                         QCOMPARE(control.foregroundColor(), color(foreground));
-                        const QColor backdrop = opaqueOver(appearance.colors()->content(), opaqueOver(appearance.colors()->canvas(), QColor(Qt::white)));
+                        QColor backdrop = opaqueOver(appearance.colors()->content(), opaqueOver(appearance.colors()->canvas(), QColor(Qt::white)));
+                        const bool tab = control.family() == QLatin1String("tab");
+                        ControlAppearance track;
+                        if (tab) {
+                            track.setSource(&appearance);
+                            track.setFamily(QStringLiteral("tabBar"));
+                            backdrop = opaqueOver(track.backgroundColor(), backdrop);
+                        }
+                        const QColor segmentSeed = color(qstrcmp(scheme, "dark") == 0
+                            ? QStringLiteral("controlHover") : QStringLiteral("content"));
+                        const QColor selectedSeed = tab && !colored ? segmentSeed
+                            : color(colored && !label ? semantic + QStringLiteral("Pressed") : QStringLiteral("selection"));
                         const QColor expectedHover = family.interactive
-                            ? stateFeedback(color(background), color(foreground), appearance.motion()->hoverBlend(), backdrop, 5)
+                            ? stateFeedback(color(background), color(foreground), appearance.motion()->hoverBlend(), backdrop, 5,
+                                tab ? QList<QColor>{color(background), selectedSeed} : QList<QColor>{color(background)})
                             : color(hover);
                         QCOMPARE(control.hoverBackgroundColor(), expectedHover);
                         QCOMPARE(control.pressedBackgroundColor(), family.interactive
                             ? stateFeedback(color(background), color(foreground), appearance.motion()->pressedBlend(), backdrop, 5) : color(pressed));
-                        const QColor selectedSeed = color(colored && !label ? semantic + QStringLiteral("Pressed") : QStringLiteral("selection"));
                         const bool selectable = family.interactive && control.family() != QLatin1String("field");
                         const bool choice = control.family() == QLatin1String("choice");
                         const QColor choiceSeed = TokenSchema::contrastingText(appearance.colors()->accent(), {QColor(Qt::white)}, backdrop, 7);
@@ -1036,6 +1101,7 @@ void AppearanceTests::familyDescriptorContract()
                             ? stateFeedback(selectedSeed, control.selectedForegroundColor(), appearance.motion()->pressedBlend(), backdrop, 5,
                                 {color(background), expectedHover}, true) : selectedSeed);
                         QCOMPARE(control.inactiveBackgroundColor(), choice ? choiceSeed
+                            : tab && !colored ? segmentSeed
                             : color(colored && !label ? semantic + QStringLiteral("Surface") : QStringLiteral("inactiveSelection")));
                         QCOMPARE(control.selectedForegroundColor(), choice ? QColor(Qt::white)
                             : color(colored && !label ? foreground : QStringLiteral("text")));

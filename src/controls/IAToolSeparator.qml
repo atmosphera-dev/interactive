@@ -8,17 +8,18 @@ T.ToolSeparator {
     property alias foregroundColor: appearance.foregroundColor
     readonly property alias appearanceDiagnostics: appearance.diagnostics
     function resetAppearance(): void { appearance.resetOverrides(); }
-    IA.ControlAppearance { id: appearance; source: IA.Appearance; family: "label" }
+    IA.SeparatorAppearance { id: appearance; source: IA.Appearance }
     implicitWidth: implicitContentWidth + leftPadding + rightPadding
     implicitHeight: implicitContentHeight + topPadding + bottomPadding
-    horizontalPadding: appearance.verticalPadding
-    verticalPadding: appearance.verticalPadding
+    horizontalPadding: IA.Appearance.metrics.verticalPadding
+    verticalPadding: IA.Appearance.metrics.verticalPadding
     contentItem: Item {
         implicitWidth: control.vertical ? line.thickness : IA.Appearance.metrics.toolHeight
         implicitHeight: control.vertical ? IA.Appearance.metrics.toolHeight : line.thickness
         IA.Separator {
             id: line
             objectName: "iaSeparator"
+            color: control.foregroundColor
             anchors.centerIn: parent
             width: control.vertical ? thickness : parent.width
             height: control.vertical ? parent.height : thickness

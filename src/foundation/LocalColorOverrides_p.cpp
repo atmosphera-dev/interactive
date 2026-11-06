@@ -127,11 +127,21 @@ std::shared_ptr<const StateTableData> LocalColorOverrides::buildStateTable(
     const bool selection = recipe.family == ControlFamily::Button || recipe.family == ControlFamily::Tool
         || recipe.family == ControlFamily::Delegate || recipe.family == ControlFamily::Tab
         || recipe.family == ControlFamily::Choice;
+    if (recipe.family == ControlFamily::TabBar && !owned(ControlColor::backgroundColor)) {
+        // A quiet enclosing track must remain distinguishable from its raised
+        // segment in both modes. Reuse the bounded palette-time recipe.
+        put(ControlColor::backgroundColor, feedback(values.value(ControlColor::backgroundColor),
+            values.value(ControlColor::foregroundColor), recipe.hoverBlend,
+            {values.value(ControlColor::selectedBackgroundColor)}, QStringLiteral("tabTrackColor"), 0, true));
+    }
     const QColor rest = values.value(ControlColor::backgroundColor);
     QColor text = values.value(ControlColor::foregroundColor);
+    QList<QColor> hoverReservations{rest};
+    if (recipe.family == ControlFamily::Tab)
+        hoverReservations.append(values.value(ControlColor::selectedBackgroundColor));
     if (interactive) {
         if (!owned(ControlColor::foregroundColor) && !owned(ControlColor::hoverBackgroundColor)) {
-            const QColor initial = feedback(rest, text, recipe.hoverBlend, {rest}, {}, 1, false, false);
+            const QColor initial = feedback(rest, text, recipe.hoverBlend, hoverReservations, {}, 1, false, false);
             const auto a = cam(rest), b = cam(initial);
             const qreal distance = std::sqrt(std::pow(a.jstar - b.jstar, 2)
                 + std::pow(a.astar - b.astar, 2) + std::pow(a.bstar - b.bstar, 2));
@@ -153,7 +163,7 @@ std::shared_ptr<const StateTableData> LocalColorOverrides::buildStateTable(
         }
         if (!owned(ControlColor::hoverBackgroundColor))
             put(ControlColor::hoverBackgroundColor, feedback(rest, text, recipe.hoverBlend,
-                {rest}, QStringLiteral("hoverBackgroundColor"), 1));
+                hoverReservations, QStringLiteral("hoverBackgroundColor"), 1));
         diagnoseOwned(ControlColor::hoverBackgroundColor, {rest}, 1);
         // Inset consumers still select rest/hover during press. The button
         // family also supplies a real pressed fill to slider thumbs.
@@ -301,7 +311,7 @@ std::shared_ptr<const StateTableData> LocalColorOverrides::install(const Palette
     };
     const auto put = [&](ControlColor property, const QColor &value) { values.set(property, value); };
     const QColor base = effective(ControlColor::backgroundColor);
-    const QColor backdrop = palette.backdrop;
+    const QColor backdrop = shared->backdrop;
     const qreal target = palette.target;
     const qreal labelTarget = palette.labelTarget;
     const bool backgroundOwned = explicitLocal(ControlColor::backgroundColor);

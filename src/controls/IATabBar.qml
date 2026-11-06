@@ -14,10 +14,12 @@ T.TabBar {
     property alias fontWeight: appearance.fontWeight
     readonly property alias appearanceDiagnostics: appearance.diagnostics
     function resetAppearance(): void { appearance.resetOverrides(); }
-    readonly property IA.ControlAppearance _appearance: IA.ControlAppearance { id: appearance; source: IA.Appearance; family: "surface" }
+    readonly property IA.ControlAppearance _appearance: IA.ControlAppearance { id: appearance; source: IA.Appearance; family: "tabBar" }
     implicitWidth: contentWidth + leftPadding + rightPadding
     implicitHeight: contentHeight + topPadding + bottomPadding
-    spacing: appearance.spacing
+    horizontalPadding: appearance.horizontalPadding
+    verticalPadding: appearance.verticalPadding
+    spacing: 0
     font: appearance.resolvedFont
     contentItem: ListView {
         model: control.contentModel

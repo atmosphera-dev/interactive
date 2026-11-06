@@ -148,7 +148,9 @@ constexpr std::array<FamilyDescriptor, ControlFamilyCount> Families{{
         ColorRole::tooltipBackground, ColorRole::tooltipText), nullptr, &MetricRecord::controlRadius,
         &MetricRecord::horizontalPadding, &MetricRecord::verticalPadding, &TypographyRecord::supportingSize, false, false},
     {"menuItem", neutralRoles(ColorRole::transparent), &MetricRecord::rowHeight, &MetricRecord::controlRadius,
-        &MetricRecord::horizontalPadding, &MetricRecord::verticalPadding, &TypographyRecord::controlSize, true, false}
+        &MetricRecord::horizontalPadding, &MetricRecord::verticalPadding, &TypographyRecord::controlSize, true, false, true},
+    {"tabBar", neutralRoles(ColorRole::control), nullptr, &MetricRecord::controlRadius,
+        &MetricRecord::spacingXS, &MetricRecord::spacingXS, &TypographyRecord::controlSize, false, false}
 }};
 }
 
@@ -186,7 +188,7 @@ const QString &controlColorKey(ControlColor color)
 }
 
 ControlColorMapping controlColorMapping(ControlFamily family, Presentation::Tone tone,
-                                       Presentation::Validation validation)
+                                       Presentation::Validation validation, bool dark)
 {
     // Finite selectors only: the finished colors already belong to the palette.
     static const auto mappings = [] {
@@ -205,7 +207,7 @@ ControlColorMapping controlColorMapping(ControlFamily family, Presentation::Tone
             for (size_t t = 0; t < semantic.size(); ++t) {
                 auto colored = neutral;
                 const auto &roles = semantic[t];
-                if (descriptor.semanticTextOnly) {
+                if (descriptor.usesSemanticText(Presentation::Tone(int(Presentation::Primary) + int(t)))) {
                     colored[size_t(ControlColor::foregroundColor)] = roles[5];
                 } else {
                     colored[size_t(ControlColor::backgroundColor)] = roles[0];
@@ -226,6 +228,11 @@ ControlColorMapping controlColorMapping(ControlFamily family, Presentation::Tone
     const size_t t = tone == Presentation::Primary ? 1 : tone == Presentation::Destructive ? 2
         : tone == Presentation::Caution ? 3 : 0;
     auto mapping = mappings[size_t(family)][t];
+    if ((family == ControlFamily::Tab || family == ControlFamily::TabBar) && t == 0) {
+        const auto segment = dark ? ColorRole::controlHover : ColorRole::content;
+        mapping[size_t(ControlColor::selectedBackgroundColor)] = segment;
+        mapping[size_t(ControlColor::inactiveBackgroundColor)] = segment;
+    }
     if (family == ControlFamily::MenuItem || family == ControlFamily::Choice) {
         mapping[size_t(ControlColor::selectedBackgroundColor)] = ColorRole::accent;
         mapping[size_t(ControlColor::selectedForegroundColor)] = ColorRole::onAccent;
@@ -306,7 +313,7 @@ std::shared_ptr<const StateTableData> PaletteState::stateTable(ControlFamily fam
     auto &table = m_stateTables[(size_t(family) * 4 + t) * 3 + size_t(validation)];
     if (!table) {
         AppearanceTrace::work(AppearanceWork::StateTableBuild);
-        const auto mapping = controlColorMapping(family, tone, validation);
+        const auto mapping = controlColorMapping(family, tone, validation, dark);
         StateTableRecipe recipe;
         recipe.family = family;
         recipe.target = target;
@@ -314,7 +321,7 @@ std::shared_ptr<const StateTableData> PaletteState::stateTable(ControlFamily fam
         recipe.pressedBlend = pressedBlend;
         recipe.accent = color(ColorRole::accent);
         recipe.onAccent = color(ColorRole::onAccent);
-        recipe.coupleBorder = t != 0 && !familyDescriptor(family).semanticTextOnly
+        recipe.coupleBorder = t != 0 && !familyDescriptor(family).usesSemanticText(tone)
             && validation == Presentation::None && !explicitRole(mapping[size_t(ControlColor::borderColor)]);
         ControlColorValues values;
         for (size_t i = 0; i < ControlColorCount; ++i) {
@@ -353,8 +360,13 @@ std::shared_ptr<const StateTableData> PaletteState::stateTable(ControlFamily fam
             sharedColors[size_t(StateTableColor::ChoiceDisabledTrack)] = color(ColorRole::disabledSurface);
             sharedColors[size_t(StateTableColor::ChoiceGap)] = color(ColorRole::transparent);
         }
+        // Transparent tabs are painted on their group's track, not content.
+        // The group table finalizes that shared neutral surface only once.
+        const QColor stateBackdrop = family == ControlFamily::Tab
+            ? ColorMath::composite(stateTable(ControlFamily::TabBar, Presentation::Neutral,
+                Presentation::None)->values.value(ControlColor::backgroundColor), backdrop) : backdrop;
         table = LocalColorOverrides::buildStateTable(values, controlFindings(mapping), sharedColors,
-            backdrop, family == ControlFamily::Field && validation == Presentation::Invalid, recipe);
+            stateBackdrop, family == ControlFamily::Field && validation == Presentation::Invalid, recipe);
     }
     return table;
 }
@@ -398,6 +410,7 @@ std::shared_ptr<const PaletteState> PaletteState::calculate(const ResolvedAppear
     IA_COLOR_TOKENS(IA_INSTALL_COLOR)
 #undef IA_INSTALL_COLOR
     state->backdrop = ColorMath::composite(state->color(ColorRole::content), state->color(ColorRole::canvas));
+    state->dark = prepared.scheme == QLatin1String("dark");
     state->target = prepared.contrast == QLatin1String("high") ? 7 : 5;
     const auto motion = prepared.tokens.value(QStringLiteral("motion")).toMap();
     state->hoverBlend = motion.value(QStringLiteral("hoverBlend")).toDouble();
@@ -432,7 +445,7 @@ std::shared_ptr<const PaletteState> PaletteState::calculate(const ResolvedAppear
     };
     for (size_t f = 0; f < ControlFamilyCount; ++f) {
         for (const auto tone : {Presentation::Neutral, Presentation::Primary, Presentation::Destructive, Presentation::Caution}) {
-            const auto roles = controlColorMapping(ControlFamily(f), tone, Presentation::None);
+            const auto roles = controlColorMapping(ControlFamily(f), tone, Presentation::None, state->dark);
             for (const auto surface : {ControlColor::backgroundColor, ControlColor::hoverBackgroundColor,
                      ControlColor::pressedBackgroundColor})
                 addPair(roles[size_t(ControlColor::foregroundColor)], roles[size_t(surface)]);

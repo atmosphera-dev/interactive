@@ -317,9 +317,15 @@ void ControlAppearance::resolve(const PaletteUpdate &update, bool forceNoncolors
         dependencies.set(size_t(ColorRole::control));
         dependencies.set(size_t(ColorRole::disabledSurface));
     }
+    if (state.family == ControlFamily::Tab) {
+        dependencies.set(size_t(ColorRole::control));
+        dependencies.set(size_t(ColorRole::controlHover));
+        dependencies.set(size_t(ColorRole::text));
+    }
     const auto &before = *state.palette;
     const auto &after = *newest->palette;
     const bool colors = ((effective.changedRoles | effective.changedPresence) & dependencies).any()
+        || ((state.family == ControlFamily::Tab || state.family == ControlFamily::TabBar) && before.dark != after.dark)
         || before.target != after.target || before.labelTarget != after.labelTarget
         || before.hoverBlend != after.hoverBlend || before.pressedBlend != after.pressedBlend;
     const bool noncolors = forceNoncolors || (effective.changedGroups & (MetricsGroup | TypographyGroup));
@@ -338,9 +344,9 @@ void ControlAppearance::resolveParts(bool colors, bool noncolors, bool selectors
     const auto &descriptor = familyDescriptor(state.family);
     if (colors) {
         AppearanceTrace::work(AppearanceWork::ColorResolution);
-        state.mapping = controlColorMapping(state.family, m_tone, m_validation);
+        state.mapping = controlColorMapping(state.family, m_tone, m_validation, state.palette->dark);
         const bool colored = m_tone == Presentation::Primary || m_tone == Presentation::Destructive || m_tone == Presentation::Caution;
-        const bool coupleBorder = colored && !descriptor.semanticTextOnly && m_validation == Presentation::None
+        const bool coupleBorder = colored && !descriptor.usesSemanticText(m_tone) && m_validation == Presentation::None
             && !state.palette->explicitRole(state.mapping[size_t(ControlColor::borderColor)]);
         const auto shared = state.palette->stateTable(state.family, m_tone, m_validation);
         if (state.colorOverrides.presence.none()) {

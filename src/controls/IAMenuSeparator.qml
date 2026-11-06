@@ -8,16 +8,17 @@ T.MenuSeparator {
     property alias foregroundColor: appearance.foregroundColor
     readonly property alias appearanceDiagnostics: appearance.diagnostics
     function resetAppearance(): void { appearance.resetOverrides(); }
-    IA.ControlAppearance { id: appearance; source: IA.Appearance; family: "label" }
+    IA.SeparatorAppearance { id: appearance; source: IA.Appearance }
     implicitWidth: implicitContentWidth + leftPadding + rightPadding
     implicitHeight: implicitContentHeight + topPadding + bottomPadding
-    horizontalPadding: appearance.horizontalPadding
-    verticalPadding: appearance.verticalPadding
+    horizontalPadding: IA.Appearance.metrics.horizontalPadding
+    verticalPadding: IA.Appearance.metrics.verticalPadding
     contentItem: Item {
         implicitHeight: line.thickness
         IA.Separator {
             id: line
             objectName: "iaSeparator"
+            color: control.foregroundColor
             anchors.verticalCenter: parent.verticalCenter
             anchors.left: parent.left
             anchors.right: parent.right

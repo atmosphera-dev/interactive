@@ -19,7 +19,7 @@ Rectangle {
         function iconIn(item: Item): IA.Icon {
             for (const child of item.children) {
                 const icon = child as IA.Icon;
-                if (icon !== null)
+                if (icon !== null && icon.visible)
                     return icon;
                 const nested = iconIn(child);
                 if (nested !== null)
