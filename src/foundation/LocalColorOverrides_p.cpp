@@ -162,6 +162,18 @@ std::shared_ptr<const StateTableData> LocalColorOverrides::buildStateTable(
                 {rest}, QStringLiteral("pressedBackgroundColor"), 2));
         diagnoseOwned(ControlColor::pressedBackgroundColor, {rest}, 2);
     }
+    if (recipe.family == ControlFamily::Choice) {
+        // A choice owns a small accent center, not a neutral navigation band.
+        // Resolve its light pair once, preserving explicit local/application pairs.
+        for (const auto pair : {std::pair{ControlColor::selectedBackgroundColor, ControlColor::selectedForegroundColor},
+                 std::pair{ControlColor::inactiveBackgroundColor, ControlColor::inactiveForegroundColor}}) {
+            if (!owned(pair.first) && !owned(pair.second))
+                put(pair.second, QColor(Qt::white));
+            if (!owned(pair.first))
+                put(pair.first, ColorMath::contrastingText(recipe.accent,
+                    {values.value(pair.second)}, canvas, LabelContrastTarget));
+        }
+    }
     QColor selectedHover = values.value(ControlColor::selectedBackgroundColor);
     if (selection) {
         const QColor hover = values.value(ControlColor::hoverBackgroundColor);
@@ -213,30 +225,59 @@ std::shared_ptr<const StateTableData> LocalColorOverrides::buildStateTable(
         pair.append(contrast);
     }
     table->values = values;
-    table->findings = changedFindings ? changedFindings : std::move(findings);
-    const auto entry = [&](const QColor &fill, ControlColor foreground, bool disabled = false) {
+    const bool choice = recipe.family == ControlFamily::Choice;
+    const QColor on = values.value(ControlColor::selectedBackgroundColor);
+    const QColor onMark = values.value(ControlColor::selectedForegroundColor);
+    const QColor onPressed = choice ? feedback(on, onMark, recipe.pressedBlend,
+        {on}, QStringLiteral("choicePressedCenterColor"), 3) : QColor();
+    const QColor offTrack = owned(ControlColor::backgroundColor) ? rest
+        : sharedColors[size_t(StateTableColor::ChoiceTrack)];
+    const QColor offHover = !choice ? QColor() : owned(ControlColor::hoverBackgroundColor)
+        ? values.value(ControlColor::hoverBackgroundColor) : feedback(offTrack, text, recipe.hoverBlend,
+            {offTrack}, QStringLiteral("choiceHoverTrackColor"), 1);
+    const QColor offPressed = !choice ? QColor() : owned(ControlColor::pressedBackgroundColor)
+        ? values.value(ControlColor::pressedBackgroundColor) : feedback(offTrack, text, recipe.pressedBlend,
+            {offTrack}, QStringLiteral("choicePressedTrackColor"), 2);
+    const QColor disabledTrack = owned(ControlColor::disabledBackgroundColor)
+        ? values.value(ControlColor::disabledBackgroundColor) : sharedColors[size_t(StateTableColor::ChoiceDisabledTrack)];
+    const QColor disabledCenter = values.value(ControlColor::disabledForegroundColor);
+    const QColor disabledMark = choice ? ColorMath::contrastingText(QColor(Qt::white),
+        {disabledCenter}, canvas, LabelContrastTarget) : QColor();
+    const auto entry = [&](const QColor &fill, ControlColor foreground, bool disabled = false,
+                           QColor center = {}, QColor track = {}) {
         const QColor text = values.value(foreground);
         const QColor border = values.value(disabled ? ControlColor::disabledBorderColor : ControlColor::borderColor);
         const QColor focus = values.value(ControlColor::focusColor);
-        const QColor surface = ColorMath::composite(fill, backdrop);
+        const QColor surface = ColorMath::composite(choice ? sharedColors[size_t(StateTableColor::ChoiceGap)] : fill, backdrop);
         const QColor focusedBorder = invalidFocus ? border
-            : ColorMath::contrastRatio(focus, surface) >= 3 ? focus : text;
+            : ColorMath::contrastRatio(focus, surface) >= 3 ? focus : choice ? border : text;
         return StateColors(fill, values.value(foreground),
             border, focus,
             values.value(disabled ? ControlColor::disabledForegroundColor : ControlColor::fillColor),
             values.value(disabled ? ControlColor::disabledBackgroundColor : ControlColor::borderColor),
             disabled ? values.value(ControlColor::disabledForegroundColor)
-                     : sharedColors[size_t(StateTableColor::Placeholder)], focusedBorder);
+                     : sharedColors[size_t(StateTableColor::Placeholder)], focusedBorder,
+             sharedColors[size_t(StateTableColor::ChoiceGap)], choice ? center : QColor(),
+             !choice ? QColor() : disabled ? disabledMark
+                 : foreground == ControlColor::inactiveForegroundColor ? values.value(foreground) : onMark,
+             choice ? track : QColor());
     };
-    const auto ordinary = entry(rest, ControlColor::foregroundColor);
-    const auto hover = entry(values.value(ControlColor::hoverBackgroundColor), ControlColor::foregroundColor);
-    const auto pressed = entry(values.value(ControlColor::pressedBackgroundColor), ControlColor::foregroundColor);
-    const auto selected = entry(values.value(ControlColor::selectedBackgroundColor), ControlColor::selectedForegroundColor);
-    const auto inactive = entry(values.value(ControlColor::inactiveBackgroundColor), ControlColor::inactiveForegroundColor);
+    const auto ordinary = entry(rest, ControlColor::foregroundColor, false, on, offTrack);
+    const auto hover = entry(values.value(ControlColor::hoverBackgroundColor), ControlColor::foregroundColor,
+        false, selectedHover, offHover);
+    const auto pressed = entry(values.value(ControlColor::pressedBackgroundColor), ControlColor::foregroundColor,
+        false, onPressed, offPressed);
+    const auto selected = entry(on, ControlColor::selectedForegroundColor, false, on, offTrack);
+    const auto inactive = entry(values.value(ControlColor::inactiveBackgroundColor), ControlColor::inactiveForegroundColor,
+        false, values.value(ControlColor::inactiveBackgroundColor), offTrack);
     table->states = {ordinary, hover, pressed, selected,
-        entry(selectedHover, ControlColor::selectedForegroundColor),
-        recipe.family == ControlFamily::MenuItem ? selected : pressed, inactive, inactive,
-        entry(values.value(ControlColor::disabledBackgroundColor), ControlColor::disabledForegroundColor, true)};
+        entry(selectedHover, ControlColor::selectedForegroundColor, false, selectedHover, offHover),
+        recipe.family == ControlFamily::MenuItem ? selected : pressed,
+        inactive, inactive,
+        entry(values.value(ControlColor::disabledBackgroundColor), ControlColor::disabledForegroundColor,
+            true, disabledCenter, disabledTrack)};
+    // Choice feedback diagnostics above belong to the same immutable snapshot.
+    table->findings = changedFindings ? changedFindings : std::move(findings);
     return table;
 }
 

@@ -81,6 +81,8 @@ inline constexpr double LabelContrastTarget = 7;
     X(popupRadius, 8, 0, 128) \
     X(iconSize, 16, 1, 256) \
     X(indicatorSize, 16, 1, 256) \
+    X(choiceGap, 2, 0, 128) \
+    X(choiceCenterRadius, 2, 0, 128) \
     X(switchWidth, 30, 1, 256) \
     X(switchHeight, 18, 1, 256) \
     X(thumbSize, 14, 1, 256) \

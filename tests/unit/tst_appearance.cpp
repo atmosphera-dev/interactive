@@ -534,7 +534,9 @@ void AppearanceTests::stateTableEquivalence()
             const bool invalidField = control.family() == QLatin1String("field")
                 && control.validation() == Presentation::Invalid;
             const QColor expectedFocus = invalidField ? entry.borderColor()
-                : rgbContrast(control.focusColor(), entry.backgroundColor(), backdrop) >= 3 ? control.focusColor() : foreground;
+                : rgbContrast(control.focusColor(), control.family() == QLatin1String("choice")
+                    ? QColor(Qt::transparent) : entry.backgroundColor(), backdrop) >= 3 ? control.focusColor()
+                    : control.family() == QLatin1String("choice") ? entry.borderColor() : foreground;
             QCOMPARE(entry.focusedBorderColor(), expectedFocus);
             QCOMPARE(entry.focusedBorderWidth(), source->metrics()->focusWidth());
             QCOMPARE(entry.fillColor(), flags.enabled ? control.fillColor() : control.disabledForegroundColor());
@@ -875,6 +877,7 @@ void AppearanceTests::stateSweepDoesNoFoundationWork()
             property bool active: true
             property bool inset: false
             ControlAppearance { id: facade; source: Appearance }
+            ControlAppearance { id: choiceFacade; objectName: "choiceFacade"; source: Appearance; family: "choice" }
             ControlBackground {
                 id: surface
                 resolvedAppearance: facade
@@ -884,7 +887,7 @@ void AppearanceTests::stateSweepDoesNoFoundationWork()
             }
             ChoiceIndicator {
                 id: indicator
-                resolvedAppearance: facade
+                resolvedAppearance: choiceFacade
                 controlEnabled: parent.available
                 down: parent.down; hovered: parent.hovered
                 checked: parent.selected; active: parent.active
@@ -893,6 +896,7 @@ void AppearanceTests::stateSweepDoesNoFoundationWork()
             readonly property color foreground: surface.foregroundColor
             readonly property color observedChoice: indicator.color
             readonly property color choiceForeground: indicator.markColor
+            readonly property color choiceCenter: indicator.mark.color
         }
     )", QUrl(QStringLiteral("inmemory:/state-sweep.qml")));
     QVERIFY(QTest::qWaitFor([&] { return !component.isLoading(); }, 10000));
@@ -901,6 +905,8 @@ void AppearanceTests::stateSweepDoesNoFoundationWork()
     QVERIFY2(object, qPrintable(component.errorString()));
     auto *facade = object->findChild<ControlAppearance *>();
     QVERIFY(facade);
+    auto *choiceFacade = object->findChild<ControlAppearance *>(QStringLiteral("choiceFacade"));
+    QVERIFY(choiceFacade);
     WorkRecorder work;
     facade->setSpacing(facade->spacing() + 1);
     QCOMPARE(work.count(AppearanceWork::FacadeUpdate), 1); // Positive control for the scope recorder.
@@ -926,18 +932,17 @@ void AppearanceTests::stateSweepDoesNoFoundationWork()
             : facade->foregroundColor();
         QCOMPARE(object->property("observed").value<QColor>(), background);
         QCOMPARE(object->property("foreground").value<QColor>(), foreground);
-        const QColor choiceBackground = enabled && selected && active && hover && !down
-            ? facade->stateTable().colors(Presentation::SelectedHover).backgroundColor()
-            : !enabled ? facade->disabledBackgroundColor()
-            : down ? facade->pressedBackgroundColor()
-            : selected ? (active ? facade->selectedBackgroundColor() : facade->inactiveBackgroundColor())
-            : hover ? facade->hoverBackgroundColor() : facade->backgroundColor();
-        const QColor choiceForeground = !enabled ? facade->disabledForegroundColor()
-            : down ? facade->foregroundColor()
-            : selected ? (active ? facade->selectedForegroundColor() : facade->inactiveForegroundColor())
-            : facade->foregroundColor();
-        QCOMPARE(object->property("observedChoice").value<QColor>(), choiceBackground);
+        const auto choiceState = !enabled ? Presentation::Disabled
+            : down ? (selected ? Presentation::SelectedPressed : Presentation::Pressed)
+            : selected ? (active ? (hover ? Presentation::SelectedHover : Presentation::Selected)
+                : (hover ? Presentation::InactiveHover : Presentation::Inactive))
+            : hover ? Presentation::Hover : Presentation::Rest;
+        const auto choiceColors = choiceFacade->stateTable().colors(choiceState);
+        const QColor choiceForeground = selected ? choiceColors.choiceMarkColor() : choiceColors.foregroundColor();
+        QCOMPARE(object->property("observedChoice").value<QColor>(), QColor(Qt::transparent));
         QCOMPARE(object->property("choiceForeground").value<QColor>(), choiceForeground);
+        QCOMPARE(object->property("choiceCenter").value<QColor>(), selected
+            ? choiceColors.choiceCenterColor() : choiceColors.backgroundColor());
     }
     QCOMPARE(work.count(AppearanceWork::FacadeUpdate), 0);
     QCOMPARE(work.count(AppearanceWork::ColorResolution), 0);
@@ -986,7 +991,7 @@ void AppearanceTests::familyDescriptorContract()
                 const bool tooltip = control.family() == QLatin1String("tooltip");
                 const bool label = control.family() == QLatin1String("label");
                 QCOMPARE(control.controlRadius(), popup ? 9.0 : 5.0);
-                QCOMPARE(control.horizontalPadding(), popup ? 11.0 : 3.0);
+                QCOMPARE(control.horizontalPadding(), popup ? 11.0 : control.family() == QLatin1String("choice") ? 7.0 : 3.0);
                 QCOMPARE(control.verticalPadding(), popup ? 11.0 : 7.0);
                 QCOMPARE(control.spacing(), 13.0);
                 QCOMPARE(control.fontPixelSize(), tooltip ? 10.0 : 14.0);
@@ -1023,11 +1028,17 @@ void AppearanceTests::familyDescriptorContract()
                             ? stateFeedback(color(background), color(foreground), appearance.motion()->pressedBlend(), backdrop, 5) : color(pressed));
                         const QColor selectedSeed = color(colored && !label ? semantic + QStringLiteral("Pressed") : QStringLiteral("selection"));
                         const bool selectable = family.interactive && control.family() != QLatin1String("field");
-                        QCOMPARE(control.selectedBackgroundColor(), selectable
+                        const bool choice = control.family() == QLatin1String("choice");
+                        const QColor choiceSeed = TokenSchema::contrastingText(appearance.colors()->accent(), {QColor(Qt::white)}, backdrop, 7);
+                        QCOMPARE(control.selectedBackgroundColor(), choice
+                            ? stateFeedback(choiceSeed, QColor(Qt::white), appearance.motion()->pressedBlend(), backdrop, 5,
+                                {color(background), expectedHover}, true) : selectable
                             ? stateFeedback(selectedSeed, control.selectedForegroundColor(), appearance.motion()->pressedBlend(), backdrop, 5,
                                 {color(background), expectedHover}, true) : selectedSeed);
-                        QCOMPARE(control.inactiveBackgroundColor(), color(colored && !label ? semantic + QStringLiteral("Surface") : QStringLiteral("inactiveSelection")));
-                        QCOMPARE(control.selectedForegroundColor(), color(colored && !label ? foreground : QStringLiteral("text")));
+                        QCOMPARE(control.inactiveBackgroundColor(), choice ? choiceSeed
+                            : color(colored && !label ? semantic + QStringLiteral("Surface") : QStringLiteral("inactiveSelection")));
+                        QCOMPARE(control.selectedForegroundColor(), choice ? QColor(Qt::white)
+                            : color(colored && !label ? foreground : QStringLiteral("text")));
                         QCOMPARE(control.inactiveForegroundColor(), control.selectedForegroundColor());
                         const QString border = validation == Presentation::Invalid ? QStringLiteral("errorText")
                             : validation == Presentation::Warning ? QStringLiteral("warningText")

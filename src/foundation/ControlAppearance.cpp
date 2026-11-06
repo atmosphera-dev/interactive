@@ -313,6 +313,10 @@ void ControlAppearance::resolve(const PaletteUpdate &update, bool forceNoncolors
     }
     if (state.family == ControlFamily::Label)
         dependencies.set(size_t(ColorRole::link));
+    if (state.family == ControlFamily::Choice) {
+        dependencies.set(size_t(ColorRole::control));
+        dependencies.set(size_t(ColorRole::disabledSurface));
+    }
     const auto &before = *state.palette;
     const auto &after = *newest->palette;
     const bool colors = ((effective.changedRoles | effective.changedPresence) & dependencies).any()

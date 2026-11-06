@@ -409,6 +409,8 @@ unscaled by `fontScale`; controls grow from actual font metrics instead.
 | 17 | `hairlineWidth` | 1 | `[0, 8]` physical pixels |
 | 18 | `pressInsetDepth` | 8 | `[0, 64]` |
 | 19 | `pressContentShift` | 1 | `[0, 8]` |
+| 20 | `choiceGap` | 2 | `[0, 128]` |
+| 21 | `choiceCenterRadius` | 2 | `[0, 128]` |
 
 `hairlineWidth` is the one exception to logical-pixel dimensions: a decorative
 separator divides it by the effective DPR. Structural alignment and slider-value
@@ -622,6 +624,28 @@ checking an item still changes only its mark. Destructive resting presentation i
 a separate subsequent stage.
 
 Only the selected kind's check/mixed icon, radio dot or switch thumb is created.
+The three choice templates share Foundation's `ChoiceRow` text/indicator lane,
+including intrinsic sizing, centerline, spacing, elision and explicit RTL placement.
+The choice family's horizontal inset resolves from `verticalPadding`; the templates
+consume that finished geometry rather than independently choosing an inset token.
+Each choice has an unchanged outer outline and an inset center separated by
+`metrics.choiceGap` beyond the current inward border. Checkboxes use a rounded
+square (`metrics.choiceCenterRadius`, independent of outline thickness) with a
+check/mixed icon, radios a dot, and switches an inner capsule with
+a thumb constrained to its end slot. The state table supplies `choiceGapColor`,
+`choiceCenterColor`, `choiceMarkColor` and `choiceTrackColor`. The default on pair
+uses the accent hue/chroma with its tone resolved for a light mark at the 7:1
+target; explicit selected/inactive pairs remain exact. Hover and press compose
+with the on center without erasing its meaning. Off switches use a neutral track
+and contrasting ordinary foreground thumb; disabled-on retains a neutral center
+and paired mark. Explicit ordinary off/hover/pressed/disabled backgrounds still
+own the switch's inner off track; the default neutral track is used only when
+that state is unowned. The ordinary state tuple retains its existing precedence;
+the choice center/mark roles carry the persistent on pair independently.
+Colors are built once per shared palette table (or cached local
+override table); QML performs only state/role selection. Focus contrast is measured
+against the outline's gap/backdrop, not the separate accent center; its fallback
+is the outline role on that same backdrop, not the inner center's light mark.
 Inset backgrounds create their Gradient and stops only when `pressInset` is used;
 the named empty inset Rectangle remains available on other backgrounds. Changing
 the kind or inset trait replaces only that owned visual, not the control.

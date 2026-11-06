@@ -28,13 +28,14 @@ T.Switch {
     IA.ControlAppearance { id: appearance; source: IA.Appearance; family: "choice" }
     implicitWidth: Math.max(implicitContentWidth + leftPadding + rightPadding, minimumHeight)
     implicitHeight: Math.max(Math.max(implicitContentHeight, implicitIndicatorHeight) + topPadding + bottomPadding, minimumHeight)
-    horizontalPadding: appearance.verticalPadding
+    horizontalPadding: appearance.horizontalPadding
     verticalPadding: appearance.verticalPadding
     spacing: appearance.spacing
     font: appearance.resolvedFont
     hoverEnabled: true
-    indicator: IA.ChoiceIndicator {
-        id: mark
+    indicator: choiceRow.indicator
+    contentItem: IA.ChoiceRow {
+        id: choiceRow
         kind: IA.ChoiceIndicator.Toggle
         resolvedAppearance: appearance
         checked: control.checked
@@ -44,25 +45,14 @@ T.Switch {
         hovered: control.hovered
         active: control.Window.active
         focused: control.visualFocus
-        x: control.mirrored ? control.width - control.rightPadding - width : control.leftPadding
-        anchors.verticalCenter: control.verticalCenter
-    }
-    contentItem: Text {
-        objectName: "iaLabel"
-        LayoutMirroring.enabled: false
-        leftPadding: !control.mirrored ? mark.width + (control.text.length ? control.spacing : 0) : 0
-        rightPadding: control.mirrored ? mark.width + (control.text.length ? control.spacing : 0) : 0
+        mirrored: control.mirrored
+        spacing: control.spacing
         text: control.text
         font: control.font
-        color: appearance.stateTable.colors(IA.ControlState.of(control.enabled, false, false, false, true, false)).foregroundColor
-        textFormat: Text.PlainText
-        elide: Text.ElideRight
-        horizontalAlignment: control.mirrored ? Text.AlignRight : Text.AlignLeft
-        verticalAlignment: Text.AlignVCenter
     }
     background: IA.ControlBackground {
         resolvedAppearance: appearance
-        color: IA.Appearance.colors.transparent
+        color: colors.choiceGapColor
         outlined: false
     }
 }

@@ -22,14 +22,20 @@ class INTERACTIVE_FOUNDATION_EXPORT StateColors
     Q_PROPERTY(QColor fillColor READ fillColor CONSTANT FINAL)
     Q_PROPERTY(QColor trackColor READ trackColor CONSTANT FINAL)
     Q_PROPERTY(QColor placeholderTextColor READ placeholderTextColor CONSTANT FINAL)
+    Q_PROPERTY(QColor choiceGapColor READ choiceGapColor CONSTANT FINAL)
+    Q_PROPERTY(QColor choiceCenterColor READ choiceCenterColor CONSTANT FINAL)
+    Q_PROPERTY(QColor choiceMarkColor READ choiceMarkColor CONSTANT FINAL)
+    Q_PROPERTY(QColor choiceTrackColor READ choiceTrackColor CONSTANT FINAL)
 public:
     StateColors() = default;
     StateColors(QColor background, QColor foreground, QColor border, QColor focus,
-                QColor fill = {}, QColor track = {}, QColor placeholder = {}, QColor focusedBorder = {})
+                QColor fill = {}, QColor track = {}, QColor placeholder = {}, QColor focusedBorder = {},
+                QColor choiceGap = {}, QColor choiceCenter = {}, QColor choiceMark = {}, QColor choiceTrack = {})
         : m_background(std::move(background)), m_foreground(std::move(foreground)),
           m_border(std::move(border)), m_focus(std::move(focus)), m_fill(std::move(fill)),
           m_track(std::move(track)), m_placeholder(std::move(placeholder)),
-          m_focusedBorder(std::move(focusedBorder)) {}
+          m_focusedBorder(std::move(focusedBorder)), m_choiceGap(std::move(choiceGap)),
+          m_choiceCenter(std::move(choiceCenter)), m_choiceMark(std::move(choiceMark)), m_choiceTrack(std::move(choiceTrack)) {}
     QColor backgroundColor() const { return m_background; }
     QColor foregroundColor() const { return m_foreground; }
     QColor borderColor() const { return m_border; }
@@ -39,16 +45,23 @@ public:
     QColor fillColor() const { return m_fill; }
     QColor trackColor() const { return m_track; }
     QColor placeholderTextColor() const { return m_placeholder; }
+    QColor choiceGapColor() const { return m_choiceGap; }
+    QColor choiceCenterColor() const { return m_choiceCenter; }
+    QColor choiceMarkColor() const { return m_choiceMark; }
+    QColor choiceTrackColor() const { return m_choiceTrack; }
     bool operator==(const StateColors &other) const
     {
         return m_background == other.m_background && m_foreground == other.m_foreground
             && m_border == other.m_border && m_focus == other.m_focus
             && m_fill == other.m_fill && m_track == other.m_track && m_placeholder == other.m_placeholder
-            && m_focusedBorder == other.m_focusedBorder && m_focusedBorderWidth == other.m_focusedBorderWidth;
+            && m_focusedBorder == other.m_focusedBorder && m_focusedBorderWidth == other.m_focusedBorderWidth
+            && m_choiceGap == other.m_choiceGap && m_choiceCenter == other.m_choiceCenter
+            && m_choiceMark == other.m_choiceMark && m_choiceTrack == other.m_choiceTrack;
     }
 private:
     QColor m_background, m_foreground, m_border, m_focus, m_fill, m_track, m_placeholder;
     QColor m_focusedBorder;
+    QColor m_choiceGap, m_choiceCenter, m_choiceMark, m_choiceTrack;
     qreal m_focusedBorderWidth = 0;
     friend class StateTable;
 };

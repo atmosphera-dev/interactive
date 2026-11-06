@@ -143,7 +143,7 @@ constexpr std::array<FamilyDescriptor, ControlFamilyCount> Families{{
     {"tab", neutralRoles(ColorRole::transparent), &MetricRecord::rowHeight, &MetricRecord::controlRadius,
         &MetricRecord::horizontalPadding, &MetricRecord::verticalPadding, &TypographyRecord::controlSize, true, false},
     {"choice", neutralRoles(ColorRole::transparent), &MetricRecord::controlHeight, &MetricRecord::controlRadius,
-        &MetricRecord::horizontalPadding, &MetricRecord::verticalPadding, &TypographyRecord::controlSize, true, false},
+        &MetricRecord::verticalPadding, &MetricRecord::verticalPadding, &TypographyRecord::controlSize, true, false},
     {"tooltip", neutralRoles(ColorRole::tooltipBackground, ColorRole::tooltipBackground,
         ColorRole::tooltipBackground, ColorRole::tooltipText), nullptr, &MetricRecord::controlRadius,
         &MetricRecord::horizontalPadding, &MetricRecord::verticalPadding, &TypographyRecord::supportingSize, false, false},
@@ -226,7 +226,7 @@ ControlColorMapping controlColorMapping(ControlFamily family, Presentation::Tone
     const size_t t = tone == Presentation::Primary ? 1 : tone == Presentation::Destructive ? 2
         : tone == Presentation::Caution ? 3 : 0;
     auto mapping = mappings[size_t(family)][t];
-    if (family == ControlFamily::MenuItem) {
+    if (family == ControlFamily::MenuItem || family == ControlFamily::Choice) {
         mapping[size_t(ControlColor::selectedBackgroundColor)] = ColorRole::accent;
         mapping[size_t(ControlColor::selectedForegroundColor)] = ColorRole::onAccent;
         mapping[size_t(ControlColor::inactiveBackgroundColor)] = ColorRole::accent;
@@ -321,7 +321,7 @@ std::shared_ptr<const StateTableData> PaletteState::stateTable(ControlFamily fam
             values.set(ControlColor(i), color(mapping[i]));
             recipe.owned.set(i, explicitRole(mapping[i]));
         }
-        if (family == ControlFamily::MenuItem) {
+        if (family == ControlFamily::MenuItem || family == ControlFamily::Choice) {
             // An explicit accent still seeds the derived menu band; it owns the
             // accent token, not this distinct surface. Local band overrides are
             // added to ownership by LocalColorOverrides::install afterwards.
@@ -348,6 +348,11 @@ std::shared_ptr<const StateTableData> PaletteState::stateTable(ControlFamily fam
         }
         if (family == ControlFamily::Label)
             sharedColors[size_t(StateTableColor::Link)] = color(ColorRole::link);
+        if (family == ControlFamily::Choice) {
+            sharedColors[size_t(StateTableColor::ChoiceTrack)] = color(ColorRole::control);
+            sharedColors[size_t(StateTableColor::ChoiceDisabledTrack)] = color(ColorRole::disabledSurface);
+            sharedColors[size_t(StateTableColor::ChoiceGap)] = color(ColorRole::transparent);
+        }
         table = LocalColorOverrides::buildStateTable(values, controlFindings(mapping), sharedColors,
             backdrop, family == ControlFamily::Field && validation == Presentation::Invalid, recipe);
     }

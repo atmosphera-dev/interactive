@@ -45,10 +45,11 @@ Item {
             const indicator = createTemporaryObject(indicatorComponent, scene, {checked: true}) as IA.ChoiceIndicator;
             verify(indicator !== null);
             compare(indicator.children.length, 1, "Only the check mark is instantiated");
-            verify(indicator.children[0] instanceof IA.Icon);
-            compare(visualItemCount(indicator), 4);
+            verify(indicator.children[0] instanceof Rectangle);
+            verify(indicator.mark.children[0] instanceof IA.Icon);
+            compare(visualItemCount(indicator), 5);
             indicator.partial = true;
-            compare((indicator.children[0] as IA.Icon).source, IA.Appearance.icons.minus);
+            compare((indicator.mark.children[0] as IA.Icon).source, IA.Appearance.icons.minus);
             indicator.kind = IA.ChoiceIndicator.Radio;
             tryVerify(function() { return indicator.children.length === 1; });
             verify(indicator.children[0] instanceof Rectangle);
@@ -56,12 +57,12 @@ Item {
             verify(findChild(indicator, "iaThumb") === null);
             indicator.kind = IA.ChoiceIndicator.Toggle;
             tryVerify(function() { return indicator.children.length === 1; });
-            compare(indicator.children[0].objectName, "iaThumb");
-            compare(visualItemCount(indicator), 1);
+            compare(indicator.mark.children[0].objectName, "iaThumb");
+            compare(visualItemCount(indicator), 2);
             indicator.kind = IA.ChoiceIndicator.Check;
             tryVerify(function() { return indicator.children.length === 1; });
-            verify(indicator.children[0] instanceof IA.Icon);
-            compare(visualItemCount(indicator), 4);
+            verify(indicator.mark.children[0] instanceof IA.Icon);
+            compare(visualItemCount(indicator), 5);
 
             for (const component of [buttonComponent, toolComponent, tabComponent, delegateComponent,
                                      checkComponent, radioComponent, switchComponent]) {
@@ -104,6 +105,121 @@ Item {
                     "The scrollbar track still ignores enabled");
         }
 
+        function test_choiceCenters_data(): var {
+            const rows = [];
+            for (const scheme of ["light", "dark"]) {
+                for (const contrast of ["normal", "high"]) {
+                    for (const component of [checkComponent, radioComponent, switchComponent]) {
+                        for (const rtl of [false, true])
+                            rows.push({tag: scheme + "-" + contrast + "-" + rows.length,
+                                scheme: scheme, contrast: contrast, component: component, rtl: rtl});
+                    }
+                }
+            }
+            return rows;
+        }
+
+        function test_choiceCenters(data: var): void {
+            IA.Appearance.input = {scheme: data.scheme, contrast: data.contrast};
+            const control = createTemporaryObject(data.component, scene, {
+                x: 20, y: 20, width: 240, text: "One shared choice row", hoverEnabled: false
+            }) as T.AbstractButton;
+            verify(control !== null);
+            control.LayoutMirroring.enabled = data.rtl;
+            const row = control.contentItem as IA.ChoiceRow;
+            verify(row !== null, "Every Qt choice template uses Foundation.ChoiceRow");
+            compare(control.indicator, row.indicator, "Native interaction retains the real indicator");
+            verify(TestProbe.render(control));
+            verify(TestProbe.activate(control));
+            const indicator = control.indicator as IA.ChoiceIndicator;
+            const center = indicator.mark as Rectangle;
+            verify(center !== null);
+            const thumb = findChild(indicator, "iaThumb") as Rectangle;
+            const glyph = center.children.length ? center.children[0] as IA.Icon : null;
+            compare(indicator.color.a, 0, "The outline-to-center lane is not painted over");
+            compare(indicator.border.color, control.borderColor);
+            const labelCenter = row.mapToItem(control, 0, row.height / 2).y;
+            fuzzyCompare(indicator.mapToItem(control, 0, indicator.height / 2).y, labelCenter, 0.001);
+            compare(row.mirrored, data.rtl);
+            compare(indicator.x, data.rtl ? row.width - indicator.width : 0);
+            compare(data.rtl ? row.rightPadding : row.leftPadding, indicator.width + control.spacing);
+            compare(data.rtl ? row.leftPadding : row.rightPadding, 0);
+
+            for (const on of [false, true]) {
+                control.checked = on;
+                compare(indicator.selected, on);
+                compare(center.color, on ? indicator.colors.choiceCenterColor
+                    : thumb ? indicator.colors.choiceTrackColor : indicator.colors.backgroundColor);
+                if (on) {
+                    compare(center.color, control.selectedBackgroundColor);
+                    compare(indicator.markColor, "#ffffff", "Default on pair has a light mark");
+                    verify(menuPairContrast(indicator.markColor, center.color) >= 7);
+                }
+                if (thumb) {
+                    compare(thumb.color, indicator.markColor);
+                    const gap = (center.height - thumb.height) / 2;
+                    verify(gap >= IA.Appearance.metrics.choiceGap);
+                    fuzzyCompare(thumb.y, gap, 0.001);
+                    const edge = indicator.visualPosition < 0.5 ? thumb.x
+                        : center.width - thumb.x - thumb.width;
+                    fuzzyCompare(edge, gap, 0.001, "Thumb has equal facing-edge clearance");
+                } else if (glyph) {
+                    compare(center.radius, IA.Appearance.metrics.choiceCenterRadius,
+                        "A thicker outline must not consume the checkbox center's rounded corners");
+                    compare(glyph.visible, on);
+                    compare(glyph.color, indicator.markColor);
+                }
+                for (const focused of [false, true]) {
+                    indicator.focused = focused;
+                    verify(TestProbe.render(control));
+                    verify(center.width > 0 && center.height > 0);
+                    fuzzyCompare(center.x - indicator.border.width, IA.Appearance.metrics.choiceGap, 0.001);
+                    fuzzyCompare(center.y - indicator.border.width, IA.Appearance.metrics.choiceGap, 0.001);
+                    fuzzyCompare(indicator.width - center.x - center.width - indicator.border.width,
+                        IA.Appearance.metrics.choiceGap, 0.001);
+                    const image = grabImage(scene);
+                    // A straight-edge sample measures an actual unpainted lane,
+                    // not merely geometry. Avoid the rounded corner and tick.
+                    const lane = indicator.mapToItem(scene, indicator.width / 2,
+                        indicator.border.width + IA.Appearance.metrics.choiceGap / 2);
+                    const outside = indicator.mapToItem(scene, -2, indicator.height / 2);
+                    compare(image.pixel(Math.floor(lane.x * image.width / scene.width),
+                        Math.floor(lane.y * image.height / scene.height)),
+                        image.pixel(Math.floor(outside.x * image.width / scene.width),
+                            Math.floor(outside.y * image.height / scene.height)),
+                        "The gap has exactly the host backdrop, not the outline or center fill");
+                }
+                indicator.focused = false;
+                indicator.hovered = true;
+                compare(center.color, on ? indicator.colors.choiceCenterColor
+                    : thumb ? indicator.colors.choiceTrackColor : indicator.colors.backgroundColor);
+                const hover = center.color.toString();
+                indicator.hovered = false;
+                verify(center.color.toString() !== hover, "Both off and on have visible hover feedback");
+                indicator.down = true;
+                compare(center.color, on ? indicator.colors.choiceCenterColor
+                    : thumb ? indicator.colors.choiceTrackColor : indicator.colors.backgroundColor);
+                indicator.down = false;
+            }
+            if (control instanceof IACheckBox) {
+                control.checkState = Qt.PartiallyChecked;
+                compare(indicator.selected, true);
+                verify(glyph.visible);
+                compare(glyph.source, IA.Appearance.icons.minus);
+                compare(center.color, indicator.colors.choiceCenterColor);
+            }
+            control.checked = true;
+            control.enabled = false;
+            compare(center.color, indicator.colors.choiceCenterColor, "Disabled-on retains its center");
+            verify(center.color.a > 0);
+            compare(indicator.markColor, indicator.colors.choiceMarkColor);
+            if (thumb)
+                compare(thumb.color, indicator.markColor);
+            else if (glyph)
+                compare(glyph.color, indicator.markColor);
+            compare(indicator.border.color, control.disabledBorderColor);
+        }
+
         function test_menuHighlightPair_data(): var {
             const rows = [];
             for (const scheme of ["light", "dark"]) {
@@ -114,6 +230,37 @@ Item {
                 }
             }
             return rows;
+        }
+
+        function test_choiceLocalOffTracks_data(): var {
+            const rows = [];
+            for (const scheme of ["light", "dark"]) {
+                for (const contrast of ["normal", "high"])
+                    rows.push({tag: scheme + "-" + contrast, scheme: scheme, contrast: contrast});
+            }
+            return rows;
+        }
+
+        function test_choiceLocalOffTracks(data: var): void {
+            IA.Appearance.input = {scheme: data.scheme, contrast: data.contrast};
+            const control = createTemporaryObject(switchComponent, scene, {
+                text: "Local off pair", hoverEnabled: false,
+                backgroundColor: "#c0d0e0", foregroundColor: "#111111",
+                hoverBackgroundColor: "#b0c0d0", pressedBackgroundColor: "#a0b0c0",
+                disabledBackgroundColor: "#909090"
+            }) as IASwitch;
+            verify(control !== null);
+            const indicator = control.indicator as IA.ChoiceIndicator;
+            const center = indicator.mark as Rectangle;
+            compare(center.color, "#c0d0e0", "An explicit off background owns the inner track");
+            indicator.hovered = true;
+            compare(center.color, "#b0c0d0");
+            indicator.down = true;
+            compare(center.color, "#a0b0c0");
+            indicator.down = false;
+            indicator.hovered = false;
+            control.enabled = false;
+            compare(center.color, "#909090");
         }
 
         function menuPairContrast(text: color, fill: color): real {
@@ -320,14 +467,20 @@ Item {
             if (!data.choice) {
                 foreground = findChild(control, "iaLabel") as Text;
             } else {
-                for (const child of control.indicator.children) {
-                    if (child.visible && (child instanceof Rectangle || child instanceof IA.Icon))
-                        foreground = child;
-                }
+                const indicator = control.indicator as IA.ChoiceIndicator;
+                foreground = control instanceof IASwitch ? findChild(indicator, "iaThumb")
+                    : control instanceof IACheckBox ? indicator.mark.children[0] : null;
             }
-            verify(foreground !== null);
-            compare(background.color, "#000000");
-            verifySelectedForeground(control, foreground.color);
+            verify(foreground !== null || control instanceof IARadioButton);
+            const center = data.choice ? (control.indicator as IA.ChoiceIndicator).mark as Rectangle : null;
+            if (data.choice) {
+                compare(background.color.a, 0);
+                compare(center.color, "#000000");
+                verifySelectedForeground(control, (control.indicator as IA.ChoiceIndicator).markColor);
+            } else {
+                compare(background.color, "#000000");
+                verifySelectedForeground(control, foreground.color);
+            }
             verify(TestProbe.press(control, control.width / 2, control.height / 2));
             try {
                 tryCompare(control, "down", true);
@@ -337,6 +490,13 @@ Item {
                     const state = TestProbe.hostWindow(control).active ? IA.Presentation.SelectedHover : IA.Presentation.InactiveHover;
                     compare(background.color, surface.resolvedAppearance.stateTable.colors(state).backgroundColor);
                     verify(background.color !== "#000000", "Checked hover composes with the inset press");
+                } else if (data.choice) {
+                    const indicator = control.indicator as IA.ChoiceIndicator;
+                    compare(center.color, indicator.colors.choiceCenterColor);
+                    verify(center.color.toString() !== "#dddddd", "An on choice retains its on pair when pressed");
+                    verifySelectedForeground(control, indicator.markColor);
+                    if (foreground !== null)
+                        compare(foreground.color, indicator.markColor, "The actual glyph/thumb consumes the pressed on pair");
                 } else {
                     compare(background.color, "#dddddd");
                 }
@@ -345,7 +505,7 @@ Item {
                 compare(inset.visible, Boolean(data.inset));
                 if (data.inset)
                     verifySelectedForeground(control, foreground.color);
-                else
+                else if (!data.choice)
                     compare(foreground.color, "#111111", "Pressed fill retains its paired foreground");
             } finally {
                 TestProbe.move(scene, scene.width - 2, scene.height - 2);
@@ -356,8 +516,12 @@ Item {
             // Native Switch keeps its press outside the bounds and toggles on release.
             if (control instanceof IASwitch) {
                 compare(control.checked, false);
-                compare(background.color, "#eeeeee");
+                compare(background.color.a, 0);
+                compare(center.color, "#eeeeee", "The explicit off background still reaches the inner track");
                 compare(foreground.color, "#111111");
+            } else if (data.choice) {
+                compare(center.color, "#000000");
+                verifySelectedForeground(control, (control.indicator as IA.ChoiceIndicator).markColor);
             } else {
                 compare(background.color, "#000000");
                 verifySelectedForeground(control, foreground.color);
