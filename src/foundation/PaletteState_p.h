@@ -88,10 +88,12 @@ using ControlColorValues = SparseControlValues<QColor, ControlColorCount>;
 using ControlNoncolorOverrides = SparseControlValues<ControlNoncolorValue, ControlNoncolorCount>;
 using ControlInputErrors = SparseControlValues<QVariantMap, size_t(ControlInput::Count)>;
 
-enum class StateTableColor { Placeholder, Selection, SelectionText, Link, ChoiceTrack, ChoiceDisabledTrack, ChoiceGap, Count };
+enum class StateTableColor { Placeholder, Selection, SelectionText, Link, ChoiceTrack, ChoiceDisabledTrack, ChoiceGap,
+    ValueRemainder, ScrollHover, ScrollPressed, Count };
 using StateTableSharedColors = std::array<QColor, size_t(StateTableColor::Count)>;
 
-enum class ControlFamily { Button, Tool, Field, Surface, Popup, Label, Delegate, Tab, Choice, Tooltip, MenuItem, TabBar, Count };
+enum class ControlFamily { Button, Tool, Field, Surface, Popup, Label, Delegate, Tab, Choice, Tooltip, MenuItem, TabBar,
+    Slider, Progress, ScrollBar, Count };
 constexpr size_t ControlFamilyCount = size_t(ControlFamily::Count);
 
 struct StateTableRecipe {
@@ -153,6 +155,7 @@ struct FamilyDescriptor {
     bool interactive;
     bool semanticTextOnly;
     bool destructiveTextOnly = false;
+    bool textContrast = true;
     bool usesSemanticText(Presentation::Tone tone) const
     {
         return semanticTextOnly || (destructiveTextOnly && tone == Presentation::Destructive);

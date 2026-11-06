@@ -555,8 +555,13 @@ reused from the palette; locally affected pairs retain their dependency caches.
 The additive read-only value API is `appearance.stateTable.colors(state)`, returning
 `backgroundColor`, `foregroundColor`, `borderColor`, `focusColor`, `focusedBorderColor`,
 `focusedBorderWidth`, `fillColor`,
-`trackColor`, and `placeholderTextColor`. Fill uses the ordinary fill or disabled
-foreground; the slider track uses the ordinary border or disabled background.
+`trackColor`, `thumbColor`, and `placeholderTextColor`. Fill uses the ordinary fill or disabled
+foreground. The `slider` family supplies a neutral `controlPressed`-seeded remainder,
+independent of its outline, and a circular thumb's rest/hover/pressed surface.
+The passive `progress` family uses that same remainder seed; its existing local
+`backgroundColor` override owns the remainder. Both controls consume Foundation's
+small `ValueTrack` capsule renderer, with scalar amount/orientation/RTL inputs.
+Disabled value tracks retain the disabled background and foreground roles.
 Field placeholders use the shared placeholder or local disabled foreground.
 The table also holds field `selectionColor`/`selectedTextColor` and label
 `linkColor`. These retain their shared application roles, independent of local
@@ -583,8 +588,20 @@ hover or selected fill rather than the pressed fill. One pure Foundation QML
 function, `ControlState.of(enabled, down, hovered, selected, active, insetPress)`,
 maps the template flags to this index; it performs no C++ resolution or color
 math. Backgrounds and indicators read one indexed entry. Choice labels continue
-to use only enabled/disabled text, not the indicator's selected pair. Scrollbar
-tracks continue to ignore enabled, while their thumbs consume disabled text.
+to use only enabled/disabled text, not the indicator's selected pair. The passive
+`scrollBar` family supplies an always-available neutral capsule thumb (`controlPressed`
+at rest, `outline` on hover, `secondaryText` while pressed) through `thumbColor`.
+Its `trackColor` stays transparent, including hover/press: no full-height wash,
+fade timer or animation. Overflow/policy controls visibility independently of activity.
+The neutral seed intentionally does not follow the high-contrast separator/outline
+promotion, so value remainders and resting thumbs never become text-colored rails.
+Explicit foreground overrides own the thumb in every enabled state; explicit
+background/hover/pressed overrides still own the corresponding track state.
+Thumbs consume disabled foreground while tracks retain their enabled-state
+selection. These decorative thumb colors are not diagnosed as text pairs.
+All role selection/derivation happens in the memoized palette table (or cached
+local override table), never on pointer movement. ScrollView's existing viewport,
+bar positioning and local override propagation contract are unchanged by this stage.
 
 Interactive table construction derives Hover and Pressed fills from Rest,
 targeting raw Euclidean CAM16-UCS distance **4** after
@@ -701,6 +718,9 @@ delegates/menu items do not reinterpret navigation highlight as Primary.
 | 9 | `tooltip` | Tooltip background/text; `supportingSize`; no hover/press recoloring |
 | 10 | `menuItem` | Delegate geometry/resting mapping; accent-tone/light-label navigation highlight |
 | 11 | `tabBar` | Quiet `control`-seeded group track; `spacingXS` insets; no interaction recoloring |
+| 12 | `slider` | Neutral thumb with interaction feedback; independent neutral value remainder and accent fill |
+| 13 | `progress` | Passive neutral value remainder and accent fill |
+| 14 | `scrollBar` | Transparent track; quiet neutral position/extent thumb with stronger hover/press roles |
 
 Primary/Caution/Destructive choose their solid surface, text and outline roles.
 Hover and pressed use the matching semantic states; selection uses the pressed

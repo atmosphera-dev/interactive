@@ -25,7 +25,7 @@ qt_add_qml_module(interactive_foundation
         Presentation.h Presentation.cpp
         ThemeIconItem.h ThemeIconItem.cpp
         IconSource.h
-    QML_FILES Icon.qml IconLabel.qml Separator.qml ControlState.qml ControlBackground.qml ChoiceIndicator.qml ChoiceRow.qml
+    QML_FILES Icon.qml IconLabel.qml Separator.qml ControlState.qml ControlBackground.qml ChoiceIndicator.qml ChoiceRow.qml ValueTrack.qml
     RESOURCES
         icons/check.svg icons/minus.svg icons/chevron-down.svg
         icons/chevron-right.svg icons/close.svg icons/search.svg

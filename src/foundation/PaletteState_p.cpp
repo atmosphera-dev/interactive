@@ -150,7 +150,14 @@ constexpr std::array<FamilyDescriptor, ControlFamilyCount> Families{{
     {"menuItem", neutralRoles(ColorRole::transparent), &MetricRecord::rowHeight, &MetricRecord::controlRadius,
         &MetricRecord::horizontalPadding, &MetricRecord::verticalPadding, &TypographyRecord::controlSize, true, false, true},
     {"tabBar", neutralRoles(ColorRole::control), nullptr, &MetricRecord::controlRadius,
-        &MetricRecord::spacingXS, &MetricRecord::spacingXS, &TypographyRecord::controlSize, false, false}
+        &MetricRecord::spacingXS, &MetricRecord::spacingXS, &TypographyRecord::controlSize, false, false},
+    {"slider", neutralRoles(ColorRole::control), &MetricRecord::controlHeight, &MetricRecord::controlRadius,
+        &MetricRecord::horizontalPadding, &MetricRecord::verticalPadding, &TypographyRecord::controlSize, true, false},
+    {"progress", neutralRoles(ColorRole::controlPressed, ColorRole::controlPressed, ColorRole::controlPressed), nullptr, &MetricRecord::controlRadius,
+        &MetricRecord::horizontalPadding, &MetricRecord::verticalPadding, &TypographyRecord::controlSize, false, false},
+    {"scrollBar", neutralRoles(ColorRole::transparent, ColorRole::transparent, ColorRole::transparent, ColorRole::controlPressed),
+        nullptr, &MetricRecord::controlRadius, &MetricRecord::horizontalPadding, &MetricRecord::verticalPadding,
+        &TypographyRecord::controlSize, false, false, false, false}
 }};
 }
 
@@ -360,12 +367,22 @@ std::shared_ptr<const StateTableData> PaletteState::stateTable(ControlFamily fam
             sharedColors[size_t(StateTableColor::ChoiceDisabledTrack)] = color(ColorRole::disabledSurface);
             sharedColors[size_t(StateTableColor::ChoiceGap)] = color(ColorRole::transparent);
         }
+        if (family == ControlFamily::Slider)
+            sharedColors[size_t(StateTableColor::ValueRemainder)] = color(ColorRole::controlPressed);
+        if (family == ControlFamily::ScrollBar) {
+            sharedColors[size_t(StateTableColor::ScrollHover)] = color(ColorRole::outline);
+            sharedColors[size_t(StateTableColor::ScrollPressed)] = color(ColorRole::secondaryText);
+        }
         // Transparent tabs are painted on their group's track, not content.
         // The group table finalizes that shared neutral surface only once.
         const QColor stateBackdrop = family == ControlFamily::Tab
             ? ColorMath::composite(stateTable(ControlFamily::TabBar, Presentation::Neutral,
                 Presentation::None)->values.value(ControlColor::backgroundColor), backdrop) : backdrop;
-        table = LocalColorOverrides::buildStateTable(values, controlFindings(mapping), sharedColors,
+        // A position/extent thumb is not text. Do not apply text readability
+        // diagnostics to its deliberately quiet neutral role.
+        const auto findings = familyDescriptor(family).textContrast ? controlFindings(mapping)
+            : std::make_shared<const ControlFindings>();
+        table = LocalColorOverrides::buildStateTable(values, findings, sharedColors,
             stateBackdrop, family == ControlFamily::Field && validation == Presentation::Invalid, recipe);
     }
     return table;

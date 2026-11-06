@@ -313,6 +313,12 @@ void ControlAppearance::resolve(const PaletteUpdate &update, bool forceNoncolors
     }
     if (state.family == ControlFamily::Label)
         dependencies.set(size_t(ColorRole::link));
+    if (state.family == ControlFamily::Slider)
+        dependencies.set(size_t(ColorRole::controlPressed));
+    if (state.family == ControlFamily::ScrollBar) {
+        dependencies.set(size_t(ColorRole::outline));
+        dependencies.set(size_t(ColorRole::secondaryText));
+    }
     if (state.family == ControlFamily::Choice) {
         dependencies.set(size_t(ColorRole::control));
         dependencies.set(size_t(ColorRole::disabledSurface));

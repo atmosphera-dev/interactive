@@ -22,7 +22,7 @@ T.Slider {
     IA.ControlAppearance {
         id: appearance
         source: IA.Appearance
-        family: "button"
+        family: "slider"
         readonly property IA.stateColors colors: stateTable.colors(
             IA.ControlState.of(control.enabled, false, false, false, true, false))
     }
@@ -40,29 +40,23 @@ T.Slider {
         y: control.topPadding
         width: control.availableWidth
         height: control.availableHeight
-        Rectangle {
+        IA.ValueTrack {
             id: track
-            objectName: "iaTrack"
             anchors.centerIn: parent
             width: control.horizontal ? Math.max(0, lane.width - thumb.width) : IA.Appearance.metrics.trackHeight
             height: control.horizontal ? IA.Appearance.metrics.trackHeight : Math.max(0, lane.height - thumb.height)
-            radius: Math.min(width, height) / 2
-            color: appearance.colors.trackColor
-            Rectangle {
-                objectName: "iaFill"
-                width: control.horizontal ? track.width * control.position : track.width
-                height: control.horizontal ? track.height : track.height * control.position
-                x: control.horizontal && control.mirrored ? track.width - width : 0
-                y: control.horizontal ? 0 : track.height - height
-                radius: track.radius
-                color: appearance.colors.fillColor
-            }
+            horizontal: control.horizontal
+            mirrored: control.mirrored
+            position: control.position
+            remainderColor: appearance.colors.trackColor
+            fillColor: appearance.colors.fillColor
         }
     }
     handle: IA.ControlBackground {
         id: thumb
         objectName: "iaThumb"
         resolvedAppearance: appearance
+        color: colors.thumbColor
         implicitWidth: IA.Appearance.metrics.sliderThumbSize
         implicitHeight: IA.Appearance.metrics.sliderThumbSize
         radius: width / 2
@@ -70,9 +64,11 @@ T.Slider {
         down: control.pressed
         hovered: control.hovered
         focused: control.visualFocus
-        anchors.verticalCenter: control.horizontal ? lane.verticalCenter : undefined
-        anchors.horizontalCenter: control.horizontal ? undefined : lane.horizontalCenter
-        x: control.leftPadding + control.visualPosition * Math.max(0, control.availableWidth - width)
-        y: control.topPadding + control.visualPosition * Math.max(0, control.availableHeight - height)
+        // visualPosition already accounts for RTL. Keep one structural center
+        // in both orientations; only the normalized value displaces the thumb.
+        LayoutMirroring.enabled: false
+        anchors.centerIn: lane
+        anchors.horizontalCenterOffset: control.horizontal ? (control.visualPosition - 0.5) * track.width : 0
+        anchors.verticalCenterOffset: control.horizontal ? 0 : (control.visualPosition - 0.5) * track.height
     }
 }

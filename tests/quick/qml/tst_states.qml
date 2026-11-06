@@ -25,8 +25,20 @@ Item {
     }
     Component { id: fieldComponent; IATextField {} }
     Component { id: labelComponent; IALabel {} }
-    Component { id: progressComponent; IAProgressBar {} }
-    Component { id: sliderComponent; IASlider {} }
+    Component {
+        id: progressComponent
+        IAProgressBar {
+            property bool rtl: false
+            LayoutMirroring.enabled: rtl
+        }
+    }
+    Component {
+        id: sliderComponent
+        IASlider {
+            property bool rtl: false
+            LayoutMirroring.enabled: rtl
+        }
+    }
     Component { id: scrollComponent; IAScrollBar {} }
     Component { id: menuItemComponent; IAMenuItem {} }
     Component { id: menuSeparatorComponent; IAMenuSeparator { width: 200 } }
@@ -130,6 +142,78 @@ Item {
             compare((scroll.contentItem as Rectangle).color, scroll.disabledForegroundColor);
             compare((scroll.background as Rectangle).color, scroll.backgroundColor,
                     "The scrollbar track still ignores enabled");
+        }
+
+        function test_valueAndScrollConsumers_data(): var { return test_choiceLocalOffTracks_data(); }
+
+        function test_valueAndScrollConsumers(data: var): void {
+            IA.Appearance.input = {scheme: data.scheme, contrast: data.contrast};
+            const slider = createTemporaryObject(sliderComponent, scene,
+                {width: 180, value: 0.25}) as IASlider;
+            const progress = createTemporaryObject(progressComponent, scene,
+                {y: 60, width: 180, value: 0.25}) as IAProgressBar;
+            const scroll = createTemporaryObject(scrollComponent, scene,
+                {x: 240, width: 8, height: 160, size: 0.35, active: false}) as IAScrollBar;
+            verify(slider !== null && progress !== null && scroll !== null);
+            verify(TestProbe.render(scene));
+            verify(TestProbe.activate(scene));
+            const sliderTrack = findChild(slider, "iaTrack") as IA.ValueTrack;
+            const progressTrack = progress.contentItem as IA.ValueTrack;
+            verify(sliderTrack !== null && progressTrack !== null, "One shared track construction");
+            for (const rtl of [false, true]) {
+                slider.rtl = rtl;
+                progress.rtl = rtl;
+                for (const value of [0, 0.25, 1]) {
+                    slider.value = value;
+                    progress.value = value;
+                    for (const track of [sliderTrack, progressTrack]) {
+                        const fill = findChild(track, "iaFill") as Rectangle;
+                        fuzzyCompare(fill.width, track.width * value, 0.001);
+                        fuzzyCompare(fill.x, rtl ? track.width - fill.width : 0, 0.001);
+                        compare(track.color, IA.Appearance.colors.controlPressed);
+                        compare(fill.color, IA.Appearance.colors.accent);
+                        verify(track.color !== IA.Appearance.colors.outline);
+                        verify(track.color !== IA.Appearance.colors.text);
+                    }
+                }
+            }
+            slider.orientation = Qt.Vertical;
+            slider.width = 30;
+            slider.height = 140;
+            slider.value = 0.25;
+            verify(TestProbe.render(slider));
+            const verticalFill = findChild(sliderTrack, "iaFill") as Rectangle;
+            fuzzyCompare(verticalFill.height, sliderTrack.height * 0.25, 0.001);
+            fuzzyCompare(verticalFill.y, sliderTrack.height - verticalFill.height, 0.001);
+            const knob = slider.handle as IA.ControlBackground;
+            fuzzyCompare(knob.radius, knob.width / 2, 0.001);
+            const endpoint = sliderTrack.mapToItem(slider, sliderTrack.width / 2, verticalFill.y);
+            fuzzyCompare(knob.y + knob.height / 2, endpoint.y, 0.001);
+
+            const thumb = scroll.contentItem as Rectangle;
+            const rail = scroll.background as Rectangle;
+            verify(scroll.visible, "Overflow thumb remains visible with no activity");
+            compare(thumb.color, IA.Appearance.colors.controlPressed);
+            compare(rail.color.a, 0);
+            fuzzyCompare(thumb.radius, thumb.width / 2, 0.001);
+            verify(TestProbe.move(scroll, scroll.width / 2, thumb.y + thumb.height / 2));
+            tryCompare(scroll, "hovered", true);
+            compare(thumb.color, IA.Appearance.colors.outline);
+            compare(rail.color.a, 0, "Hover never paints a full-height wash");
+            verify(TestProbe.press(scroll, scroll.width / 2, thumb.y + thumb.height / 2));
+            tryCompare(scroll, "pressed", true);
+            compare(thumb.color, IA.Appearance.colors.secondaryText);
+            compare(rail.color.a, 0);
+            verify(TestProbe.release(scroll, scroll.width / 2, thumb.y + thumb.height / 2));
+            verify(TestProbe.move(scene, scene.width - 2, scene.height - 2));
+            tryCompare(scroll, "hovered", false);
+            compare(thumb.color, IA.Appearance.colors.controlPressed);
+            scroll.size = 1;
+            compare(scroll.visible, false, "Availability still follows overflow/policy");
+            scroll.policy = T.ScrollBar.AlwaysOn;
+            compare(scroll.visible, true);
+            scroll.policy = T.ScrollBar.AlwaysOff;
+            compare(scroll.visible, false);
         }
 
         function test_choiceCenters_data(): var {

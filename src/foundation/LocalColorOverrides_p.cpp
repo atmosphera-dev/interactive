@@ -218,7 +218,7 @@ std::shared_ptr<const StateTableData> LocalColorOverrides::buildStateTable(
 
     // Project diagnostics for the actual generated pairs, not the old palette
     // seeds. Unchanged and explicitly owned pairs reuse their existing findings.
-    for (size_t i = 0; i < ControlDiagnosticPairs.size() - 1; ++i) {
+    for (size_t i = 0; familyDescriptor(recipe.family).textContrast && i < ControlDiagnosticPairs.size() - 1; ++i) {
         const auto [foreground, background] = ControlDiagnosticPairs[i];
         if (values.value(background) == input.value(background) && values.value(foreground) == input.value(foreground))
             continue;
@@ -253,35 +253,50 @@ std::shared_ptr<const StateTableData> LocalColorOverrides::buildStateTable(
     const QColor disabledCenter = values.value(ControlColor::disabledForegroundColor);
     const QColor disabledMark = choice ? ColorMath::contrastingText(QColor(Qt::white),
         {disabledCenter}, canvas, LabelContrastTarget) : QColor();
+    const bool slider = recipe.family == ControlFamily::Slider;
+    const bool progress = recipe.family == ControlFamily::Progress;
+    const bool scroll = recipe.family == ControlFamily::ScrollBar;
+    const QColor scrollRest = values.value(ControlColor::foregroundColor);
+    // Explicit thumb colors remain exact through interaction. The unowned
+    // neutral companions are finished shared roles, never text feedback.
+    const QColor scrollHover = owned(ControlColor::foregroundColor) ? scrollRest
+        : sharedColors[size_t(StateTableColor::ScrollHover)];
+    const QColor scrollPressed = owned(ControlColor::foregroundColor) ? scrollRest
+        : sharedColors[size_t(StateTableColor::ScrollPressed)];
     const auto entry = [&](const QColor &fill, ControlColor foreground, bool disabled = false,
-                           QColor center = {}, QColor track = {}) {
+                           QColor center = {}, QColor track = {}, QColor scrollThumb = {}) {
         const QColor text = values.value(foreground);
         const QColor border = values.value(disabled ? ControlColor::disabledBorderColor : ControlColor::borderColor);
         const QColor focus = values.value(ControlColor::focusColor);
         const QColor surface = ColorMath::composite(choice ? sharedColors[size_t(StateTableColor::ChoiceGap)] : fill, backdrop);
         const QColor focusedBorder = invalidFocus ? border
             : ColorMath::contrastRatio(focus, surface) >= 3 ? focus : choice ? border : text;
+        const QColor remainder = disabled ? values.value(ControlColor::disabledBackgroundColor)
+            : slider ? sharedColors[size_t(StateTableColor::ValueRemainder)]
+            : progress || scroll ? fill : values.value(ControlColor::borderColor);
+        const QColor thumb = scroll ? (disabled ? values.value(ControlColor::disabledForegroundColor) : scrollThumb)
+            : slider ? fill : QColor();
         return StateColors(fill, values.value(foreground),
             border, focus,
             values.value(disabled ? ControlColor::disabledForegroundColor : ControlColor::fillColor),
-            values.value(disabled ? ControlColor::disabledBackgroundColor : ControlColor::borderColor),
+            remainder,
             disabled ? values.value(ControlColor::disabledForegroundColor)
                      : sharedColors[size_t(StateTableColor::Placeholder)], focusedBorder,
              sharedColors[size_t(StateTableColor::ChoiceGap)], choice ? center : QColor(),
              !choice ? QColor() : disabled ? disabledMark
                  : foreground == ControlColor::inactiveForegroundColor ? values.value(foreground) : onMark,
-             choice ? track : QColor());
+              choice ? track : QColor(), thumb);
     };
-    const auto ordinary = entry(rest, ControlColor::foregroundColor, false, on, offTrack);
+    const auto ordinary = entry(rest, ControlColor::foregroundColor, false, on, offTrack, scrollRest);
     const auto hover = entry(values.value(ControlColor::hoverBackgroundColor), ControlColor::foregroundColor,
-        false, selectedHover, offHover);
+        false, selectedHover, offHover, scrollHover);
     const auto pressed = entry(values.value(ControlColor::pressedBackgroundColor), ControlColor::foregroundColor,
-        false, onPressed, offPressed);
-    const auto selected = entry(on, ControlColor::selectedForegroundColor, false, on, offTrack);
+        false, onPressed, offPressed, scrollPressed);
+    const auto selected = entry(on, ControlColor::selectedForegroundColor, false, on, offTrack, scrollRest);
     const auto inactive = entry(values.value(ControlColor::inactiveBackgroundColor), ControlColor::inactiveForegroundColor,
-        false, values.value(ControlColor::inactiveBackgroundColor), offTrack);
+        false, values.value(ControlColor::inactiveBackgroundColor), offTrack, scrollRest);
     table->states = {ordinary, hover, pressed, selected,
-        entry(selectedHover, ControlColor::selectedForegroundColor, false, selectedHover, offHover),
+        entry(selectedHover, ControlColor::selectedForegroundColor, false, selectedHover, offHover, scrollHover),
         recipe.family == ControlFamily::MenuItem ? selected : pressed,
         inactive, inactive,
         entry(values.value(ControlColor::disabledBackgroundColor), ControlColor::disabledForegroundColor,
@@ -314,9 +329,10 @@ std::shared_ptr<const StateTableData> LocalColorOverrides::install(const Palette
     const QColor backdrop = shared->backdrop;
     const qreal target = palette.target;
     const qreal labelTarget = palette.labelTarget;
+    const bool textContrast = familyDescriptor(shared->recipe.family).textContrast;
     const bool backgroundOwned = explicitLocal(ControlColor::backgroundColor);
     const bool foregroundOwned = explicitLocal(ControlColor::foregroundColor);
-    if (backgroundOwned) {
+    if (backgroundOwned && textContrast) {
         const QColor resting = foregroundOwned ? effective(ControlColor::foregroundColor)
             : m_resting.evaluate({{base, backdrop}, labelTarget, 0, 1}, [&] {
                 return ColorMath::contrastingText(base, {base}, backdrop, labelTarget);
@@ -344,7 +360,7 @@ std::shared_ptr<const StateTableData> LocalColorOverrides::install(const Palette
     }
     const bool hoverOwned = explicitLocal(ControlColor::hoverBackgroundColor);
     const bool pressedOwned = explicitLocal(ControlColor::pressedBackgroundColor);
-    if (!foregroundOwned && (backgroundOwned || hoverOwned || pressedOwned)) {
+    if (textContrast && !foregroundOwned && (backgroundOwned || hoverOwned || pressedOwned)) {
         const QColor hover = effective(ControlColor::hoverBackgroundColor);
         const QColor pressed = effective(ControlColor::pressedBackgroundColor);
         const quint8 ownership = quint8(backgroundOwned | (hoverOwned << 1) | (pressedOwned << 2));
@@ -374,7 +390,7 @@ std::shared_ptr<const StateTableData> LocalColorOverrides::install(const Palette
         put(ControlColor::disabledBorderColor, effective(ControlColor::borderColor));
 
     std::shared_ptr<ControlFindings> localFindings;
-    for (size_t i = 0; i < ControlDiagnosticPairs.size(); ++i) {
+    for (size_t i = 0; textContrast && i < ControlDiagnosticPairs.size(); ++i) {
         const auto [foreground, background] = ControlDiagnosticPairs[i];
         const bool focus = i == 5;
         const QString path = name(foreground) + QLatin1Char('/') + (focus ? QStringLiteral("content") : name(background));

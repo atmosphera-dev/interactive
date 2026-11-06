@@ -13,7 +13,13 @@ T.ScrollBar {
     property alias controlRadius: appearance.controlRadius
     readonly property alias appearanceDiagnostics: appearance.diagnostics
     function resetAppearance(): void { appearance.resetOverrides(); }
-    IA.ControlAppearance { id: appearance; source: IA.Appearance; family: "tool" }
+    IA.ControlAppearance {
+        id: appearance
+        source: IA.Appearance
+        family: "scrollBar"
+        readonly property IA.stateColors colors: stateTable.colors(
+            IA.ControlState.of(control.enabled, control.pressed, control.hovered, false, true, false))
+    }
     implicitWidth: horizontal ? IA.Appearance.metrics.scrollBarMinimumLength : IA.Appearance.metrics.scrollBarWidth
     implicitHeight: horizontal ? IA.Appearance.metrics.scrollBarWidth : IA.Appearance.metrics.scrollBarMinimumLength
     minimumSize: Math.min(1, IA.Appearance.metrics.scrollBarMinimumLength / Math.max(1, horizontal ? availableWidth : availableHeight))
@@ -24,12 +30,13 @@ T.ScrollBar {
         implicitWidth: IA.Appearance.metrics.scrollBarWidth
         implicitHeight: IA.Appearance.metrics.scrollBarWidth
         radius: control.controlRadius
-        color: appearance.stateTable.colors(IA.ControlState.of(control.enabled, false, false, false, true, false)).foregroundColor
+        color: appearance.colors.thumbColor
     }
     background: Rectangle {
         objectName: "iaTrack"
         radius: control.controlRadius
-        // The original track ignores enabled; only its thumb takes the disabled pair.
-        color: appearance.stateTable.colors(IA.ControlState.of(true, control.pressed, control.hovered, false, true, false)).backgroundColor
+        // Availability is independent of activity; only an explicit track
+        // override paints a rail. Interaction emphasizes the thumb instead.
+        color: appearance.stateTable.colors(IA.ControlState.of(true, control.pressed, control.hovered, false, true, false)).trackColor
     }
 }

@@ -16,24 +16,21 @@ T.ProgressBar {
     IA.ControlAppearance {
         id: appearance
         source: IA.Appearance
-        family: "button"
+        family: "progress"
         readonly property IA.stateColors colors: stateTable.colors(
             IA.ControlState.of(control.enabled, false, false, false, true, false))
     }
     implicitWidth: IA.Appearance.metrics.progressWidth
     implicitHeight: IA.Appearance.metrics.progressHeight + topPadding + bottomPadding
-    contentItem: Item {
+    contentItem: IA.ValueTrack {
         id: lane
         clip: true
-        Rectangle {
-            objectName: "iaFill"
-            visible: !control.indeterminate
-            width: lane.width * control.position
-            height: lane.height
-            x: control.mirrored ? lane.width - width : 0
-            radius: control.controlRadius
-            color: appearance.colors.fillColor
-        }
+        position: control.position
+        mirrored: control.mirrored
+        fillVisible: !control.indeterminate
+        remainderColor: appearance.colors.trackColor
+        fillColor: appearance.colors.fillColor
+        radius: control.controlRadius
         Rectangle {
             id: busy
             property real phase: 0
@@ -57,10 +54,5 @@ T.ProgressBar {
                 loops: Animation.Infinite
             }
         }
-    }
-    background: Rectangle {
-        objectName: "iaBackground"
-        color: appearance.colors.backgroundColor
-        radius: control.controlRadius
     }
 }

@@ -355,6 +355,7 @@ private slots:
     void stateFeedbackMatrix();
     void menuHighlightPairs();
     void tabModeAndSeparatorContracts();
+    void valueAndScrollRoles();
     void stateSweepDoesNoFoundationWork();
     void appearanceMetaObjectIsPublic();
 };
@@ -874,6 +875,83 @@ void AppearanceTests::stateTableNotifications()
     QCOMPARE(changed.count(), 3); // Nested table installs retain their notification obligation.
     QCOMPARE(control.stateTable().colors(Presentation::Rest).backgroundColor(), QColor("green"));
     QVERIFY(control.stateTable() != original);
+}
+
+void AppearanceTests::valueAndScrollRoles()
+{
+    Appearance source;
+    ControlAppearance slider, progress, scroll, peer;
+    for (auto *control : {&slider, &progress, &scroll, &peer})
+        control->setSource(&source);
+    slider.setFamily(QStringLiteral("slider"));
+    progress.setFamily(QStringLiteral("progress"));
+    scroll.setFamily(QStringLiteral("scrollBar"));
+    peer.setFamily(QStringLiteral("scrollBar"));
+    for (const auto *scheme : {"light", "dark"}) {
+        for (const auto *contrast : {"normal", "high"}) {
+            source.setInput(paletteInput(QLatin1String(scheme), QLatin1String(contrast), {}));
+            const auto *colors = source.colors();
+            const QColor backdrop = opaqueOver(colors->content(), colors->canvas());
+            const auto rest = scroll.stateTable().colors(Presentation::Rest);
+            const auto hover = scroll.stateTable().colors(Presentation::Hover);
+            const auto pressed = scroll.stateTable().colors(Presentation::Pressed);
+            QCOMPARE(rest.thumbColor(), colors->controlPressed());
+            QCOMPARE(hover.thumbColor(), colors->outline());
+            QCOMPARE(pressed.thumbColor(), colors->secondaryText());
+            QVERIFY(visibleDistance(rest.thumbColor(), hover.thumbColor(), backdrop) >= 4.0);
+            QVERIFY(visibleDistance(rest.thumbColor(), pressed.thumbColor(), backdrop) >= 4.0);
+            QVERIFY(rest.thumbColor() != colors->text());
+            QVERIFY(scroll.diagnostics().isEmpty()); // Decorative thumb, not unreadable text.
+            QCOMPARE(scroll.stateTable(), peer.stateTable());
+            for (const auto state : {Presentation::Rest, Presentation::Hover, Presentation::Pressed}) {
+                QCOMPARE(scroll.stateTable().colors(state).trackColor().alpha(), 0);
+                const auto knob = slider.stateTable().colors(state);
+                QCOMPARE(knob.trackColor(), colors->controlPressed());
+                QVERIFY(knob.trackColor() != colors->outline());
+                QVERIFY(knob.trackColor() != colors->text());
+                QCOMPARE(knob.fillColor(), colors->accent());
+                QCOMPARE(knob.thumbColor(), knob.backgroundColor());
+                QCOMPARE(progress.stateTable().colors(state).trackColor(), colors->controlPressed());
+            }
+            const auto sliderRest = slider.stateTable().colors(Presentation::Rest);
+            QVERIFY(visibleDistance(sliderRest.thumbColor(), slider.stateTable().colors(Presentation::Hover).thumbColor(), backdrop) >= 4);
+            QCOMPARE(slider.stateTable().colors(Presentation::Disabled).fillColor(), slider.disabledForegroundColor());
+            QCOMPARE(slider.stateTable().colors(Presentation::Disabled).trackColor(), slider.disabledBackgroundColor());
+            QCOMPARE(scroll.stateTable().colors(Presentation::Disabled).thumbColor(), scroll.disabledForegroundColor());
+        }
+    }
+    QSignalSpy sliderChanged(&slider, &ControlAppearance::stateTableChanged);
+    QSignalSpy scrollChanged(&scroll, &ControlAppearance::stateTableChanged);
+    source.setInput(tokenInput(QStringLiteral("colors"), {{QStringLiteral("controlPressed"), QColor("purple")}}));
+    QVERIFY(sliderChanged.count() > 0);
+    QVERIFY(scrollChanged.count() > 0);
+    QCOMPARE(slider.stateTable().colors(Presentation::Rest).trackColor(), QColor("purple"));
+    QCOMPARE(progress.stateTable().colors(Presentation::Rest).trackColor(), QColor("purple"));
+    scroll.setForegroundColor(QColor("green"));
+    progress.setBackgroundColor(QColor("yellow"));
+    slider.setBorderColor(QColor("red"));
+    for (const auto state : {Presentation::Rest, Presentation::Hover, Presentation::Pressed})
+        QCOMPARE(scroll.stateTable().colors(state).thumbColor(), QColor("green"));
+    QCOMPARE(progress.stateTable().colors(Presentation::Rest).trackColor(), QColor("yellow"));
+    QCOMPARE(slider.stateTable().colors(Presentation::Rest).trackColor(), QColor("purple"));
+    const WorkRecorder recorder;
+    for (int i = 0; i < 100; ++i) {
+        const auto state = Presentation::State(i % 9);
+        QVERIFY(scroll.stateTable().colors(state).thumbColor().isValid());
+        QVERIFY(slider.stateTable().colors(state).thumbColor().isValid());
+    }
+    QCOMPARE(recorder.count(AppearanceWork::StateTableBuild), quint64(0));
+    QCOMPARE(recorder.count(AppearanceWork::PrivateStateTableBuild), quint64(0));
+    scroll.resetForegroundColor();
+    QCOMPARE(scroll.stateTable(), peer.stateTable());
+    scroll.setBackgroundColor(QColor("yellow"));
+    scroll.setHoverBackgroundColor(QColor("red"));
+    QCOMPARE(scroll.stateTable().colors(Presentation::Rest).trackColor(), QColor("yellow"));
+    QCOMPARE(scroll.stateTable().colors(Presentation::Hover).trackColor(), QColor("red"));
+    QCOMPARE(scroll.stateTable().colors(Presentation::Rest).thumbColor(), peer.stateTable().colors(Presentation::Rest).thumbColor());
+    QCOMPARE(scroll.stateTable().colors(Presentation::Hover).thumbColor(), peer.stateTable().colors(Presentation::Hover).thumbColor());
+    progress.resetBackgroundColor();
+    QCOMPARE(progress.stateTable().colors(Presentation::Rest).trackColor(), QColor("purple"));
 }
 
 void AppearanceTests::supplementaryStateRoles()
