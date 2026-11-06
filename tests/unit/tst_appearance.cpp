@@ -303,6 +303,8 @@ private slots:
     void stateTableQmlBinding();
     void stateTableNotifications();
     void supplementaryStateRoles();
+    void focusedBorderInputs();
+    void neutralFocusBorder();
     void stateSweepDoesNoFoundationWork();
     void appearanceMetaObjectIsPublic();
 };
@@ -321,8 +323,7 @@ void AppearanceTests::appearanceMetaObjectIsPublic()
 
 void AppearanceTests::stateTableEquivalence()
 {
-    // Independent transcription of the unchanged QML, deliberately expressed in
-    // template flags rather than in terms of the table's implementation.
+    // Independent state and focused-border oracle, expressed in template flags.
     const auto verify = [](const ControlAppearance &control) {
         struct Flags { Presentation::State state; bool enabled, down, hover, selected, active; };
         const Flags cases[]{
@@ -349,6 +350,15 @@ void AppearanceTests::stateTableEquivalence()
             QCOMPARE(entry.foregroundColor(), foreground);
             QCOMPARE(entry.borderColor(), flags.enabled ? control.borderColor() : control.disabledBorderColor());
             QCOMPARE(entry.focusColor(), control.focusColor());
+            const auto *source = control.source();
+            const QColor backdrop = opaqueOver(source->colors()->content(),
+                opaqueOver(source->colors()->canvas(), QColor(Qt::white)));
+            const bool invalidField = control.family() == QLatin1String("field")
+                && control.validation() == Presentation::Invalid;
+            const QColor expectedFocus = invalidField ? entry.borderColor()
+                : rgbContrast(control.focusColor(), background, backdrop) >= 3 ? control.focusColor() : foreground;
+            QCOMPARE(entry.focusedBorderColor(), expectedFocus);
+            QCOMPARE(entry.focusedBorderWidth(), source->metrics()->focusWidth());
             QCOMPARE(entry.fillColor(), flags.enabled ? control.fillColor() : control.disabledForegroundColor());
             QCOMPARE(entry.trackColor(), flags.enabled ? control.borderColor() : control.disabledBackgroundColor());
         }
@@ -397,6 +407,104 @@ void AppearanceTests::stateTableEquivalence()
             }
         }
     }
+}
+
+void AppearanceTests::neutralFocusBorder()
+{
+    Appearance source;
+    for (const auto *scheme : {"light", "dark"}) {
+        for (const auto *contrast : {"normal", "high"}) {
+            const QVariantMap input{{QStringLiteral("scheme"), QLatin1String(scheme)},
+                {QStringLiteral("contrast"), QLatin1String(contrast)}};
+            source.setInput(input);
+            const auto check = [&] {
+                const QColor focus = source.colors()->focus();
+                const QColor backdrop = opaqueOver(source.colors()->content(),
+                    opaqueOver(source.colors()->canvas(), QColor(Qt::white)));
+                for (const auto *role : {"content", "popup", "canvas", "control", "controlHover",
+                         "controlPressed", "selection", "inactiveSelection"}) {
+                    const auto fill = source.colors()->values().value(QLatin1String(role)).value<QColor>();
+                    QVERIFY2(rgbContrast(focus, fill, backdrop) >= 3, role);
+                }
+                for (const auto *family : {"button", "tool", "field", "delegate", "tab"}) {
+                    ControlAppearance control;
+                    control.setSource(&source);
+                    control.setFamily(QLatin1String(family));
+                    for (int i = Presentation::Rest; i < Presentation::Disabled; ++i) {
+                        const auto entry = control.stateTable().colors(Presentation::State(i));
+                        QCOMPARE(entry.focusedBorderColor(), focus);
+                        QVERIFY(rgbContrast(focus, entry.backgroundColor(), backdrop) >= 3);
+                    }
+                    // Local colors still use the entry's foreground when shared
+                    // focus is unreadable on the explicitly chosen fill.
+                    control.setBackgroundColor(focus);
+                    const auto local = control.stateTable().colors(Presentation::Rest);
+                    QCOMPARE(local.focusedBorderColor(), local.foregroundColor());
+                }
+            };
+            check();
+            // Neutral input changes must participate in the shared derivation.
+            auto overridden = input;
+            overridden.insert(QStringLiteral("tokens"), QVariantMap{{QStringLiteral("colors"), QVariantMap{
+                {QStringLiteral("control"), QColor(scheme == QLatin1String("light") ? "#cccccc" : "#555555")}}}});
+            source.setInput(overridden);
+            check();
+            auto tokens = overridden.value(QStringLiteral("tokens")).toMap();
+            auto colors = tokens.value(QStringLiteral("colors")).toMap();
+            colors.insert(QStringLiteral("focus"), QColor("#80ff0000"));
+            tokens.insert(QStringLiteral("colors"), colors);
+            overridden.insert(QStringLiteral("tokens"), tokens);
+            source.setInput(overridden);
+            QCOMPARE(source.colors()->focus(), QColor("#80ff0000"));
+        }
+    }
+}
+
+void AppearanceTests::focusedBorderInputs()
+{
+    Appearance source;
+    ControlAppearance control;
+    control.setSource(&source);
+    control.setFamily(QStringLiteral("field"));
+    control.setBackgroundColor(QColor(Qt::transparent)); // Exercise the private builder's backdrop key.
+    control.setFocusColor(QColor("#777777"));
+    const auto check = [&] {
+        const auto entry = control.stateTable().colors(Presentation::Rest);
+        const QColor backdrop = opaqueOver(source.colors()->content(),
+            opaqueOver(source.colors()->canvas(), QColor(Qt::white)));
+        const auto expected = control.family() == QLatin1String("field")
+            && control.validation() == Presentation::Invalid ? control.borderColor()
+            : rgbContrast(control.focusColor(), entry.backgroundColor(), backdrop) >= 3
+                ? control.focusColor() : entry.foregroundColor();
+        QCOMPARE(entry.focusedBorderColor(), expected);
+        QCOMPARE(entry.focusedBorderWidth(), source.metrics()->focusWidth());
+    };
+    check();
+    source.setInput(tokenInput(QStringLiteral("colors"), {{QStringLiteral("content"), QColor("#777777")}}));
+    check();
+    control.setValidation(Presentation::Invalid);
+    check();
+    control.setBorderColor(QColor("red")); // Explicit invalid outline still wins.
+    check();
+    control.setFamily(QStringLiteral("button"));
+    check();
+    control.setFamily(QStringLiteral("field"));
+    check();
+    const auto retained = control.stateTable();
+    QSignalSpy changed(&control, &ControlAppearance::stateTableChanged);
+    WorkRecorder work;
+    source.setInput({{QStringLiteral("tokens"), QVariantMap{
+        {QStringLiteral("colors"), QVariantMap{{QStringLiteral("content"), QColor("#777777")}}},
+        {QStringLiteral("metrics"), QVariantMap{{QStringLiteral("focusWidth"), 5}}}}}});
+    QCOMPARE(changed.count(), 1);
+    QCOMPARE(control.stateTable().colors(Presentation::Rest).focusedBorderWidth(), qreal(5));
+    QCOMPARE(retained.colors(Presentation::Rest).focusedBorderWidth(), qreal(2));
+    QCOMPARE(work.count(AppearanceWork::StateTableBuild), 0);
+    QCOMPARE(work.count(AppearanceWork::PrivateStateTableBuild), 0);
+    check();
+    source.setInput({});
+    control.resetOverrides();
+    check();
 }
 
 void AppearanceTests::stateTableSharingAndLifetime()

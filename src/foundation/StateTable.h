@@ -17,20 +17,25 @@ class INTERACTIVE_FOUNDATION_EXPORT StateColors
     Q_PROPERTY(QColor foregroundColor READ foregroundColor CONSTANT FINAL)
     Q_PROPERTY(QColor borderColor READ borderColor CONSTANT FINAL)
     Q_PROPERTY(QColor focusColor READ focusColor CONSTANT FINAL)
+    Q_PROPERTY(QColor focusedBorderColor READ focusedBorderColor CONSTANT FINAL)
+    Q_PROPERTY(qreal focusedBorderWidth READ focusedBorderWidth CONSTANT FINAL)
     Q_PROPERTY(QColor fillColor READ fillColor CONSTANT FINAL)
     Q_PROPERTY(QColor trackColor READ trackColor CONSTANT FINAL)
     Q_PROPERTY(QColor placeholderTextColor READ placeholderTextColor CONSTANT FINAL)
 public:
     StateColors() = default;
     StateColors(QColor background, QColor foreground, QColor border, QColor focus,
-                QColor fill = {}, QColor track = {}, QColor placeholder = {})
+                QColor fill = {}, QColor track = {}, QColor placeholder = {}, QColor focusedBorder = {})
         : m_background(std::move(background)), m_foreground(std::move(foreground)),
           m_border(std::move(border)), m_focus(std::move(focus)), m_fill(std::move(fill)),
-          m_track(std::move(track)), m_placeholder(std::move(placeholder)) {}
+          m_track(std::move(track)), m_placeholder(std::move(placeholder)),
+          m_focusedBorder(std::move(focusedBorder)) {}
     QColor backgroundColor() const { return m_background; }
     QColor foregroundColor() const { return m_foreground; }
     QColor borderColor() const { return m_border; }
     QColor focusColor() const { return m_focus; }
+    QColor focusedBorderColor() const { return m_focusedBorder; }
+    qreal focusedBorderWidth() const { return m_focusedBorderWidth; }
     QColor fillColor() const { return m_fill; }
     QColor trackColor() const { return m_track; }
     QColor placeholderTextColor() const { return m_placeholder; }
@@ -38,10 +43,14 @@ public:
     {
         return m_background == other.m_background && m_foreground == other.m_foreground
             && m_border == other.m_border && m_focus == other.m_focus
-            && m_fill == other.m_fill && m_track == other.m_track && m_placeholder == other.m_placeholder;
+            && m_fill == other.m_fill && m_track == other.m_track && m_placeholder == other.m_placeholder
+            && m_focusedBorder == other.m_focusedBorder && m_focusedBorderWidth == other.m_focusedBorderWidth;
     }
 private:
     QColor m_background, m_foreground, m_border, m_focus, m_fill, m_track, m_placeholder;
+    QColor m_focusedBorder;
+    qreal m_focusedBorderWidth = 0;
+    friend class StateTable;
 };
 
 // A cheap owning value, not another QObject per control. Reading the facade's
@@ -55,7 +64,8 @@ class INTERACTIVE_FOUNDATION_EXPORT StateTable
     Q_PROPERTY(QColor linkColor READ linkColor CONSTANT FINAL)
 public:
     StateTable() = default;
-    explicit StateTable(std::shared_ptr<const StateTableData> data) : m_data(std::move(data)) {}
+    explicit StateTable(std::shared_ptr<const StateTableData> data, qreal focusWidth = 2)
+        : m_data(std::move(data)), m_focusWidth(focusWidth) {}
     Q_INVOKABLE InterActive::StateColors colors(InterActive::Presentation::State state) const;
     QColor selectionColor() const;
     QColor selectedTextColor() const;
@@ -64,6 +74,8 @@ public:
     bool operator!=(const StateTable &other) const { return !(*this == other); }
 private:
     std::shared_ptr<const StateTableData> m_data;
+    // Geometry is a snapshot alongside shared colors, never a palette cache key.
+    qreal m_focusWidth = 0;
 };
 
 } // namespace InterActive

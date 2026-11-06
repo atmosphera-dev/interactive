@@ -43,6 +43,7 @@ T.Switch {
         down: control.down
         hovered: control.hovered
         active: control.Window.active
+        focused: control.visualFocus
         x: control.mirrored ? control.width - control.rightPadding - width : control.leftPadding
         anchors.verticalCenter: control.verticalCenter
     }
@@ -63,6 +64,5 @@ T.Switch {
         resolvedAppearance: appearance
         color: IA.Appearance.colors.transparent
         outlined: false
-        focused: control.visualFocus
     }
 }

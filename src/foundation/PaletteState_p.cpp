@@ -310,7 +310,8 @@ std::shared_ptr<const StateTableData> PaletteState::stateTable(ControlFamily fam
         }
         if (family == ControlFamily::Label)
             sharedColors[size_t(StateTableColor::Link)] = color(ColorRole::link);
-        table = LocalColorOverrides::buildStateTable(values, controlFindings(mapping), sharedColors);
+        table = LocalColorOverrides::buildStateTable(values, controlFindings(mapping), sharedColors,
+            backdrop, family == ControlFamily::Field && validation == Presentation::Invalid);
     }
     return table;
 }

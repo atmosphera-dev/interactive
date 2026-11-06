@@ -136,6 +136,5 @@ T.MenuItem {
         active: control.Window.active
         focused: control.visualFocus
         outlined: false
-        focusInset: IA.Appearance.metrics.borderWidth
     }
 }

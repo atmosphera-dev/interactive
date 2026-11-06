@@ -11,6 +11,27 @@ Item {
     height: 1000
     Component { id: mixedComponent; MixedFixture {} }
     Component {
+        id: focusComponent
+        Column {
+            width: 400
+            spacing: 8
+            property var controls: [button, primary, tool, field, check, radio, toggle, tab, row, menu, slider]
+            Item { id: entry; width: 1; height: 1; activeFocusOnTab: true }
+            property alias entry: entry
+            IAButton { id: button; text: "Button" }
+            IAButton { id: primary; text: "Primary"; tone: IA.Presentation.Primary }
+            IAToolButton { id: tool; text: "Tool" }
+            IATextField { id: field; text: "Field" }
+            IACheckBox { id: check; text: "Check" }
+            IARadioButton { id: radio; text: "Radio" }
+            IASwitch { id: toggle; text: "Switch" }
+            IATabButton { id: tab; text: "Tab" }
+            IAItemDelegate { id: row; text: "Row" }
+            IAMenuItem { id: menu; text: "Menu" }
+            IASlider { id: slider; value: 0.5 }
+        }
+    }
+    Component {
         id: scrollComponent
         IAScrollView {
             width: 360
@@ -139,7 +160,76 @@ Item {
         function test_validationAndFocusRemainDistinct_data(): var {
             return [{tag: "default", input: {}}, {tag: "red-primary", input: {tokens: {colors: {accent: "#E53935"}}}},
                 {tag: "green-primary", input: {tokens: {colors: {accent: "#36A56A"}}}},
-                {tag: "amber-high", input: {contrast: "high", tokens: {colors: {accent: "#D99B24"}}}}];
+                {tag: "amber-high", input: {contrast: "high", tokens: {colors: {accent: "#D99B24"}}}},
+                {tag: "light-high", input: {scheme: "light", contrast: "high"}},
+                {tag: "dark-normal", input: {scheme: "dark", contrast: "normal"}},
+                {tag: "dark-high", input: {scheme: "dark", contrast: "high"}}];
+        }
+
+        function test_singleFocusBorder_data(): var {
+            const rows = [];
+            for (const scheme of ["light", "dark"]) {
+                for (const contrast of ["normal", "high"])
+                    rows.push({tag: scheme + "-" + contrast, scheme: scheme, contrast: contrast});
+            }
+            return rows;
+        }
+
+        function test_singleFocusBorder(data: var): void {
+            scene.width = 1200;
+            IA.Appearance.input = {scheme: data.scheme, contrast: data.contrast};
+            const samples = createTemporaryObject(focusComponent, scene);
+            verify(samples !== null);
+            verify(TestProbe.render(samples));
+            verify(TestProbe.activate(samples));
+            verify(TestProbe.move(scene, scene.width - 2, scene.height - 2));
+            for (let index = 0; index < samples.controls.length; ++index) {
+                const control = samples.controls[index];
+                samples.entry.forceActiveFocus(Qt.OtherFocusReason);
+                tryCompare(control, "activeFocus", false);
+                // Choice focus belongs to its indicator; slider focus to its thumb.
+                const border = (index >= 4 && index <= 6 ? control.indicator
+                    : index === 10 ? control.handle : control.background) as Rectangle;
+                verify(border !== null);
+                const borderless = [2, 7, 8, 9].indexOf(index) !== -1;
+                compare(border.border.width, borderless ? 0 : IA.Appearance.metrics.borderWidth);
+                const bounds = [border.x, border.y, border.width, border.height, border.radius,
+                    control.width, control.height, control.implicitWidth, control.implicitHeight];
+                control.forceActiveFocus(Qt.TabFocusReason);
+                tryCompare(control, "activeFocus", true);
+                if (index !== 3)
+                    tryCompare(control, "visualFocus", true);
+                verify(waitForRendering(control));
+                compare(border.border.width, IA.Appearance.metrics.focusWidth);
+                const colors = index >= 4 && index <= 6 ? (border as IA.ChoiceIndicator).colors
+                    : (border as IA.ControlBackground).colors;
+                compare(border.border.color, colors.focusedBorderColor);
+                if (index !== 1) // Primary retains the readable colored-fill fallback.
+                    compare(border.border.color, IA.Appearance.colors.focus, "Neutral focus is the shared accent hue");
+                compare([border.x, border.y, border.width, border.height, border.radius,
+                    control.width, control.height, control.implicitWidth, control.implicitHeight], bounds,
+                    "Focus grows inward without changing bounds or radius");
+                for (const child of border.children) {
+                    const rectangle = child as Rectangle;
+                    if (rectangle !== null) {
+                        if (index >= 4 && index <= 6)
+                            compare(rectangle, (border as IA.ChoiceIndicator).mark, "Only the choice's mark, no ring");
+                        else
+                            compare(rectangle.objectName, "iaPressInset", "Only the press inset, no ring");
+                    }
+                }
+                if (index >= 4 && index <= 6)
+                    compare((control.background as Rectangle).border.width, 0, "Choice row has no second focus border");
+                // Qt 6.8 grabImage crops with the item's parent-local x/y, not
+                // scene coordinates. Grab the root and map nested controls.
+                const image = grabImage(scene);
+                verify(image.width > 0 && image.height > 0);
+                const point = border.mapToItem(scene, border.width / 2, border.border.width / 2);
+                const expected = border.border.color;
+                fuzzyCompare(image.pixel(Math.floor(point.x * image.width / scene.width),
+                    Math.floor(point.y * image.height / scene.height)), expected, 0.03,
+                    "Focus color reaches the rendered top border: " + index);
+            }
         }
 
         function test_validationAndFocusRemainDistinct(data: var): void {
@@ -158,28 +248,19 @@ Item {
             const background = field.background as Rectangle;
             verify(background !== null);
             compare(background.border.color, IA.Appearance.colors.errorText);
-            verify(background.border.width > 0);
-            let focusRing = null;
+            compare(background.border.width, IA.Appearance.metrics.focusWidth);
             for (const child of background.children) {
                 const rectangle = child as Rectangle;
-                if (rectangle !== null && rectangle.visible && rectangle.border.width > 0
-                    && String(rectangle.border.color) === String(field.focusColor)) {
-                    focusRing = rectangle;
-                    break;
-                }
+                if (rectangle !== null)
+                    compare(rectangle.objectName, "iaPressInset", "Only the press inset, no focus outline");
             }
-            verify(focusRing !== null, "An additional focus outline remains visible alongside validation");
-            verify(String(background.border.color) !== String(focusRing.border.color));
             const image = grabImage(fixture);
             verify(image.width > 0 && image.height > 0);
-            const focusPoint = focusRing.mapToItem(fixture, focusRing.width / 2, focusRing.border.width / 2);
             const validationPoint = background.mapToItem(fixture, background.width / 2, background.border.width / 2);
             const scaleX = image.width / fixture.width;
             const scaleY = image.height / fixture.height;
-            fuzzyCompare(image.pixel(Math.floor(focusPoint.x * scaleX), Math.floor(focusPoint.y * scaleY)),
-                         field.focusColor, 0.03, "Focus outline is rendered, not clipped by the editor");
             fuzzyCompare(image.pixel(Math.floor(validationPoint.x * scaleX), Math.floor(validationPoint.y * scaleY)),
-                         IA.Appearance.colors.errorText, 0.03, "Validation outline is simultaneously rendered");
+                         IA.Appearance.colors.errorText, 0.03, "The wider focused border still renders invalid color");
             near(field.width, width, "Validation/focus width");
             near(field.height, height, "Validation/focus height");
             compare(field.text, "Maya Chen");

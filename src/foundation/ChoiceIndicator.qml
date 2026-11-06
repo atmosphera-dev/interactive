@@ -13,6 +13,7 @@ Rectangle {
     property bool down: false
     property bool hovered: false
     property bool active: true
+    property bool focused: false
     property real visualPosition: checked ? 1 : 0
     readonly property bool selected: checked || partial
     readonly property stateColors colors: resolvedAppearance.stateTable.colors(
@@ -23,8 +24,8 @@ Rectangle {
     implicitHeight: kind === ChoiceIndicator.Toggle ? Appearance.metrics.switchHeight : Appearance.metrics.indicatorSize
     radius: kind === ChoiceIndicator.Check ? resolvedAppearance.controlRadius : height / 2
     color: colors.backgroundColor
-    border.color: colors.borderColor
-    border.width: Appearance.metrics.borderWidth
+    border.color: focused ? colors.focusedBorderColor : colors.borderColor
+    border.width: focused ? colors.focusedBorderWidth : Appearance.metrics.borderWidth
     property bool complete: false
     property Item mark: null
     function updateMark(): void {

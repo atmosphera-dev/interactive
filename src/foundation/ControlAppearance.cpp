@@ -167,7 +167,8 @@ IA_CONTROL_NONCOLOR_PROPERTIES(IA_NONCOLOR_GETTER)
 
 StateTable ControlAppearance::stateTable() const
 {
-    return StateTable(m_private->table);
+    const auto &metrics = m_private->sourceState ? m_private->sourceState->metrics : m_private->defaults.metrics;
+    return StateTable(m_private->table, metrics.focusWidth);
 }
 
 void ControlAppearance::setSource(Appearance *source)

@@ -10,6 +10,8 @@ Item {
     width: 520
     height: 220
 
+    Item { id: focusEntry }
+
     Row {
         id: buttons
         x: 32
@@ -49,6 +51,7 @@ Item {
             verify(TestProbe.render(scene));
             verify(TestProbe.activate(scene));
             tryCompare(TestProbe.hostWindow(scene), "active", true);
+            focusEntry.forceActiveFocus(Qt.OtherFocusReason);
             verify(TestProbe.move(scene, scene.width - 2, scene.height - 2));
         }
 
@@ -165,14 +168,19 @@ Item {
                     Qt.rgba(Math.round(bg.r * 255) / 255, Math.round(bg.g * 255) / 255, Math.round(bg.b * 255) / 255, 1));
                 verify(roundedRatio >= 5, "Rendered 8-bit normal text contrast: " + roundedRatio);
             }
-            compare(background.border.color, button.enabled ? button.borderColor : IA.Appearance.colors.outline);
-            if (button === solid && button.enabled)
+            const focused = button.visualFocus;
+            const focusBorder = contrastRatio(button.focusColor, background.color) >= 3
+                ? button.focusColor : label.color;
+            compare(background.border.color, focused ? focusBorder
+                : button.enabled ? button.borderColor : IA.Appearance.colors.outline);
+            if (button === solid && button.enabled && !focused)
                 compare(background.border.color, label.color, "Semantic border matches rendered text");
             const pressed = button.enabled && button.down;
             const inset = findChild(background, "iaPressInset") as Rectangle;
             verify(inset !== null);
             compare(inset.visible, pressed);
             const translatedGeometry = expectedGeometry.slice();
+            translatedGeometry[13] = focused ? IA.Appearance.metrics.focusWidth : IA.Appearance.metrics.borderWidth;
             translatedGeometry[15] += pressed ? IA.Appearance.metrics.pressContentShift : 0;
             compare(geometry(button), translatedGeometry, "Only the rendered content shifts during press; layout stays fixed");
         }
@@ -294,7 +302,7 @@ Item {
                 verify(TestProbe.move(scene, scene.width - 2, scene.height - 2));
                 verifyVisual(solid, pressed, text, originalGeometry);
 
-                // Enter with a real Tab so the extra keyboard focus ring is exercised.
+                // Enter with a real Tab so the single keyboard focus border is exercised.
                 verify(TestProbe.move(neutral, neutral.width / 2, neutral.height / 2));
                 tryCompare(neutral, "hovered", true);
                 verifyVisual(neutral, colors.controlHover, colors.text, originalGeometry);
@@ -313,16 +321,13 @@ Item {
                 tryCompare(solid, "visualFocus", true);
                 verifyVisual(solid, pressed, text, originalGeometry);
                 const background = solid.background as Rectangle;
-                let focusRing = null;
                 for (const child of background.children) {
                     const rectangle = child as Rectangle;
-                    if (rectangle !== null && rectangle.visible && rectangle.border.width > 0)
-                        focusRing = rectangle;
+                    if (rectangle !== null)
+                        compare(rectangle.objectName, "iaPressInset", "Only the press inset, no additional focus perimeter");
                 }
-                verify(focusRing !== null, "Focus is an additional rendered outline");
-                compare(focusRing.border.color, colors.focus);
-                compare(focusRing.border.width, IA.Appearance.metrics.focusWidth);
-                compare(background.border.color, outline);
+                compare(background.border.color, contrastRatio(colors.focus, pressed) >= 3 ? colors.focus : text);
+                compare(background.border.width, IA.Appearance.metrics.focusWidth);
                 verify(TestProbe.keyClick(solid, Qt.Key_Space));
                 tryCompare(solid, "checked", false);
                 verifyVisual(solid, surface, text, originalGeometry);

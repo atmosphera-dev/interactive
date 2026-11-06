@@ -8,7 +8,9 @@ StateColors StateTable::colors(Presentation::State state) const
 {
     if (!m_data || state < Presentation::Rest || state > Presentation::Disabled)
         return {};
-    return m_data->states[size_t(state)];
+    auto colors = m_data->states[size_t(state)];
+    colors.m_focusedBorderWidth = m_focusWidth;
+    return colors;
 }
 
 QColor StateTable::selectionColor() const
@@ -28,9 +30,9 @@ QColor StateTable::linkColor() const
 
 bool StateTable::operator==(const StateTable &other) const
 {
-    return m_data == other.m_data
+    return m_focusWidth == other.m_focusWidth && (m_data == other.m_data
         || (m_data && other.m_data && m_data->states == other.m_data->states
-            && m_data->sharedColors == other.m_data->sharedColors);
+            && m_data->sharedColors == other.m_data->sharedColors));
 }
 
 } // namespace InterActive

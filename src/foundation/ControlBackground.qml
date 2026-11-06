@@ -13,7 +13,6 @@ Rectangle {
     property bool focused: false
     property bool outlined: true
     property bool pressInset: false
-    property real focusInset: -Appearance.metrics.focusWidth
     readonly property bool showsPressedFill: down && !pressInset
     readonly property real contentShift: pressInset && down && controlEnabled ? Appearance.metrics.pressContentShift : 0
     readonly property stateColors colors: resolvedAppearance.stateTable.colors(
@@ -22,8 +21,8 @@ Rectangle {
     objectName: "iaBackground"
     radius: resolvedAppearance.controlRadius
     color: colors.backgroundColor
-    border.color: colors.borderColor
-    border.width: outlined ? Appearance.metrics.borderWidth : 0
+    border.color: focused ? colors.focusedBorderColor : colors.borderColor
+    border.width: focused ? colors.focusedBorderWidth : outlined ? Appearance.metrics.borderWidth : 0
     Rectangle {
         id: inset
         objectName: "iaPressInset"
@@ -62,14 +61,5 @@ Rectangle {
                 color: Appearance.colors.transparent
             }
         }
-    }
-    Rectangle {
-        anchors.fill: parent
-        anchors.margins: root.focusInset
-        visible: root.focused
-        color: Appearance.colors.transparent
-        radius: Math.max(0, root.radius - root.focusInset)
-        border.color: root.colors.focusColor
-        border.width: Appearance.metrics.focusWidth
     }
 }

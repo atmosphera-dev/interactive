@@ -210,7 +210,7 @@ trial, not a finalized whole-palette design.
 | 30 | `inverseSecondary` | `#AEB5BF` | `#AEB5BF` |
 | 31 | `scrim` | `#3D000000` (24% black) | `#7A000000` (48% black) |
 | 32 | `shadow` | `#29000000` (16% black) | `#5C000000` (36% black) |
-| 33 | `focus` | HCT-derived from accent for 3:1 against content | Same recipe |
+| 33 | `focus` | HCT-derived from accent for 3:1 across neutral focus surfaces | Same recipe |
 | 34 | `link` | Effective `accentText` | Effective `accentText` |
 | 35 | `transparent` | Transparent black | Transparent black |
 | 36 | `accentHover`, `accentPressed` | Accent blended away from its paired text | Same recipe |
@@ -248,7 +248,11 @@ Fill colors and text colors have separate roles. `accentText` targets content;
 message surfaces. Those message surfaces still blend the semantic color into
 content using `semanticBlend`; they are distinct from solid action surfaces.
 Missing `link` follows effective `accentText`, while `focus` derives separately
-from accent for its 3:1 target. Labels and validation use the readable `Text`
+from accent for its 3:1 target across content (the field background), canvas,
+popup, control, controlHover, controlPressed, selection and inactiveSelection.
+Surfaces are composited against their content/canvas backdrop before the one
+palette-time derivation. Explicit `focus` stays exact; colored and local fills
+retain the per-state foreground fallback. Labels and validation use the readable `Text`
 roles, not the bright fill tokens.
 
 ### HCT And Contrast
@@ -546,7 +550,8 @@ change. Font/geometry edits do not rebuild the table. Shared pair diagnostics ar
 reused from the palette; locally affected pairs retain their dependency caches.
 
 The additive read-only value API is `appearance.stateTable.colors(state)`, returning
-`backgroundColor`, `foregroundColor`, `borderColor`, `focusColor`, `fillColor`,
+`backgroundColor`, `foregroundColor`, `borderColor`, `focusColor`, `focusedBorderColor`,
+`focusedBorderWidth`, `fillColor`,
 `trackColor`, and `placeholderTextColor`. Fill uses the ordinary fill or disabled
 foreground; the slider track uses the ordinary border or disabled background.
 Field placeholders use the shared placeholder or local disabled foreground.
@@ -555,14 +560,20 @@ The table also holds field `selectionColor`/`selectedTextColor` and label
 fill/foreground overrides, exactly as before. `stateTable`
 is a small owning value around shared immutable storage, not another QObject or
 an eagerly boxed list per control. Its `stateTableChanged` signal tracks changed
-effective state colors, so reading the property establishes a QML binding
+effective state colors or focus width, so reading the property establishes a QML binding
 dependency before the indexed lookup. Stored value copies retain their snapshot.
 `Presentation.State` exposes `Rest`, `Hover`, `Pressed`, `Selected`, `SelectedHover`,
 `SelectedPressed`, `Inactive`, `InactiveHover`, and `Disabled`. These entries encode
 the existing visual expressions: hover retains ordinary foreground; selected
 hover retains the selected pair; selected pressed uses the ordinary pressed pair;
 inactive hover retains the inactive pair; disabled uses the disabled pair/border.
-Focus is unchanged in every entry. Press-inset controls still select their resting,
+Each entry's focused border uses `focusColor` when it has at least 3:1 contrast
+against that entry's fill (composited over content/canvas), otherwise that entry's
+foreground. This choice is computed only by the shared/private table builder.
+An invalid field keeps its resolved invalid border color while focused. The small
+owning table value also snapshots `metrics.focusWidth`, exposed on each returned
+entry as `focusedBorderWidth`; width-only changes notify without rebuilding colors.
+Press-inset controls still select their resting,
 hover or selected fill rather than the pressed fill. One pure Foundation QML
 function, `ControlState.of(enabled, down, hovered, selected, active, insetPress)`,
 maps the template flags to this index; it performs no C++ resolution or color
@@ -574,7 +585,11 @@ Only the selected kind's check/mixed icon, radio dot or switch thumb is created.
 Inset backgrounds create their Gradient and stops only when `pressInset` is used;
 the named empty inset Rectangle remains available on other backgrounds. Changing
 the kind or inset trait replaces only that owned visual, not the control.
-No color recipe or public control property/alias is changed. A fill-only edit now
+Focus changes the one border's color/width inward, without a second ring or any
+change to the rectangle's bounds/radius. Borderless backgrounds draw that same
+border only while focused. Choices focus their indicator, not the whole label row.
+Existing control focus predicates are retained (visual focus, active focus for fields).
+No public control property/alias is changed. A fill-only edit now
 emits `stateTableChanged` because fill is represented in the table; unrelated
 font/geometry changes still do not.
 
@@ -607,7 +622,9 @@ Disabled controls retain neutral disabled colors and outlines. A local border
 override still applies while disabled unless a distinct `disabledBorderColor`
 is supplied; validation outlines also retain their existing behavior. Labels
 instead use `accentText`, `warningText` or `errorText` on their transparent base.
-Validation selects `warningText`/`errorText` for the outline, leaving focus separate.
+Validation selects `warningText`/`errorText` for the outline. Invalid fields retain
+that outline color at the focus width when focused; other focus colors follow
+the per-state readability selection above.
 An unspecified semantic border follows the final local `foregroundColor`, including
 foreground derivation after local background overrides. An explicit application
 `primaryOutline`/`cautionOutline`/`destructiveOutline`, validation border, or local

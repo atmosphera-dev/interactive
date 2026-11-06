@@ -520,7 +520,16 @@ ResolvedAppearance PaletteBuilder::calculatePalette(ResolvedAppearance result)
         derive(QStringLiteral("controlHover"), ColorMath::blend(color(QStringLiteral("control")), color(QStringLiteral("text")), motion.value(QStringLiteral("hoverBlend")).toDouble()));
         derive(QStringLiteral("controlPressed"), ColorMath::blend(color(QStringLiteral("control")), color(QStringLiteral("text")), motion.value(QStringLiteral("pressedBlend")).toDouble()));
     }
-    derive(QStringLiteral("focus"), ColorMath::contrastingText(color(QStringLiteral("accent")), {color(QStringLiteral("content"))}, canvas, 3));
+    if (!explicitColor(result.explicitTokens, QStringLiteral("focus"))) {
+        // One accent-hued focus role must read on every neutral focus surface,
+        // not just fields. Colored/local fills retain the state-table fallback.
+        QList<QColor> focusSurfaces{content, ColorMath::composite(canvas, QColor(Qt::white))};
+        for (const auto *role : {"popup", "control", "controlHover", "controlPressed",
+                 "selection", "inactiveSelection"})
+            focusSurfaces.append(ColorMath::composite(color(QString::fromLatin1(role)), content));
+        derive(QStringLiteral("focus"), ColorMath::contrastingText(color(QStringLiteral("accent")),
+            focusSurfaces, content, 3));
+    }
     derive(QStringLiteral("accentText"), ColorMath::contrastingText(color(QStringLiteral("accent")), {color(QStringLiteral("content"))}, canvas, labelTarget));
     derive(QStringLiteral("link"), color(QStringLiteral("accentText")));
     result.tokens.insert(QStringLiteral("colors"), colors);

@@ -96,6 +96,8 @@ struct StateTableData {
     // The unchanged facade properties and diagnostics share the same snapshot.
     ControlColorValues values;
     StateTableSharedColors sharedColors;
+    QColor backdrop;
+    bool invalidFocus = false;
     std::shared_ptr<const ControlFindings> findings;
 };
 
