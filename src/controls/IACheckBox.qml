@@ -11,10 +11,10 @@ T.CheckBox {
     property alias pressedBackgroundColor: appearance.pressedBackgroundColor
     property alias disabledBackgroundColor: appearance.disabledBackgroundColor
     property alias disabledForegroundColor: appearance.disabledForegroundColor
-    property alias selectedBackgroundColor: appearance.selectedBackgroundColor
-    property alias selectedForegroundColor: appearance.selectedForegroundColor
     property alias inactiveBackgroundColor: appearance.inactiveBackgroundColor
     property alias inactiveForegroundColor: appearance.inactiveForegroundColor
+    property alias selectedBackgroundColor: appearance.selectedBackgroundColor
+    property alias selectedForegroundColor: appearance.selectedForegroundColor
     property alias borderColor: appearance.borderColor
     property alias disabledBorderColor: appearance.disabledBorderColor
     property alias focusColor: appearance.focusColor

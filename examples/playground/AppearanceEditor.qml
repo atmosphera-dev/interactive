@@ -8,6 +8,10 @@ import InterActive.Foundation as IA
 Item {
     id: root
     property PlaygroundState state: PlaygroundState
+    // Accept every compatible QQuickWindow host, including QQuickView.
+    property var pickerParentWindow: root.Window.window
+    property Item accentMenuOpener: null
+    property real maximumHeight: 450
     property string jsonDraft: "{}"
     property var accentDraft: undefined
     readonly property var accentPresets: [
@@ -31,22 +35,33 @@ Item {
     }
     readonly property bool currentAccentSaved: accentDisplayKey.length > 0
         && accentDisplayName !== "Custom" && state.savedAccentKeys.indexOf(accentDisplayKey) >= 0
-    implicitHeight: Math.min(layout.implicitHeight, root.Window.window ? root.Window.window.height * 0.55 : 450)
+    // The consumer supplies the viewport budget. Reading our hosting window's
+    // height here creates a size feedback loop in a Window-hosted dialog.
+    implicitHeight: Math.min(layout.implicitHeight, maximumHeight)
     implicitWidth: 600
 
     function openAccentPicker(): void { accentPicker.open(); }
     function openAmberPicker(): void { amberPicker.open(); }
     function openDangerPicker(): void { dangerPicker.open(); }
+    function openAccentMenu(anchor: Item): void {
+        accentMenuOpener = anchor;
+        root.state.refreshSavedAccents();
+        accentMenu.openFor(anchor);
+    }
 
     AccentPaletteMenu {
         id: accentMenu
         presets: root.accentPresets
         savedKeys: root.state.savedAccentKeys
         currentDisplayKey: root.accentDisplayKey
-        windowWidthBudget: root.Window.window ? root.Window.window.width : root.width
+        windowWidthBudget: root.accentMenuOpener && root.accentMenuOpener.Window.window
+            ? root.accentMenuOpener.Window.window.width : root.width
         onAccentSelected: value => root.state.setAppearanceToken("colors", "accent", value)
         onCustomRequested: accentPicker.open()
-        onOpenerFocusRequested: accentPicker.focusOpener()
+        onOpenerFocusRequested: {
+            if (root.accentMenuOpener)
+                root.accentMenuOpener.forceActiveFocus(Qt.PopupFocusReason);
+        }
     }
 
     function pickerTrace(kind: string, role: int): int {
@@ -73,6 +88,10 @@ Item {
         objectName: "paletteToolbarScroll"
         anchors.fill: parent
         clip: true
+        // Reserve the scrollbar's actual lane, including mirrored layouts.
+        // The editor's fields must not extend underneath either scroll bar.
+        leftPadding: mirrored ? effectiveScrollBarWidth : 0
+        rightPadding: mirrored ? 0 : effectiveScrollBarWidth
         contentWidth: availableWidth
     ColumnLayout {
         id: layout
@@ -81,12 +100,6 @@ Item {
         Flow {
             Layout.fillWidth: true
             spacing: IA.Appearance.metrics.spacingS
-            IALabel {
-                text: "Appearance"
-                height: lightButton.implicitHeight
-                verticalAlignment: Text.AlignVCenter
-                foregroundColor: IA.Appearance.colors.secondaryText
-            }
             IAButton {
                 id: lightButton
                 objectName: "appearanceLight"
@@ -103,23 +116,18 @@ Item {
                 text: "Defaults"
                 onClicked: root.state.setAppearance({})
             }
-            IAToolSeparator {
-                height: lightButton.implicitHeight
-            }
             PaletteColorPicker {
                 id: accentPicker
                 namePrefix: "accent"
                 label: "Accent"
                 dialogTitle: "Accent color (live)"
+                pickerParentWindow: root.pickerParentWindow
                 resolvedColor: IA.Appearance.colors.accent
                 displayName: root.accentDisplayName
                 readoutForeground: root.currentAccentSaved ? accentMenu.savedTextColor : IA.Appearance.colors.text
                 dropdownIndicator: true
                 openerEnterEnabled: true
-                activation: function(anchor) {
-                    root.state.refreshSavedAccents();
-                    accentMenu.openFor(anchor);
-                }
+                activation: root.openAccentMenu
                 maximumWidth: layout.width
                 itemSpacing: IA.Appearance.metrics.spacingS
                 swatchSize: IA.Appearance.metrics.iconSize
@@ -142,6 +150,7 @@ Item {
                 namePrefix: "amber"
                 label: "Amber"
                 dialogTitle: "Amber warning/caution color (live)"
+                pickerParentWindow: root.pickerParentWindow
                 resolvedColor: IA.Appearance.colors.warning
                 maximumWidth: layout.width
                 itemSpacing: IA.Appearance.metrics.spacingS
@@ -159,6 +168,7 @@ Item {
                 namePrefix: "danger"
                 label: "Danger"
                 dialogTitle: "Danger error color (live)"
+                pickerParentWindow: root.pickerParentWindow
                 resolvedColor: IA.Appearance.colors.error
                 maximumWidth: layout.width
                 itemSpacing: IA.Appearance.metrics.spacingS
@@ -233,10 +243,13 @@ Item {
         }
         IAScrollView {
             id: editorScroll
+            objectName: "appearanceInputScroll"
             Layout.fillWidth: true
             Layout.preferredHeight: Math.min(editorBody.implicitHeight, 320)
             visible: inputButton.checked
             clip: true
+            leftPadding: mirrored ? effectiveScrollBarWidth : 0
+            rightPadding: mirrored ? 0 : effectiveScrollBarWidth
             contentWidth: availableWidth
             ColumnLayout {
                 id: editorBody

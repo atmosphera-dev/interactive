@@ -10,7 +10,8 @@ qt_add_qml_module(interactive_playground_scene SHARED
         TARGET interactive_components
     SOURCES PlaygroundState.h PlaygroundState.cpp AppearanceTraceController.h AppearanceTraceController.cpp
         PaletteSampleWriter.h PaletteSampleWriter.cpp PaletteSampleHistory.h PaletteSampleHistory.cpp
-    QML_FILES Main.qml FoundationsPage.qml AppearanceEditor.qml PaletteColorPicker.qml AccentPaletteMenu.qml Specimen.qml
+    QML_FILES Main.qml FoundationsPage.qml AppearanceToolbar.qml AppearanceEditor.qml PaletteColorPicker.qml AccentPaletteMenu.qml Specimen.qml
+    RESOURCES icons/sun.svg icons/moon.svg icons/sliders.svg
 )
 include(GenerateExportHeader)
 generate_export_header(interactive_playground_scene)

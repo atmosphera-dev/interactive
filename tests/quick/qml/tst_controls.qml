@@ -33,6 +33,46 @@ Item {
             mouseMove(scene, scene.width - 1, scene.height - 1);
         }
 
+        function test_renderedAppearanceAliasBlocks_data(): var {
+            const type = ["fontFamily", "fontPixelSize", "fontWeight"];
+            const surface = ["backgroundColor", "foregroundColor", "borderColor", "disabledBorderColor", "controlRadius"].concat(type);
+            const interaction = ["backgroundColor", "foregroundColor", "hoverBackgroundColor", "pressedBackgroundColor",
+                "disabledBackgroundColor", "disabledForegroundColor", "inactiveBackgroundColor", "inactiveForegroundColor",
+                "selectedBackgroundColor", "selectedForegroundColor", "borderColor", "disabledBorderColor", "focusColor", "controlRadius"]
+                .concat(type, ["minimumHeight"]);
+            const rows = [];
+            function add(names, properties) {
+                for (const name of names)
+                    rows.push({tag: name, control: name, properties: properties.concat(["appearanceDiagnostics"])});
+            }
+            add(["IAButton", "IAToolButton"], interaction.filter(function(name) { return name !== "pressedBackgroundColor"; }));
+            add(["IAItemDelegate", "IAMenuItem", "IATabButton", "IACheckBox", "IARadioButton", "IASwitch"], interaction);
+            add(["IAPane", "IAFrame", "IAMenu", "IAToolTip"], surface);
+            add(["IAPopup", "IADialog"], surface.slice(0, 4).concat(["focusColor"], surface.slice(4)));
+            add(["IATabBar"], surface.filter(function(name) { return name !== "foregroundColor"; }));
+            add(["IAScrollView"], ["backgroundColor", "borderColor", "disabledBorderColor", "controlRadius"]);
+            add(["IAToolBar"], ["backgroundColor", "foregroundColor", "borderColor"].concat(type));
+            add(["IADialogButtonBox"], ["backgroundColor", "foregroundColor", "controlRadius"].concat(type));
+            add(["IALabel"], ["backgroundColor", "foregroundColor", "disabledForegroundColor", "controlRadius"].concat(type));
+            add(["IAToolSeparator", "IAMenuSeparator"], ["foregroundColor"]);
+            add(["IAScrollBar"], ["backgroundColor", "foregroundColor", "hoverBackgroundColor", "pressedBackgroundColor",
+                "disabledForegroundColor", "controlRadius"]);
+            add(["IAProgressBar"], ["backgroundColor", "fillColor", "foregroundColor", "disabledBackgroundColor", "disabledForegroundColor", "controlRadius"]);
+            add(["IASlider"], ["backgroundColor", "fillColor", "foregroundColor", "hoverBackgroundColor", "pressedBackgroundColor",
+                "disabledBackgroundColor", "disabledForegroundColor", "borderColor", "disabledBorderColor", "focusColor", "controlRadius", "minimumHeight"]);
+            add(["IATextField"], ["backgroundColor", "foregroundColor", "disabledBackgroundColor", "disabledForegroundColor",
+                "borderColor", "disabledBorderColor", "focusColor", "controlRadius"].concat(type, ["minimumHeight"]));
+            return rows;
+        }
+
+        function test_renderedAppearanceAliasBlocks(data: var): void {
+            const component = Qt.createComponent("qrc:/qt/qml/InterActive/" + data.control + ".qml");
+            tryCompare(component, "status", Component.Ready);
+            const control = createTemporaryObject(component, scene);
+            verify(control !== null);
+            compare(TestProbe.appearanceProperties(control), data.properties, data.control + " rendered-property set and declaration order");
+        }
+
         function test_overrideAndReset(): void {
             customized.backgroundColor = "purple";
             customized.fontPixelSize = 18;

@@ -2,6 +2,7 @@
 import QtQuick
 import QtQuick.Window
 import QtQuick.Layouts
+import QtQuick.Templates as T
 import InterActive
 import InterActive.Foundation as IA
 
@@ -52,37 +53,37 @@ Window {
             anchors.fill: parent
             spacing: 0
             IAPane {
+                objectName: "navigationRail"
                 visible: window.width >= 1000
                 Layout.preferredWidth: 176
                 Layout.fillHeight: true
-                backgroundColor: IA.Appearance.colors.inverseSurface
+                backgroundColor: IA.Appearance.colors.control
+                controlRadius: 0
                 contentItem: ColumnLayout {
                     spacing: IA.Appearance.metrics.spacingS
                     IALabel {
+                        objectName: "navigationHeading"
                         Layout.fillWidth: true
+                        leftPadding: IA.Appearance.metrics.horizontalPadding
+                        rightPadding: IA.Appearance.metrics.horizontalPadding
                         text: "InterActive"
                         fontPixelSize: IA.Appearance.typography.headingSize
                         fontWeight: IA.Appearance.typography.emphasisWeight
-                        foregroundColor: IA.Appearance.colors.inverseText
                     }
                     IALabel {
+                        objectName: "navigationSubtitle"
                         Layout.fillWidth: true
+                        leftPadding: IA.Appearance.metrics.horizontalPadding
+                        rightPadding: IA.Appearance.metrics.horizontalPadding
                         text: "Control workbench"
-                        foregroundColor: IA.Appearance.colors.inverseSecondary
+                        foregroundColor: IA.Appearance.colors.secondaryText
                         fontPixelSize: IA.Appearance.typography.supportingSize
                     }
                     IAItemDelegate {
+                        objectName: "navigationCurrentPage"
                         Layout.fillWidth: true
                         text: "Foundations"
                         highlighted: true
-                        // This explicit inverse subpalette is local, not a
-                        // second appearance source for the application.
-                        foregroundColor: IA.Appearance.colors.inverseText
-                        selectedForegroundColor: IA.Appearance.colors.inverseText
-                        selectedBackgroundColor: IA.Appearance.colors.inverseSurface
-                        inactiveForegroundColor: IA.Appearance.colors.inverseText
-                        inactiveBackgroundColor: IA.Appearance.colors.inverseSurface
-                        backgroundColor: IA.Appearance.colors.inverseSurface
                         fontWeight: IA.Appearance.typography.emphasisWeight
                     }
                     Item { Layout.fillHeight: true }
@@ -92,9 +93,10 @@ Window {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 spacing: 0
-                IAToolBar {
+                AppearanceToolbar {
                     Layout.fillWidth: true
-                    contentItem: AppearanceEditor {}
+                    onAccentRequested: anchor => appearanceEditor.openAccentMenu(anchor)
+                    onAppearanceRequested: appearanceWindow.open()
                 }
                 FoundationsPage {
                     id: gallery
@@ -103,6 +105,26 @@ Window {
                     windowPopups: window.windowPopups
                 }
             }
+        }
+    }
+
+    IADialog {
+        id: appearanceWindow
+        objectName: "appearanceWindow"
+        title: "Appearance"
+        parent: T.Overlay.overlay
+        popupType: T.Popup.Window
+        modal: false
+        closePolicy: T.Popup.CloseOnEscape
+        width: Math.min(980, window.width - 2 * margins)
+        height: Math.min(640, window.height - 2 * margins)
+        x: (window.width - width) / 2
+        y: (window.height - height) / 2
+        standardButtons: T.Dialog.Close
+        contentItem: AppearanceEditor {
+            id: appearanceEditor
+            pickerParentWindow: window
+            maximumHeight: window.height * 0.55
         }
     }
 }

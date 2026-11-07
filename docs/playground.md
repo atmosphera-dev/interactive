@@ -183,7 +183,20 @@ dark adds `{"scheme":"dark"}`, and the partial-profile scene supplies
 `{"tokens":{"colors":{"accent":"#8657b8"}}}` unless other explicit options
 add fields. Input is installed before the first visible frame.
 
-Use `--contrast high` or the toolbar's **7:1 preview** toggle for the text-contrast
+The everyday toolbar contains three icon-only tools on one centerline: the current
+Light/Dark scheme (sun/moon, click to switch), an accent swatch opening the preset
+menu, and sliders opening **Appearance**. One trailing single-line status reports
+the saved-accent count. The neutral sidebar consumes IA's ordinary selected-row
+appearance, rather than an inverse local palette.
+
+**Appearance** is a non-native, Window-hosted `IADialog` containing the persistent
+appearance editor. Closing and reopening it retains manual hex/JSON drafts and
+the Input editor disclosure, without replacing gallery consumers. Defaults,
+expanded palette readouts/reset actions, Amber/Danger live pickers, Save and its
+destination/status, Touch targets, 7:1 preview, and the JSON/input tooling live
+there. Light and Dark remain available there as explicit scheme actions too.
+
+Use `--contrast high` or the Appearance window's **7:1 preview** toggle for the text-contrast
 visual trial. `--contrast normal` explicitly selects the normal 5:1 design target;
 omitting the flag leaves the input unchanged and the library default normal.
 Other contrast values are rejected. Light/Dark preserves the contrast selection,
@@ -194,7 +207,7 @@ full WCAG AAA compliance or a guarantee for arbitrary application/local colors.
 
 ### Live Palette Calibration
 
-The toolbar's **Accent**, **Amber** (warning/caution) and **Danger** (error) buttons
+The Appearance window's **Accent**, **Amber** (warning/caution) and **Danger** (error) buttons
 show applied root colors as swatches and hex readouts. Accent opens an anchored
 menu of twelve suggested calibration accents plus **Custom…**, which opens its
 existing live color dialog. Each preset shows its original swatch, name and hex.
@@ -253,7 +266,7 @@ independent and are explained inline; saving the root tuple is not saving every
 visual role. The success family stays generator-owned with no fourth picker.
 
 The default destination is the configured Qt **DocumentsLocation** plus
-`InterActive/palette-samples.txt`. The path is displayed in the toolbar.
+`InterActive/palette-samples.txt`. The path is displayed in the Appearance window.
 `--palette-samples-file <absolute-path>` selects an intentional alternate destination.
 Launch, opening, dragging, closing, resets and Defaults create no sample data;
 only Save creates the parent/file. Unusable Documents locations produce an inline
@@ -295,7 +308,7 @@ Reading never locks, repairs or rewrites the file; only explicit Save appends it
 Samples are not replayed, promoted into defaults, or used for automatic learning.
 The starting tangerine/red inputs are calibration suggestions, not aesthetically
 approved defaults or guaranteed 5:1/7:1 pairs. Existing truthful diagnostics remain.
-The toolbar wraps picker/reset pairs and scrolls when enlarged text/touch settings
+The Appearance window wraps picker/reset pairs and scrolls when enlarged text/touch settings
 need more height, leaving the gallery reachable.
 
 Trace scopes remain opt-in/inert. Picker handlers use fixed `qml-color-handler`

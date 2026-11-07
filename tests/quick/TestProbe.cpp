@@ -11,6 +11,8 @@
 #include <QImage>
 #include <QSaveFile>
 #include <QtMath>
+#include <QMetaProperty>
+#include "ControlAppearance.h"
 #ifdef IA_TEST_PLAYGROUND
 #include "PlaygroundState.h"
 #include <QFile>
@@ -111,6 +113,25 @@ bool TestProbe::typeAscii(QQuickItem *hostItem, const QString &text) const
     for (const QChar character : text)
         QTest::keyClick(hostItem->window(), character.toLatin1());
     return true;
+}
+
+QStringList TestProbe::appearanceProperties(QObject *control) const
+{
+    QStringList result;
+    if (!control)
+        return result;
+    // Inspect the consumer's actual meta-object, not a second source parser.
+    // Foundation defines the vocabulary; the test specifies each rendered set.
+    const auto &facade = InterActive::ControlAppearance::staticMetaObject;
+    const auto *meta = control->metaObject();
+    for (int i = meta->propertyOffset(); i < meta->propertyCount(); ++i) {
+        const auto property = meta->property(i);
+        if ((facade.indexOfProperty(property.name()) >= 0
+             && QByteArray(property.name()) != "tone" && QByteArray(property.name()) != "validation")
+            || QByteArray(property.name()) == "appearanceDiagnostics")
+            result.append(QString::fromLatin1(property.name()));
+    }
+    return result;
 }
 
 QString TestProbe::captureDirectory() const

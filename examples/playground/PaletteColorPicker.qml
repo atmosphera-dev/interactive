@@ -12,6 +12,7 @@ Item {
     required property string dialogTitle
     required property string namePrefix
     property string accessibleDescription: "Changes apply live; closing keeps edits."
+    property var pickerParentWindow: root.Window.window
     property string displayName: label
     property color readoutForeground: pickerButton.foregroundColor
     property bool dropdownIndicator: false
@@ -70,7 +71,7 @@ Item {
         id: dialog
         objectName: root.namePrefix + "ColorDialog"
         title: root.dialogTitle
-        parentWindow: root.Window.window
+        parentWindow: root.pickerParentWindow
         modality: Qt.NonModal
         options: ColorDialog.NoButtons | ColorDialog.ShowAlphaChannel
             | ColorDialog.NoEyeDropperButton | ColorDialog.DontUseNativeDialog

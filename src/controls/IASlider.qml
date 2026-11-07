@@ -6,6 +6,7 @@ import InterActive.Foundation as IA
 T.Slider {
     id: control
     property alias backgroundColor: appearance.backgroundColor
+    property alias fillColor: appearance.fillColor
     property alias foregroundColor: appearance.foregroundColor
     property alias hoverBackgroundColor: appearance.hoverBackgroundColor
     property alias pressedBackgroundColor: appearance.pressedBackgroundColor
@@ -16,7 +17,6 @@ T.Slider {
     property alias focusColor: appearance.focusColor
     property alias controlRadius: appearance.controlRadius
     property alias minimumHeight: appearance.minimumHeight
-    property alias fillColor: appearance.fillColor
     readonly property alias appearanceDiagnostics: appearance.diagnostics
     function resetAppearance(): void { appearance.resetOverrides(); }
     IA.ControlAppearance {

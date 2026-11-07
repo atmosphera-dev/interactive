@@ -42,6 +42,7 @@ Item {
     }
     NarrowMenuWindow { id: narrow320Window; viewportWidth: 320 }
     NarrowMenuWindow { id: narrow360Window; viewportWidth: 360 }
+    Main { id: consumerWindow; visible: false }
 
     SignalSpy { id: inputSpy; target: PlaygroundState; signalName: "appearanceInputChanged" }
     SignalSpy { id: menuOpenedSpy; signalName: "opened" }
@@ -140,6 +141,194 @@ Item {
             tryCompare(findChild(editor, "accentColorDialog") as Dialogs.ColorDialog, "visible", true);
         }
 
+        function test_toolbarGeometry_data(): var {
+            const rows = [];
+            for (const width of [320, 360, 1200])
+                for (const touch of [false, true])
+                    rows.push({tag: width + "-" + touch, width: width, touch: touch});
+            return rows;
+        }
+
+        function test_toolbarGeometry(data: var): void {
+            verify(PlaygroundState.setAppearance({density: data.touch ? "touch" : "compact", fontScale: data.touch ? 1.5 : 1}));
+            const component = Qt.createComponent("qrc:/qt/qml/InterActive/Playground/AppearanceToolbar.qml");
+            tryCompare(component, "status", Component.Ready);
+            const toolbar = createTemporaryObject(component, scene, {width: data.width}) as AppearanceToolbar;
+            verify(toolbar !== null);
+            verify(TestProbe.render(toolbar));
+            const items = toolbar.contentItem.children;
+            compare(items.length, 4, "Exactly three tools and one status, with no additional toolbar content");
+            const center = items[0].mapToItem(toolbar, 0, items[0].height / 2).y;
+            for (const item of items) {
+                const point = item.mapToItem(toolbar, 0, 0);
+                verify(point.x >= 0 && point.x + item.width <= data.width + 0.5);
+                fuzzyCompare(point.y + item.height / 2, center, 0.5);
+                const button = item as IAToolButton;
+                if (button !== null) {
+                    fuzzyCompare(button.width, button.height, 0.5, "Square tool slot");
+                    if (data.touch)
+                        verify(button.width >= 44 && button.height >= 44);
+                }
+            }
+            const button = findChild(toolbar, "toolbarAccentButton") as IAToolButton;
+            const swatch = findChild(toolbar, "toolbarAccentSwatch") as Rectangle;
+            const point = swatch.mapToItem(button, 0, 0);
+            fuzzyCompare(point.x, button.width - point.x - swatch.width, 0.5);
+            fuzzyCompare(point.y, button.height - point.y - swatch.height, 0.5);
+            fuzzyCompare(point.x, point.y, 0.5, "Uniform swatch facing-edge clearance");
+            compare((findChild(toolbar, "toolbarStatus") as IALabel).wrapMode, Text.NoWrap);
+        }
+
+        function test_toolbarAndAppearanceWindow(): void {
+            consumerWindow.show();
+            const toolbar = findChild(consumerWindow, "appearanceToolbar") as AppearanceToolbar;
+            const dialog = findChild(consumerWindow, "appearanceWindow") as IADialog;
+            const owner = dialog.contentItem as AppearanceEditor;
+            verify(toolbar !== null && dialog !== null && owner !== null);
+            tryVerify(function() { return TestProbe.exposed(toolbar); });
+            verify(TestProbe.activate(toolbar));
+            try {
+                const buttons = toolbar.contentItem.children.filter(function(item) { return (item as IAToolButton) !== null; });
+                compare(buttons.length, 3);
+                compare(buttons.map(function(item) { return item.objectName; }), ["appearanceScheme", "toolbarAccentButton", "appearanceOpen"]);
+                const status = findChild(toolbar, "toolbarStatus") as IALabel;
+                verify(status !== null);
+                compare(status.text, "0 saved accents");
+                compare(status.wrapMode, Text.NoWrap);
+                compare(status.foregroundColor, IA.Appearance.colors.secondaryText);
+                verify(TestProbe.render(toolbar));
+                const centers = buttons.concat([status]).map(function(item) { return item.mapToItem(toolbar, 0, item.height / 2).y; });
+                for (const center of centers)
+                    fuzzyCompare(center, centers[0], 0.5, "One toolbar centerline");
+                const rail = findChild(consumerWindow, "navigationRail") as IAPane;
+                const current = findChild(consumerWindow, "navigationCurrentPage") as IAItemDelegate;
+                const heading = findChild(consumerWindow, "navigationHeading") as IALabel;
+                const subtitle = findChild(consumerWindow, "navigationSubtitle") as IALabel;
+                verify(rail !== null && current !== null && heading !== null && subtitle !== null);
+                compare(rail.backgroundColor, IA.Appearance.colors.control);
+                compare(current.highlighted, true);
+                const delegateComponent = Qt.createComponent("qrc:/qt/qml/InterActive/IAItemDelegate.qml");
+                tryCompare(delegateComponent, "status", Component.Ready);
+                const ordinaryRow = createTemporaryObject(delegateComponent, scene) as IAItemDelegate;
+                verify(ordinaryRow !== null);
+                compare(current.selectedBackgroundColor, ordinaryRow.selectedBackgroundColor, "Unmodified library selection role");
+                verify(TestProbe.move(toolbar, toolbar.width - 2, toolbar.height / 2));
+                tryCompare(current, "hovered", false);
+                tryVerify(function() { return consumerWindow.active; });
+                compare((current.background as Rectangle).color, current.selectedBackgroundColor);
+                const label = findChild(current, "iaLabel") as Text;
+                verify(label !== null);
+                fuzzyCompare(heading.mapToItem(rail, heading.leftPadding, 0).x, label.mapToItem(rail, 0, 0).x, 0.5);
+                fuzzyCompare(subtitle.mapToItem(rail, subtitle.leftPadding, 0).x, label.mapToItem(rail, 0, 0).x, 0.5);
+                verify(TestProbe.click(buttons[0], buttons[0].width / 2, buttons[0].height / 2));
+                compare(IA.Appearance.scheme, "dark");
+                verify(TestProbe.click(buttons[0], buttons[0].width / 2, buttons[0].height / 2));
+                compare(IA.Appearance.scheme, "light");
+                verify(TestProbe.click(buttons[1], buttons[1].width / 2, buttons[1].height / 2));
+                const menu = accentMenuFor(owner);
+                tryCompare(menu, "opened", true);
+                const preset = revealMenuItem(menu, 1);
+                verify(TestProbe.click(preset, preset.width / 2, preset.height / 2));
+                tryCompare(menu, "visible", false);
+                compare((findChild(toolbar, "toolbarAccentSwatch") as Rectangle).color, "#245bdb");
+                verify(TestProbe.click(buttons[1], buttons[1].width / 2, buttons[1].height / 2));
+                tryCompare(menu, "opened", true);
+                const custom = revealMenuItem(menu, 12);
+                verify(TestProbe.click(custom, custom.width / 2, custom.height / 2));
+                tryCompare(menu, "visible", false);
+                const picker = findChild(owner, "accentColorDialog") as Dialogs.ColorDialog;
+                assertPickerColor(picker, IA.Appearance.colors.accent);
+                compare(dialog.visible, false, "Toolbar Custom does not require opening Appearance");
+                picker.close();
+                tryCompare(picker, "visible", false);
+                verify(TestProbe.activate(toolbar));
+                verify(TestProbe.click(buttons[2], buttons[2].width / 2, buttons[2].height / 2));
+                tryCompare(dialog, "opened", true);
+                compare(dialog.popupType, T.Popup.Window);
+                tryVerify(function() { return TestProbe.exposed(owner); });
+                verify(TestProbe.hostWindow(owner) !== TestProbe.hostWindow(toolbar), "Appearance is a real separate IA dialog window");
+                verify(TestProbe.render(owner));
+                for (const name of ["appearanceLight", "appearanceDark", "appearanceReset", "accentPickerButton", "resetAccentButton",
+                    "amberPickerButton", "resetAmberButton", "dangerPickerButton", "resetDangerButton", "savePaletteButton",
+                    "appearanceTouch", "appearanceContrast", "appearanceEditorToggle", "paletteSamplePath", "paletteHistoryStatus",
+                    "paletteRootExplanation", "paletteSaveStatus", "accentHexField", "applyAccentHex", "appearanceJson", "appearanceInspector"])
+                    verify(findChild(owner, name) !== null, name + " retained in Appearance window");
+                const touch = findChild(owner, "appearanceTouch") as IAToolButton;
+                const preview = findChild(owner, "appearanceContrast") as IAToolButton;
+                const toggle = findChild(owner, "appearanceEditorToggle") as IAToolButton;
+                const save = findChild(owner, "savePaletteButton") as IAButton;
+                verify(TestProbe.click(save, save.width / 2, save.height / 2));
+                compare(TestProbe.paletteSamples().length, 1);
+                compare(status.text, "1 saved accents");
+                verify(TestProbe.click(touch, touch.width / 2, touch.height / 2));
+                compare(IA.Appearance.density, "touch");
+                verify(TestProbe.render(owner));
+                verify(TestProbe.click(preview, preview.width / 2, preview.height / 2));
+                compare(IA.Appearance.contrast, "high");
+                verify(TestProbe.render(owner));
+                verify(TestProbe.click(toggle, toggle.width / 2, toggle.height / 2));
+                compare(toggle.checked, true);
+                owner.accentDraft = "#123abc";
+                const json = findChild(owner, "appearanceJson") as IATextField;
+                const identity = json;
+                verify(TestProbe.render(owner));
+                const inputScroll = findChild(owner, "appearanceInputScroll") as IAScrollView;
+                const outerScroll = findChild(owner, "paletteToolbarScroll") as IAScrollView;
+                verify(inputScroll !== null && outerScroll !== null);
+                for (const entry of [{scroll: inputScroll, item: json}, {scroll: outerScroll, item: inputScroll}]) {
+                    const flick = entry.scroll.contentItem as Flickable;
+                    verify(flick !== null);
+                    const center = entry.item.mapToItem(flick.contentItem, 0, entry.item.height / 2).y;
+                    flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height, center - flick.height / 2));
+                    verify(TestProbe.render(owner));
+                }
+                const host = TestProbe.hostWindow(owner);
+                const point = json.mapToItem(host.contentItem, 0, 0);
+                verify(point.x >= 0 && point.x + json.width <= host.width + 0.5);
+                verify(point.y >= 0 && point.y + json.height <= host.height + 0.5, "Moved JSON editor is reachable in the actual native viewport");
+                const queue = [inputScroll];
+                while (queue.length > 0) {
+                    const item = queue.pop() as Item;
+                    const field = item as IATextField;
+                    const button = item as IAButton;
+                    if (field !== null || (button !== null && button.text === "Set")) {
+                        for (const scroll of [inputScroll, outerScroll]) {
+                            const position = item.mapToItem(scroll, 0, 0);
+                            const leading = scroll.mirrored ? scroll.effectiveScrollBarWidth : 0;
+                            const trailing = scroll.mirrored ? scroll.width : scroll.width - scroll.effectiveScrollBarWidth;
+                            verify(position.x >= leading - 0.5 && position.x + item.width <= trailing + 0.5,
+                                "Every input field/Set action stays outside the actual scrollbar lane");
+                        }
+                    }
+                    for (const child of item.children)
+                        queue.push(child);
+                }
+                verify(TestProbe.click(json, json.width / 2, json.height / 2));
+                verify(TestProbe.keyClick(json, Qt.Key_A, Qt.ControlModifier));
+                verify(TestProbe.typeAscii(json, '{"tokens":'));
+                compare(owner.jsonDraft, '{"tokens":');
+                verify(TestProbe.render(owner));
+                dialog.close();
+                tryCompare(dialog, "visible", false);
+                verify(TestProbe.activate(toolbar));
+                tryVerify(function() { return consumerWindow.active; });
+                verify(TestProbe.render(toolbar));
+                verify(TestProbe.click(buttons[2], buttons[2].width / 2, buttons[2].height / 2));
+                tryCompare(dialog, "opened", true);
+                compare(findChild(owner, "appearanceJson"), identity);
+                compare(json.text, '{"tokens":');
+                compare(owner.accentDraft, "#123abc");
+                compare(toggle.checked, true);
+                compare(touch.checked, true);
+                compare(preview.checked, true);
+            } finally {
+                dialog.close();
+                tryCompare(dialog, "visible", false);
+                consumerWindow.close();
+                verify(TestProbe.activate(page));
+            }
+        }
+
         function test_accentPresetSelectionAndPreservation(): void {
             editor.visible = true;
             verify(TestProbe.writePaletteHistory(["#49335f", "#5c9cf5", "#49335f"]));
@@ -221,6 +410,9 @@ Item {
             menuOpenedSpy.clear();
             inputSpy.clear();
             verify(TestProbe.render(editor));
+            // Keyboard navigation starts without a stale pointer over a menu
+            // row from the preceding data case or an old toolbar position.
+            verify(TestProbe.move(scene, scene.width - 2, scene.height - 2));
             opener.forceActiveFocus(Qt.TabFocusReason);
             verify(TestProbe.keyClick(opener, data.key));
             tryCompare(menu, "opened", true);

@@ -6,11 +6,11 @@ import InterActive.Foundation as IA
 T.ProgressBar {
     id: control
     property alias backgroundColor: appearance.backgroundColor
+    property alias fillColor: appearance.fillColor
     property alias foregroundColor: appearance.foregroundColor
     property alias disabledBackgroundColor: appearance.disabledBackgroundColor
     property alias disabledForegroundColor: appearance.disabledForegroundColor
     property alias controlRadius: appearance.controlRadius
-    property alias fillColor: appearance.fillColor
     readonly property alias appearanceDiagnostics: appearance.diagnostics
     function resetAppearance(): void { appearance.resetOverrides(); }
     IA.ControlAppearance {
