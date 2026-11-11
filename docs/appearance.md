@@ -554,7 +554,7 @@ change. Font/geometry edits do not rebuild the table. Shared pair diagnostics ar
 reused from the palette; locally affected pairs retain their dependency caches.
 
 The additive read-only value API is `appearance.stateTable.colors(state)`, returning
-`backgroundColor`, `foregroundColor`, `borderColor`, `focusColor`, `focusedBorderColor`,
+`backgroundColor`, `foregroundColor`, `borderColor`, `borderWidth`, `focusColor`, `focusedBorderColor`,
 `focusedBorderWidth`, `fillColor`,
 `trackColor`, `thumbColor`, and `placeholderTextColor`. Fill uses the ordinary fill or disabled
 foreground. The `slider` family supplies a neutral `controlPressed`-seeded remainder,
@@ -569,7 +569,7 @@ The table also holds field `selectionColor`/`selectedTextColor` and label
 fill/foreground overrides, exactly as before. `stateTable`
 is a small owning value around shared immutable storage, not another QObject or
 an eagerly boxed list per control. Its `stateTableChanged` signal tracks changed
-effective state colors or focus width, so reading the property establishes a QML binding
+effective state colors, conditional border width or focus width, so reading the property establishes a QML binding
 dependency before the indexed lookup. Stored value copies retain their snapshot.
 `Presentation.State` exposes `Rest`, `Hover`, `Pressed`, `Selected`, `SelectedHover`,
 `SelectedPressed`, `Inactive`, `InactiveHover`, and `Disabled`. These entries encode
@@ -628,18 +628,25 @@ Only table construction performs these searches: unmodified controls share the
 palette's memoized table, genuine local branches cache their own finished table,
 and hover/press still perform only the indexed lookup.
 
-`IAMenuItem` selects the Foundation `menuItem` family. Its navigation highlight uses the accent's
-hue/chroma with a tone adjusted for a light (white) paired label at the 7:1 label
-target in all four modes, not the ordinary neutral selection band. The existing
-HCT helper measures quantized proposals and retains the strongest available pair
-if the target is impossible. This happens only in the memoized table builder;
-the global accent/on-accent tokens remain unchanged. Selected and inactive
-highlight entries use the same recipe. Explicit selected/inactive colors and an
-explicit application on-accent label remain exact; incompatible pairs produce
-the usual contrast diagnostic. Disabled entries never use the band, and
-checking an item still changes only its mark. Destructive commands keep the ordinary
-transparent row with the `errorText` danger role; they use the same accent/light-label
-navigation band when highlighted, never a red fill. The existing table-time feedback
+`IAMenuItem` selects the Foundation `menuItem` family. Its navigation highlight uses
+the exact `accent` fill and finished `onAccent` label in every highlighted state,
+including hover, press and inactive navigation. Explicit selected/inactive backgrounds
+own their sparse pairs; an unspecified local partner is derived for readability.
+Explicit paired text, including equal-valued assignments, stays exact and incompatible
+pairs produce the usual contrast diagnostic. Reset resumes the current shared pair.
+Unrelated local overrides do not change the highlight. The separate Choice center
+recipe is unchanged. Disabled entries never highlight, and checking alone changes
+only the mark. Destructive commands keep the ordinary transparent row with the
+`errorText` danger role and use the same accent/onAccent highlight, never a red fill.
+Foundation compares the effective highlighted fill against the composited palette
+`popup` surface once during shared/private table construction. Below 5:1 normal or
+7:1 high contrast it supplies a conditional inward border, colored from the finished
+resting Primary Button table. A local `borderColor` overrides that color exactly.
+The immutable entry retains the conditional flag; `StateTable` snapshots the current
+`metrics.borderWidth` as `StateColors.borderWidth` (zero when absent), independently
+of color caching. Metric changes notify without rebuilding palettes or color tables.
+The native row Rectangle draws the border without changing content geometry, and
+its existing focus border still takes precedence. The existing table-time feedback
 recipe may finalize an unowned danger foreground for hover headroom; explicit
 `errorText` remains exact. Other action tones are unchanged.
 The native menu's shared `textPadding` reserves one leading lane across rows. Inside
@@ -728,7 +735,7 @@ delegates/menu items do not reinterpret navigation highlight as Primary.
 | 7 | `delegate`, `tab` | Transparent / text; `rowHeight` |
 | 8 | `choice` | Transparent / text; `controlHeight` |
 | 9 | `tooltip` | Tooltip background/text; `supportingSize`; no hover/press recoloring |
-| 10 | `menuItem` | Delegate geometry/resting mapping; accent-tone/light-label navigation highlight |
+| 10 | `menuItem` | Delegate geometry/resting mapping; exact accent/onAccent navigation highlight with conditional inward outline |
 | 11 | `tabBar` | Quiet `control`-seeded group track; `spacingXS` insets; no interaction recoloring |
 | 12 | `slider` | Neutral thumb with interaction feedback; independent neutral value remainder and accent fill |
 | 13 | `progress` | Passive neutral value remainder and accent fill |

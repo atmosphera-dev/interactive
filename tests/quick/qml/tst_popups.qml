@@ -13,6 +13,7 @@ Item {
     Component { id: popupComponent; PopupFixture {} }
     Component { id: buttonBoxComponent; IADialogButtonBox {} }
     Component { id: emptyDialogComponent; IADialog {} }
+    Component { id: primaryAppearanceComponent; IA.ControlAppearance { source: IA.Appearance; tone: IA.Presentation.Primary } }
 
     TestCase {
         name: "PopupConsumers"
@@ -75,6 +76,79 @@ Item {
         }
 
         function test_menuThemeWhileOpen_data(): var { return modes(); }
+
+        function test_exactAccentMenu_data(): var {
+            const rows = [];
+            for (const host of modes()) {
+                for (const scheme of ["light", "dark"]) {
+                    for (const contrast of ["normal", "high"]) {
+                        for (const rtl of [false, true])
+                            rows.push({tag: host.tag + "-" + scheme + "-" + contrast + "-" + rtl,
+                                mode: host.mode, scheme: scheme, contrast: contrast, rtl: rtl});
+                    }
+                }
+            }
+            return rows;
+        }
+
+        function menuContrast(first: color, second: color): real {
+            const luminance = function(value) {
+                const channel = function(c) { return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+                return 0.2126 * channel(value.r) + 0.7152 * channel(value.g) + 0.0722 * channel(value.b);
+            };
+            const a = luminance(first), b = luminance(second);
+            return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+        }
+
+        function test_exactAccentMenu(data: var): void {
+            IA.Appearance.input = {scheme: data.scheme, contrast: data.contrast};
+            openWithKeyboard(fixture.menuOpener, fixture.menu, data.mode);
+            const row = fixture.firstAction;
+            row.LayoutMirroring.enabled = data.rtl;
+            fixture.menu.currentIndex = 0;
+            row.forceActiveFocus(Qt.MouseFocusReason);
+            tryCompare(row, "highlighted", true);
+            tryCompare(row, "visualFocus", false);
+            const surface = row.background as IA.ControlBackground;
+            const primary = createTemporaryObject(primaryAppearanceComponent, scene) as IA.ControlAppearance;
+            verify(surface !== null && primary !== null);
+            const label = findChild(row, "iaLabel") as Text;
+            const shortcut = findChild(row, "iaShortcut") as Text;
+            verify(label !== null && shortcut !== null);
+            verify(TestProbe.render(row));
+            const content = row.contentItem;
+            const geometry = [row.x, row.y, row.width, row.height, row.implicitWidth, row.implicitHeight,
+                content.x, content.y, content.width, content.height, label.x, label.y, label.width, label.height];
+            for (const accent of ["", "#F5D90A", data.scheme === "light" ? "#F2F3F5" : "#303237", "#7A1F1F"]) {
+                IA.Appearance.input = {scheme: data.scheme, contrast: data.contrast,
+                    tokens: {colors: accent.length > 0 ? {accent: accent} : {}}};
+                assertHost(fixture.menu, data.mode);
+                compare(surface.color, IA.Appearance.colors.accent);
+                compare(label.color, IA.Appearance.colors.onAccent);
+                compare(shortcut.color, label.color);
+                verify(menuContrast(label.color, surface.color) >= 7);
+                const outlined = menuContrast(surface.color, IA.Appearance.colors.popup) < (data.contrast === "high" ? 7 : 5);
+                compare(surface.border.width, outlined ? IA.Appearance.metrics.borderWidth : 0);
+                compare(surface.border.color, primary.stateTable.colors(IA.Presentation.Rest).borderColor);
+                verify(TestProbe.render(row));
+                compare([row.x, row.y, row.width, row.height, row.implicitWidth, row.implicitHeight,
+                    content.x, content.y, content.width, content.height, label.x, label.y, label.width, label.height],
+                    geometry, "Live highlight and outline preserve row/content bounds");
+                const root = TestProbe.hostWindow(row).contentItem;
+                const pixels = grabImage(root);
+                for (const sample of [
+                    {y: 0.5, color: outlined ? surface.border.color : surface.color},
+                    {y: surface.height - 5, color: surface.color}
+                ]) {
+                    const point = surface.mapToItem(root, surface.width / 2, sample.y);
+                    fuzzyCompare(pixels.pixel(Math.floor(point.x * pixels.width / root.width),
+                        Math.floor(point.y * pixels.height / root.height)), sample.color, 2,
+                        "Real popup exact fill and inward outline pixels");
+                }
+            }
+            fixture.menu.close();
+        }
+
         function test_menuThemeWhileOpen(data: var): void {
             openWithKeyboard(fixture.menuOpener, fixture.menu, data.mode);
             const background = fixture.menu.background as Rectangle;

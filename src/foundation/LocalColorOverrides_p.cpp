@@ -197,18 +197,8 @@ std::shared_ptr<const StateTableData> LocalColorOverrides::buildStateTable(
         diagnoseOwned(ControlColor::selectedBackgroundColor, {rest, hover}, 3);
     }
     if (recipe.family == ControlFamily::MenuItem) {
-        // The accent is a hue/chroma seed, not a fixed highlight surface.
-        // Solve its tone against light text, using the existing quantized HCT
-        // target/best-effort helper. Explicit selected/inactive pairs still win.
-        const auto highlight = [&](ControlColor background, ControlColor foreground) {
-            if (!owned(background) && !owned(foreground))
-                put(foreground, QColor(Qt::white));
-            if (!owned(background))
-                put(background, ColorMath::contrastingText(recipe.accent,
-                    {values.value(foreground)}, canvas, LabelContrastTarget));
-        };
-        highlight(ControlColor::selectedBackgroundColor, ControlColor::selectedForegroundColor);
-        highlight(ControlColor::inactiveBackgroundColor, ControlColor::inactiveForegroundColor);
+        // The mapped accent/onAccent pair is already finished. Sparse local
+        // selected/inactive pairs are installed before this common builder.
         selectedHover = values.value(ControlColor::selectedBackgroundColor);
     }
     if (rest.alpha() == 0 && !owned(ControlColor::disabledBackgroundColor))
@@ -276,6 +266,10 @@ std::shared_ptr<const StateTableData> LocalColorOverrides::buildStateTable(
             : progress || scroll ? fill : values.value(ControlColor::borderColor);
         const QColor thumb = scroll ? (disabled ? values.value(ControlColor::disabledForegroundColor) : scrollThumb)
             : slider ? fill : QColor();
+        const bool menuHighlight = recipe.family == ControlFamily::MenuItem && !disabled
+            && (foreground == ControlColor::selectedForegroundColor || foreground == ControlColor::inactiveForegroundColor);
+        const bool conditionalBorder = menuHighlight && ColorMath::contrastRatio(fill,
+            sharedColors[size_t(StateTableColor::MenuPopup)]) < recipe.target;
         return StateColors(fill, values.value(foreground),
             border, focus,
             values.value(disabled ? ControlColor::disabledForegroundColor : ControlColor::fillColor),
@@ -285,7 +279,7 @@ std::shared_ptr<const StateTableData> LocalColorOverrides::buildStateTable(
              sharedColors[size_t(StateTableColor::ChoiceGap)], choice ? center : QColor(),
              !choice ? QColor() : disabled ? disabledMark
                  : foreground == ControlColor::inactiveForegroundColor ? values.value(foreground) : onMark,
-              choice ? track : QColor(), thumb);
+              choice ? track : QColor(), thumb, conditionalBorder);
     };
     const auto ordinary = entry(rest, ControlColor::foregroundColor, false, on, offTrack, scrollRest);
     const auto hover = entry(values.value(ControlColor::hoverBackgroundColor), ControlColor::foregroundColor,

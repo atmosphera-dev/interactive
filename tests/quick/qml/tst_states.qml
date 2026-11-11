@@ -395,7 +395,8 @@ Item {
             IA.Appearance.input = {scheme: data.scheme, contrast: data.contrast};
             item.highlighted = true;
             compare(surface.color, item.selectedBackgroundColor);
-            compare(label.color, "#ffffff");
+            compare(surface.color, IA.Appearance.colors.accent);
+            compare(label.color, IA.Appearance.colors.onAccent);
             verify(menuPairContrast(label.color, surface.color) >= 7);
             for (const component of [menuSeparatorComponent, toolSeparatorComponent]) {
                 const separator = createTemporaryObject(component, scene);
@@ -648,9 +649,11 @@ Item {
             const rows = [];
             for (const scheme of ["light", "dark"]) {
                 for (const contrast of ["normal", "high"]) {
-                    for (const accent of ["#5c9cf5", "#ffff00", "#800020"])
-                        rows.push({tag: scheme + "-" + contrast + "-" + accent,
-                            scheme: scheme, contrast: contrast, accent: accent});
+                    for (const accent of ["", "#F5D90A", scheme === "light" ? "#F2F3F5" : "#303237", "#7A1F1F"]) {
+                        for (const rtl of [false, true])
+                            rows.push({tag: scheme + "-" + contrast + "-" + accent + "-" + rtl,
+                                scheme: scheme, contrast: contrast, accent: accent, rtl: rtl});
+                    }
                 }
             }
             return rows;
@@ -705,29 +708,48 @@ Item {
 
         function test_menuHighlightPair(data: var): void {
             IA.Appearance.input = {scheme: data.scheme, contrast: data.contrast,
-                tokens: {colors: {accent: data.accent}}};
+                tokens: {colors: data.accent.length > 0 ? {accent: data.accent} : {}}};
             const item = createTemporaryObject(menuItemComponent, scene, {
                 x: 20, y: 20, width: 240, text: "Command", checkable: true, checked: true
             }) as IAMenuItem;
             verify(item !== null);
+            item.LayoutMirroring.enabled = data.rtl;
             const background = item.background as IA.ControlBackground;
             const mark = item.indicator as IA.Icon;
             verify(background !== null && mark !== null);
             verify(TestProbe.render(item));
+            const content = item.contentItem;
+            const geometry = [item.x, item.y, item.width, item.height, item.implicitWidth, item.implicitHeight,
+                content.x, content.y, content.width, content.height];
             compare(background.color.a, 0, "Checking alone does not add a band");
             verify(mark.visible);
             item.highlighted = true;
             compare(background.color, item.selectedBackgroundColor);
-            compare(background.foregroundColor, "#ffffff");
+            compare(background.color, IA.Appearance.colors.accent);
+            compare(background.foregroundColor, IA.Appearance.colors.onAccent);
+            const primary = createTemporaryObject(buttonComponent, scene, {tone: IA.Presentation.Primary, visible: false}) as IAButton;
+            verify(primary !== null);
+            compare(background.border.color, (primary.background as IA.ControlBackground)
+                .resolvedAppearance.stateTable.colors(IA.Presentation.Rest).borderColor);
+            const outlined = menuPairContrast(background.color, IA.Appearance.colors.popup) < (data.contrast === "high" ? 7 : 5);
+            compare(background.border.width, outlined ? IA.Appearance.metrics.borderWidth : 0);
+            verify(TestProbe.render(item));
+            const pixels = grabImage(scene);
+            fuzzyCompare(samplePixel(pixels, background, background.width / 2, 0.5),
+                outlined ? background.border.color : background.color, 2, "Native inward border pixel");
+            fuzzyCompare(samplePixel(pixels, background, background.width / 2, background.height - 5),
+                background.color, 2, "Exact accent fill pixel");
+            compare([item.x, item.y, item.width, item.height, item.implicitWidth, item.implicitHeight,
+                content.x, content.y, content.width, content.height], geometry, "No row or content layout shift");
             compare(mark.color, background.foregroundColor);
             const label = findChild(item, "iaLabel") as Text;
             verify(label !== null);
             compare(label.color, background.foregroundColor);
             verify(menuPairContrast(label.color, background.color) >= 7,
-                "Actual menu label reaches the 7:1 target on its band");
+                "Actual menu label reaches the 7:1 target on the exact accent");
             background.active = false;
             compare(background.color, item.selectedBackgroundColor, "Menu highlight is not inactive selection");
-            compare(label.color, "#ffffff");
+            compare(label.color, IA.Appearance.colors.onAccent);
             verify(menuPairContrast(label.color, background.color) >= 7);
             item.enabled = false;
             compare(background.color.a, 0, "Disabled wins even over a highlighted checked row");

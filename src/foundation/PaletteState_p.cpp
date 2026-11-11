@@ -328,17 +328,15 @@ std::shared_ptr<const StateTableData> PaletteState::stateTable(ControlFamily fam
         recipe.pressedBlend = pressedBlend;
         recipe.accent = color(ColorRole::accent);
         recipe.onAccent = color(ColorRole::onAccent);
-        recipe.coupleBorder = t != 0 && !familyDescriptor(family).usesSemanticText(tone)
+        recipe.coupleBorder = family != ControlFamily::MenuItem && t != 0 && !familyDescriptor(family).usesSemanticText(tone)
             && validation == Presentation::None && !explicitRole(mapping[size_t(ControlColor::borderColor)]);
         ControlColorValues values;
         for (size_t i = 0; i < ControlColorCount; ++i) {
             values.set(ControlColor(i), color(mapping[i]));
             recipe.owned.set(i, explicitRole(mapping[i]));
         }
-        if (family == ControlFamily::MenuItem || family == ControlFamily::Choice) {
-            // An explicit accent still seeds the derived menu band; it owns the
-            // accent token, not this distinct surface. Local band overrides are
-            // added to ownership by LocalColorOverrides::install afterwards.
+        if (family == ControlFamily::Choice) {
+            // Choice keeps its separately derived accent center recipe.
             recipe.owned.reset(size_t(ControlColor::selectedBackgroundColor));
             recipe.owned.reset(size_t(ControlColor::inactiveBackgroundColor));
         }
@@ -355,6 +353,12 @@ std::shared_ptr<const StateTableData> PaletteState::stateTable(ControlFamily fam
                     recipe.owned.set(i);
         }
         StateTableSharedColors sharedColors;
+        if (family == ControlFamily::MenuItem) {
+            sharedColors[size_t(StateTableColor::MenuPopup)] = ColorMath::composite(color(ColorRole::popup), backdrop);
+            values.set(ControlColor::borderColor,
+                stateTable(ControlFamily::Button, Presentation::Primary, Presentation::None)
+                    ->states[size_t(Presentation::Rest)].borderColor());
+        }
         if (family == ControlFamily::Field) {
             sharedColors[size_t(StateTableColor::Placeholder)] = color(ColorRole::placeholderText);
             sharedColors[size_t(StateTableColor::Selection)] = color(ColorRole::accent);

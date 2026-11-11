@@ -157,5 +157,6 @@ T.MenuItem {
         active: control.Window.active
         focused: control.visualFocus
         outlined: false
+        border.width: focused ? colors.focusedBorderWidth : colors.borderWidth
     }
 }

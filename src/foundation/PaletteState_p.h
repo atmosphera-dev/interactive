@@ -89,7 +89,7 @@ using ControlNoncolorOverrides = SparseControlValues<ControlNoncolorValue, Contr
 using ControlInputErrors = SparseControlValues<QVariantMap, size_t(ControlInput::Count)>;
 
 enum class StateTableColor { Placeholder, Selection, SelectionText, Link, ChoiceTrack, ChoiceDisabledTrack, ChoiceGap,
-    ValueRemainder, ScrollHover, ScrollPressed, Count };
+    ValueRemainder, ScrollHover, ScrollPressed, MenuPopup, Count };
 using StateTableSharedColors = std::array<QColor, size_t(StateTableColor::Count)>;
 
 enum class ControlFamily { Button, Tool, Field, Surface, Popup, Label, Delegate, Tab, Choice, Tooltip, MenuItem, TabBar,

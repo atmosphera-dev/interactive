@@ -355,6 +355,7 @@ private slots:
     void neutralFocusBorder();
     void stateFeedbackMatrix();
     void menuHighlightPairs();
+    void menuHighlightLiveDependencies();
     void tabModeAndSeparatorContracts();
     void valueAndScrollRoles();
     void stateSweepDoesNoFoundationWork();
@@ -425,7 +426,8 @@ void AppearanceTests::stateFeedbackMatrix()
                     check(false);
                     if (QLatin1String(family) == QLatin1String("menuItem")) {
                         const auto band = control.stateTable().colors(Presentation::Selected);
-                        QCOMPARE(band.foregroundColor(), QColor(Qt::white));
+                        QCOMPARE(band.backgroundColor(), source.colors()->accent());
+                        QCOMPARE(band.foregroundColor(), source.colors()->onAccent());
                         verifyReadableContrast(band.foregroundColor(), band.backgroundColor(), backdrop, 7, context);
                         QCOMPARE(control.stateTable().colors(Presentation::SelectedHover), control.stateTable().colors(Presentation::Selected));
                     }
@@ -466,39 +468,179 @@ void AppearanceTests::menuHighlightPairs()
     control.setFamily(QStringLiteral("menuItem"));
     for (const auto *scheme : {"light", "dark"}) {
         for (const auto *contrast : {"normal", "high"}) {
-            for (const QColor &accent : {QColor("#5c9cf5"), QColor("#ffff00"), QColor("#800020")}) {
-                source.setInput(paletteInput(QLatin1String(scheme), QLatin1String(contrast), {{QStringLiteral("accent"), accent}}));
-                QCOMPARE(source.colors()->accent(), accent); // The accent token itself stays exact.
+            for (const QColor &requested : {QColor(), QColor("#F5D90A"),
+                     QColor(QLatin1String(scheme) == QLatin1String("light") ? "#F2F3F5" : "#303237"), QColor("#7A1F1F")}) {
+                const QVariantMap overrides = requested.isValid() ? QVariantMap{{QStringLiteral("accent"), requested}} : QVariantMap{};
+                source.setInput(paletteInput(QLatin1String(scheme), QLatin1String(contrast), overrides));
+                const QColor accent = source.colors()->accent();
+                if (requested.isValid())
+                    QCOMPARE(accent, requested);
                 const QColor backdrop = opaqueOver(source.colors()->content(), source.colors()->canvas());
+                const QColor popup = opaqueOver(source.colors()->popup(), backdrop);
+                ControlAppearance primary;
+                primary.setSource(&source);
+                primary.setTone(Presentation::Primary);
+                const auto border = primary.stateTable().colors(Presentation::Rest).borderColor();
+                const qreal width = rgbContrast(accent, popup) < (QLatin1String(contrast) == QLatin1String("high") ? 7 : 5)
+                    ? source.metrics()->borderWidth() : 0;
                 for (const auto tone : {Presentation::Neutral, Presentation::Primary, Presentation::Caution, Presentation::Destructive}) {
                     control.setTone(tone);
                     const auto band = control.stateTable().colors(Presentation::Selected);
-                    QCOMPARE(band.foregroundColor(), QColor(Qt::white));
+                    QCOMPARE(band.backgroundColor(), accent);
+                    QCOMPARE(band.foregroundColor(), source.colors()->onAccent());
+                    QCOMPARE(band.borderColor(), border);
+                    QCOMPARE(band.borderWidth(), width);
                     verifyReadableContrast(band.foregroundColor(), band.backgroundColor(), backdrop, 7);
-                    const mcu::Hct seed(accent.rgb()), fill(band.backgroundColor().rgb());
-                    const qreal hueDifference = std::abs(seed.get_hue() - fill.get_hue());
-                    QVERIFY(std::min(hueDifference, 360 - hueDifference) < 5);
-                    QVERIFY(fill.get_tone() <= seed.get_tone() + 0.1);
                     for (const auto state : {Presentation::SelectedHover, Presentation::SelectedPressed,
                              Presentation::Inactive, Presentation::InactiveHover}) {
                         const auto entry = control.stateTable().colors(state);
                         QCOMPARE(entry.backgroundColor(), band.backgroundColor());
                         QCOMPARE(entry.foregroundColor(), band.foregroundColor());
+                        QCOMPARE(entry.borderWidth(), width);
+                        QCOMPARE(entry.borderColor(), border);
                     }
+                    QCOMPARE(control.stateTable().colors(Presentation::Rest).borderWidth(), 0);
+                    QCOMPARE(control.stateTable().colors(Presentation::Disabled).borderWidth(), 0);
                     control.setBorderColor(QColor("#123456")); // Private and shared builders agree.
                     QCOMPARE(control.stateTable().colors(Presentation::Selected).backgroundColor(), band.backgroundColor());
                     QCOMPARE(control.stateTable().colors(Presentation::Selected).foregroundColor(), band.foregroundColor());
+                    QCOMPARE(control.stateTable().colors(Presentation::Selected).borderColor(), QColor("#123456"));
+                    control.resetOverrides();
+                    control.setBackgroundColor(QColor("#e0e0e0")); // Unrelated private branch must not darken the highlight.
+                    QCOMPARE(control.stateTable().colors(Presentation::Selected).backgroundColor(), accent);
+                    QCOMPARE(control.stateTable().colors(Presentation::Selected).foregroundColor(), source.colors()->onAccent());
+                    control.resetOverrides();
+                    control.setSelectedBackgroundColor(accent); // Equal assignments still own their pair.
+                    control.setSelectedForegroundColor(source.colors()->onAccent());
+                    control.setInactiveBackgroundColor(accent);
+                    control.setInactiveForegroundColor(source.colors()->onAccent());
+                    QCOMPARE(control.stateTable().colors(Presentation::Selected), band);
+                    QCOMPARE(control.stateTable().colors(Presentation::Inactive), band);
                     control.resetOverrides();
                     control.setSelectedBackgroundColor(QColor("#abcd12"));
                     QCOMPARE(control.selectedBackgroundColor(), QColor("#abcd12"));
                     verifyReadableContrast(control.selectedForegroundColor(), control.selectedBackgroundColor(), backdrop, 7);
+                    QCOMPARE(control.stateTable().colors(Presentation::Selected).borderWidth(),
+                        rgbContrast(control.selectedBackgroundColor(), popup) < (QLatin1String(contrast) == QLatin1String("high") ? 7 : 5)
+                            ? source.metrics()->borderWidth() : 0);
                     control.setSelectedForegroundColor(QColor("#123456"));
                     QCOMPARE(control.selectedForegroundColor(), QColor("#123456"));
+                    control.setInactiveBackgroundColor(QColor("#f0f0f0"));
+                    verifyReadableContrast(control.inactiveForegroundColor(), control.inactiveBackgroundColor(), backdrop, 7);
+                    QCOMPARE(control.stateTable().colors(Presentation::Inactive).borderWidth(),
+                        rgbContrast(control.inactiveBackgroundColor(), popup) < (QLatin1String(contrast) == QLatin1String("high") ? 7 : 5)
+                            ? source.metrics()->borderWidth() : 0);
+                    control.setInactiveForegroundColor(QColor("#f0f0f0"));
+                    QCOMPARE(control.inactiveForegroundColor(), QColor("#f0f0f0"));
+                    QVERIFY(hasDiagnostic(control.diagnostics(), QStringLiteral("low-contrast"),
+                        QStringLiteral("inactiveForegroundColor/inactiveBackgroundColor")));
+                    control.resetOverrides();
+                    QCOMPARE(control.stateTable().colors(Presentation::Selected), band);
+                    control.setSelectedForegroundColor(QColor("#aaaaaa"));
+                    QCOMPARE(control.selectedBackgroundColor(), accent);
+                    QCOMPARE(control.selectedForegroundColor(), QColor("#aaaaaa"));
                     control.resetOverrides();
                 }
             }
         }
     }
+}
+
+void AppearanceTests::menuHighlightLiveDependencies()
+{
+    Appearance source;
+    ControlAppearance menu, primary;
+    menu.setSource(&source);
+    menu.setFamily(QStringLiteral("menuItem"));
+    primary.setSource(&source);
+    primary.setTone(Presentation::Primary);
+    auto colors = source.colors()->values(); // Freeze unrelated roles to isolate each dependency.
+    colors.insert(QStringLiteral("accent"), QColor("#F2F3F5"));
+    colors.insert(QStringLiteral("onAccent"), QColor(Qt::black));
+    auto install = [&] { source.setInput(tokenInput(QStringLiteral("colors"), colors)); };
+    install();
+    QSignalSpy changed(&menu, &ControlAppearance::stateTableChanged);
+    const auto checkBorder = [&] {
+        QCOMPARE(menu.stateTable().colors(Presentation::Selected).borderColor(),
+            primary.stateTable().colors(Presentation::Rest).borderColor());
+    };
+    checkBorder();
+    colors.insert(QStringLiteral("popup"), QColor(Qt::black));
+    install();
+    QCOMPARE(menu.stateTable().colors(Presentation::Selected).borderWidth(), 0);
+    QVERIFY(changed.count() > 0);
+    changed.clear();
+    colors.insert(QStringLiteral("popup"), QColor("#F2F3F5"));
+    install();
+    QCOMPARE(menu.stateTable().colors(Presentation::Selected).borderWidth(), source.metrics()->borderWidth());
+    QVERIFY(changed.count() > 0);
+    changed.clear();
+    colors.insert(QStringLiteral("primaryOutline"), QColor("#123456"));
+    install();
+    checkBorder();
+    QCOMPARE(menu.stateTable().colors(Presentation::Selected).borderColor(), QColor("#123456"));
+    QVERIFY(changed.count() > 0);
+    // Presence alone participates in Primary's outline coupling, even when
+    // the finished values happen to remain equal.
+    colors.remove(QStringLiteral("primaryOutline"));
+    install();
+    checkBorder();
+    const auto coupled = menu.stateTable();
+    WorkRecorder work;
+    work.clear();
+    colors.insert(QStringLiteral("primaryOutline"), source.colors()->primaryOutline());
+    install();
+    checkBorder();
+    QCOMPARE(work.count(AppearanceWork::ColorResolution), 2);
+    QCOMPARE(menu.stateTable(), coupled); // Equal-valued ownership still refreshes both consumers.
+    changed.clear();
+    colors.insert(QStringLiteral("accent"), QColor("#F5D90A"));
+    install();
+    QCOMPARE(menu.stateTable().colors(Presentation::Selected).backgroundColor(), QColor("#F5D90A"));
+    QVERIFY(changed.count() > 0);
+    changed.clear();
+    colors.insert(QStringLiteral("onAccent"), QColor("#111111"));
+    install();
+    QCOMPARE(menu.stateTable().colors(Presentation::Selected).backgroundColor(), QColor("#F5D90A"));
+    QCOMPARE(menu.stateTable().colors(Presentation::Selected).foregroundColor(), QColor("#111111"));
+    QVERIFY(changed.count() > 0);
+    menu.setSelectedBackgroundColor(menu.selectedBackgroundColor());
+    menu.setSelectedForegroundColor(menu.selectedForegroundColor());
+    menu.setInactiveBackgroundColor(menu.inactiveBackgroundColor());
+    menu.setInactiveForegroundColor(menu.inactiveForegroundColor());
+    colors.insert(QStringLiteral("accent"), QColor("#7A1F1F"));
+    colors.insert(QStringLiteral("onAccent"), QColor(Qt::white));
+    install();
+    QCOMPARE(menu.selectedBackgroundColor(), QColor("#F5D90A"));
+    QCOMPARE(menu.inactiveBackgroundColor(), QColor("#F5D90A"));
+    menu.resetOverrides();
+    QCOMPARE(menu.selectedBackgroundColor(), QColor("#7A1F1F"));
+    QCOMPARE(menu.inactiveForegroundColor(), QColor(Qt::white));
+    colors.insert(QStringLiteral("popup"), QColor("#7A1F1F"));
+    install();
+    menu.setBorderColor(menu.borderColor()); // Keep a real private branch during metric projection.
+    const auto retained = menu.stateTable();
+    changed.clear();
+    work.clear();
+    source.setInput({{QStringLiteral("tokens"), QVariantMap{
+        {QStringLiteral("colors"), colors}, {QStringLiteral("metrics"), QVariantMap{{QStringLiteral("borderWidth"), 3}}}}}});
+    QCOMPARE(menu.stateTable().colors(Presentation::Selected).borderWidth(), 3);
+    QCOMPARE(retained.colors(Presentation::Selected).borderWidth(), 1);
+    QVERIFY(changed.count() > 0);
+    QCOMPARE(work.count(AppearanceWork::SharedPaletteBuild), 0);
+    QCOMPARE(work.count(AppearanceWork::StateTableBuild), 0);
+    QCOMPARE(work.count(AppearanceWork::PrivateStateTableBuild), 0);
+    work.clear();
+    for (int i = int(Presentation::Rest); i <= int(Presentation::Disabled); ++i)
+        menu.stateTable().colors(Presentation::State(i));
+    QCOMPARE(work.count(AppearanceWork::SharedPaletteBuild), 0);
+    QCOMPARE(work.count(AppearanceWork::StateTableBuild), 0);
+    QCOMPARE(work.count(AppearanceWork::PrivateStateTableBuild), 0);
+    work.clear();
+    menu.setFontPixelSize(menu.fontPixelSize() + 1);
+    QCOMPARE(work.count(AppearanceWork::SharedPaletteBuild), 0);
+    QCOMPARE(work.count(AppearanceWork::StateTableBuild), 0);
+    QCOMPARE(work.count(AppearanceWork::PrivateStateTableBuild), 0);
 }
 
 void AppearanceTests::tabModeAndSeparatorContracts()

@@ -203,7 +203,7 @@ Item {
                 {name: "IAItemDelegate", kind: "delegate",
                     states: ["rest", "hover", "pressed", "selected", "selected+hover", "focus"], columns: ["In list"]},
                 {name: "IAMenuItem", kind: "menu", states: ["rest", "highlighted", "checked", "disabled"],
-                    columns: ["Open item menu"]},
+                    columns: ["Default blue", "Yellow", "Near background", "Dark red"]},
                 {name: "IACheckBox", kind: "choice", component: checkComponent, states: choiceStates, columns: ["Check"]},
                 {name: "IARadioButton", kind: "choice", component: radioComponent, states: choiceStates, columns: ["Radio"]},
                 {name: "IASwitch", kind: "choice", component: switchComponent, states: choiceStates, columns: ["Switch"]},
@@ -249,6 +249,13 @@ Item {
         }
 
         function captureCell(spec: var, state: string, column: int): var {
+            const savedInput = IA.Appearance.input;
+            if (spec.kind === "menu" && column > 0) {
+                const accent = column === 1 ? "#F5D90A" : column === 2
+                    ? (savedInput.scheme === "dark" ? "#303237" : "#F2F3F5") : "#7A1F1F";
+                IA.Appearance.input = {scheme: savedInput.scheme, contrast: savedInput.contrast,
+                    reducedMotion: true, tokens: {colors: {accent: accent}}};
+            }
             const stage = createTemporaryObject(stageComponent, scene);
             verify(stage !== null);
             let popup = null;
@@ -264,7 +271,7 @@ Item {
                     host.forceLayout();
                     control = host.itemAtIndex(1);
                 } else if (spec.kind === "menu") {
-                    popup = createTemporaryObject(menuComponent, stage, {parent: stage});
+                    popup = createTemporaryObject(menuComponent, stage, {parent: stage, width: 208});
                     control = popup.target;
                 } else {
                     control = createTemporaryObject(spec.component, stage, {x: 24, y: 24, width: 208});
@@ -345,6 +352,8 @@ Item {
                 if (popup !== null)
                     popup.close();
                 stage.destroy();
+                if (spec.kind === "menu")
+                    IA.Appearance.input = savedInput;
             }
         }
 

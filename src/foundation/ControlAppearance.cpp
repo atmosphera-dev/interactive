@@ -170,7 +170,7 @@ IA_CONTROL_NONCOLOR_PROPERTIES(IA_NONCOLOR_GETTER)
 StateTable ControlAppearance::stateTable() const
 {
     const auto &metrics = m_private->sourceState ? m_private->sourceState->metrics : m_private->defaults.metrics;
-    return StateTable(m_private->table, metrics.focusWidth);
+    return StateTable(m_private->table, metrics.focusWidth, metrics.borderWidth);
 }
 
 qreal ControlAppearance::headingPixelSize() const
@@ -341,6 +341,17 @@ void ControlAppearance::resolve(const PaletteUpdate &update, bool forceNoncolors
         dependencies.set(size_t(ColorRole::control));
         dependencies.set(size_t(ColorRole::disabledSurface));
     }
+    if (state.family == ControlFamily::MenuItem) {
+        dependencies.set(size_t(ColorRole::popup));
+        // The menu reuses the finished Primary table, including its ownership
+        // sensitive foreground/outline coupling and action alias presence.
+        for (const auto role : controlColorMapping(ControlFamily::Button, Presentation::Primary,
+                 Presentation::None, state.palette->dark))
+            dependencies.set(size_t(role));
+        dependencies.set(size_t(ColorRole::accentHover));
+        dependencies.set(size_t(ColorRole::accentPressed));
+        dependencies.set(size_t(ColorRole::onAccent));
+    }
     if (state.family == ControlFamily::Tab) {
         dependencies.set(size_t(ColorRole::control));
         dependencies.set(size_t(ColorRole::controlHover));
@@ -370,7 +381,7 @@ void ControlAppearance::resolveParts(bool colors, bool noncolors, bool selectors
         AppearanceTrace::work(AppearanceWork::ColorResolution);
         state.mapping = controlColorMapping(state.family, m_tone, m_validation, state.palette->dark);
         const bool colored = m_tone == Presentation::Primary || m_tone == Presentation::Destructive || m_tone == Presentation::Caution;
-        const bool coupleBorder = colored && !descriptor.usesSemanticText(m_tone) && m_validation == Presentation::None
+        const bool coupleBorder = state.family != ControlFamily::MenuItem && colored && !descriptor.usesSemanticText(m_tone) && m_validation == Presentation::None
             && !state.palette->explicitRole(state.mapping[size_t(ControlColor::borderColor)]);
         const auto shared = state.palette->stateTable(state.family, m_tone, m_validation);
         if (state.colorOverrides.presence.none()) {
