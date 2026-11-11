@@ -32,6 +32,16 @@ Item {
         }
     }
     Component {
+        id: backgroundComponent
+        IA.ControlBackground {
+            id: background
+            property string family: "button"
+            width: 120
+            height: 40
+            resolvedAppearance: IA.ControlAppearance { source: IA.Appearance; family: background.family }
+        }
+    }
+    Component {
         id: scrollComponent
         IAScrollView {
             width: 360
@@ -173,6 +183,123 @@ Item {
                     rows.push({tag: scheme + "-" + contrast, scheme: scheme, contrast: contrast});
             }
             return rows;
+        }
+
+        function rectangleGeometry(rectangle: Rectangle): var {
+            return [rectangle.x, rectangle.y, rectangle.width, rectangle.height, rectangle.radius];
+        }
+
+        function test_choiceInnerGeometry_data(): var {
+            const rows = [];
+            for (const mode of test_singleFocusBorder_data()) {
+                for (const rtl of [false, true])
+                    rows.push({tag: mode.tag + (rtl ? "-rtl" : "-ltr"),
+                        scheme: mode.scheme, contrast: mode.contrast, rtl: rtl});
+            }
+            return rows;
+        }
+
+        function test_choiceInnerGeometry(data: var): void {
+            IA.Appearance.input = {scheme: data.scheme, contrast: data.contrast};
+            const samples = createTemporaryObject(focusComponent, scene);
+            verify(samples !== null);
+            verify(TestProbe.render(samples));
+            verify(TestProbe.activate(samples));
+            verify(TestProbe.move(scene, scene.width - 2, scene.height - 2));
+            for (let index = 4; index <= 6; ++index) {
+                const control = samples.controls[index];
+                control.LayoutMirroring.enabled = data.rtl;
+                const indicator = control.indicator as IA.ChoiceIndicator;
+                verify(indicator !== null);
+                const states = index === 4 ? [Qt.Unchecked, Qt.Checked, Qt.PartiallyChecked]
+                    : [Qt.Unchecked, Qt.Checked];
+                for (const state of states) {
+                    samples.entry.forceActiveFocus(Qt.OtherFocusReason);
+                    tryCompare(control, "activeFocus", false);
+                    if (index === 4)
+                        (control as IACheckBox).checkState = state;
+                    else
+                        control.checked = state === Qt.Checked;
+                    verify(TestProbe.render(control));
+                    const center = indicator.mark as Rectangle;
+                    const thumb = findChild(indicator, "iaThumb") as Rectangle;
+                    verify(center !== null);
+                    const centerGeometry = rectangleGeometry(center);
+                    const thumbGeometry = thumb ? rectangleGeometry(thumb) : [];
+                    const inset = IA.Appearance.metrics.borderWidth + IA.Appearance.metrics.choiceGap;
+                    compare(indicator.innerInset, inset);
+                    fuzzyCompare(center.x, inset, 0.001);
+                    fuzzyCompare(center.y, inset, 0.001);
+                    fuzzyCompare(center.width, indicator.width - 2 * inset, 0.001);
+                    fuzzyCompare(center.height, indicator.height - 2 * inset, 0.001);
+                    control.forceActiveFocus(Qt.TabFocusReason);
+                    tryCompare(control, "visualFocus", true);
+                    verify(TestProbe.render(control));
+                    compare(indicator.border.width, IA.Appearance.metrics.focusWidth);
+                    compare(indicator.mark, center, "Focus retains the existing mark");
+                    compare(rectangleGeometry(center), centerGeometry, "Focus never shrinks or moves the center");
+                    if (thumb)
+                        compare(rectangleGeometry(thumb), thumbGeometry, "Focus retains thumb size and endpoint");
+                    samples.entry.forceActiveFocus(Qt.OtherFocusReason);
+                    tryCompare(control, "activeFocus", false);
+                    verify(TestProbe.render(control));
+                    compare(indicator.border.width, IA.Appearance.metrics.borderWidth);
+                    compare(rectangleGeometry(center), centerGeometry, "Blur retains center geometry");
+                    if (thumb)
+                        compare(rectangleGeometry(thumb), thumbGeometry, "Blur retains thumb geometry");
+                }
+            }
+        }
+
+        function test_backgroundPaintInset_data(): var {
+            const families = [
+                {family: "button", outlined: true, pressInset: true},
+                {family: "tool", outlined: false, pressInset: true},
+                {family: "tab", outlined: false, pressInset: false},
+                {family: "delegate", outlined: false, pressInset: false},
+                {family: "menuItem", outlined: false, pressInset: false},
+                {family: "choice", outlined: false, pressInset: false},
+                {family: "field", outlined: true, pressInset: false},
+                {family: "slider", outlined: true, pressInset: false},
+                {family: "popup", outlined: true, pressInset: false},
+                {family: "surface", outlined: true, pressInset: false},
+                {family: "surface", outlined: false, pressInset: false},
+                {family: "tabBar", outlined: false, pressInset: false},
+                {family: "tooltip", outlined: false, pressInset: false}
+            ];
+            const rows = [];
+            for (const mode of test_singleFocusBorder_data()) {
+                for (const sample of families)
+                    rows.push({tag: mode.tag + "-" + sample.family + "-" + sample.outlined,
+                        scheme: mode.scheme, contrast: mode.contrast, sample: sample});
+            }
+            return rows;
+        }
+
+        function test_backgroundPaintInset(data: var): void {
+            IA.Appearance.input = {scheme: data.scheme, contrast: data.contrast};
+            const background = createTemporaryObject(backgroundComponent, scene, data.sample) as IA.ControlBackground;
+            verify(background !== null);
+            const inset = findChild(background, "iaPressInset") as Rectangle;
+            verify(inset !== null);
+            verify(TestProbe.render(background));
+            const restingWidth = data.sample.outlined ? IA.Appearance.metrics.borderWidth : 0;
+            const bounds = rectangleGeometry(background);
+            for (const down of [false, true]) {
+                background.down = down;
+                for (const focused of [false, true, false]) {
+                    background.focused = focused;
+                    verify(TestProbe.render(background));
+                    const paintedWidth = focused ? IA.Appearance.metrics.focusWidth : restingWidth;
+                    const expected = [paintedWidth, paintedWidth,
+                        background.width - 2 * paintedWidth, background.height - 2 * paintedWidth,
+                        Math.max(0, background.radius - paintedWidth)];
+                    compare(background.border.width, paintedWidth);
+                    compare(rectangleGeometry(background), bounds, "Only the painted border changes");
+                    compare(rectangleGeometry(inset), expected, "Decorative shading stays inside the painted border");
+                    compare(inset.visible, down && data.sample.pressInset);
+                }
+            }
         }
 
         function test_singleFocusBorder(data: var): void {

@@ -652,10 +652,12 @@ The three choice templates share Foundation's `ChoiceRow` text/indicator lane,
 including intrinsic sizing, centerline, spacing, elision and explicit RTL placement.
 The choice family's horizontal inset resolves from `verticalPadding`; the templates
 consume that finished geometry rather than independently choosing an inset token.
-Each choice has an unchanged outer outline and an inset center separated by
-`metrics.choiceGap` beyond the current inward border. Checkboxes use a rounded
-square (`metrics.choiceCenterRadius`, independent of outline thickness) with a
-check/mixed icon, radios a dot, and switches an inner capsule with
+Each choice has an unchanged outer outline and an inset center positioned by
+the resting `metrics.borderWidth` plus `metrics.choiceGap`. Focus thickens the
+border inward into that gap without moving or shrinking the center, track or
+thumb. Native antialiasing can partially cover a narrow gap's pixels.
+Checkboxes use a rounded square (`metrics.choiceCenterRadius`, independent of
+outline thickness) with a check/mixed icon, radios a dot, and switches an inner capsule with
 a thumb constrained to its end slot. The state table supplies `choiceGapColor`,
 `choiceCenterColor`, `choiceMarkColor` and `choiceTrackColor`. The default on pair
 uses the accent hue/chroma with its tone resolved for a light mark at the 7:1
@@ -671,7 +673,9 @@ override table); QML performs only state/role selection. Focus contrast is measu
 against the outline's gap/backdrop, not the separate accent center; its fallback
 is the outline role on that same backdrop, not the inner center's light mark.
 Inset backgrounds create their Gradient and stops only when `pressInset` is used;
-the named empty inset Rectangle remains available on other backgrounds. Changing
+their decorative shading stays clipped inside the current painted border,
+including while focused, rather than using the fixed indicator-content inset.
+The named empty inset Rectangle remains available on other backgrounds. Changing
 the kind or inset trait replaces only that owned visual, not the control.
 Focus changes the one border's color/width inward, without a second ring or any
 change to the rectangle's bounds/radius. Borderless backgrounds draw that same

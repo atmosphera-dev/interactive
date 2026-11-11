@@ -21,7 +21,7 @@ Rectangle {
     readonly property color markColor: selected ? colors.choiceMarkColor : colors.foregroundColor
     // The gap is a lane between the inward outline and the center, never an
     // overlay covering a fill. Focus may thicken inward without touching it.
-    readonly property real innerInset: border.width + Appearance.metrics.choiceGap
+    readonly property real innerInset: Appearance.metrics.borderWidth + Appearance.metrics.choiceGap
     objectName: "iaIndicator"
     implicitWidth: kind === ChoiceIndicator.Toggle ? Appearance.metrics.switchWidth : Appearance.metrics.indicatorSize
     implicitHeight: kind === ChoiceIndicator.Toggle ? Appearance.metrics.switchHeight : Appearance.metrics.indicatorSize

@@ -18,6 +18,42 @@ Item {
     Component { id: radioComponent; IARadioButton {} }
     Component { id: switchComponent; IASwitch {} }
     Component {
+        id: radioReferenceComponent
+        Rectangle {
+            id: reference
+            required property color referenceBorderColor
+            required property color referenceCenterColor
+            property bool focused: false
+            property bool paintsOutline: true
+            property bool paintsCenter: true
+            readonly property real centerInset: IA.Appearance.metrics.borderWidth + IA.Appearance.metrics.choiceGap
+            width: IA.Appearance.metrics.indicatorSize
+            height: width
+            radius: height / 2
+            color: "transparent"
+            border.color: referenceBorderColor
+            border.width: !paintsOutline ? 0 : focused ? IA.Appearance.metrics.focusWidth : IA.Appearance.metrics.borderWidth
+            Rectangle {
+                x: reference.centerInset
+                y: x
+                width: reference.width - 2 * reference.centerInset
+                height: width
+                radius: width / 2
+                color: reference.referenceCenterColor
+                visible: reference.paintsCenter
+            }
+        }
+    }
+    Component {
+        id: radioRasterComponent
+        Rectangle {
+            width: 400
+            height: 80
+            property alias radio: sample
+            IARadioButton { id: sample; x: 20; y: 20; width: 120; text: "Radio"; hoverEnabled: false }
+        }
+    }
+    Component {
         id: indicatorComponent
         IA.ChoiceIndicator {
             resolvedAppearance: IA.ControlAppearance { source: IA.Appearance; family: "choice" }
@@ -400,6 +436,14 @@ Item {
             verify(center !== null);
             const thumb = findChild(indicator, "iaThumb") as Rectangle;
             const glyph = center.children.length ? center.children[0] as IA.Icon : null;
+            const reference = control instanceof IARadioButton
+                ? createTemporaryObject(radioReferenceComponent, scene, {
+                    x: 320, y: indicator.mapToItem(scene, 0, 0).y,
+                    referenceBorderColor: indicator.colors.borderColor,
+                    referenceCenterColor: indicator.colors.backgroundColor
+                }) : null;
+            if (control instanceof IARadioButton)
+                verify(reference !== null);
             compare(indicator.color.a, 0, "The outline-to-center lane is not painted over");
             compare(indicator.border.color, control.borderColor);
             const labelCenter = row.mapToItem(control, 0, row.height / 2).y;
@@ -435,23 +479,37 @@ Item {
                 }
                 for (const focused of [false, true]) {
                     indicator.focused = focused;
+                    if (reference) {
+                        reference.focused = focused;
+                        reference.referenceBorderColor = focused ? indicator.colors.focusedBorderColor : indicator.colors.borderColor;
+                        reference.referenceCenterColor = on ? indicator.colors.choiceCenterColor : indicator.colors.backgroundColor;
+                    }
                     verify(TestProbe.render(control));
                     verify(center.width > 0 && center.height > 0);
-                    fuzzyCompare(center.x - indicator.border.width, IA.Appearance.metrics.choiceGap, 0.001);
-                    fuzzyCompare(center.y - indicator.border.width, IA.Appearance.metrics.choiceGap, 0.001);
-                    fuzzyCompare(indicator.width - center.x - center.width - indicator.border.width,
+                    // The resting lane is fixed; focus consumes part of it,
+                    // rather than moving the center to preserve its full gap.
+                    fuzzyCompare(center.x - IA.Appearance.metrics.borderWidth, IA.Appearance.metrics.choiceGap, 0.001);
+                    fuzzyCompare(center.y - IA.Appearance.metrics.borderWidth, IA.Appearance.metrics.choiceGap, 0.001);
+                    fuzzyCompare(indicator.width - center.x - center.width - IA.Appearance.metrics.borderWidth,
                         IA.Appearance.metrics.choiceGap, 0.001);
+                    verify(center.y > indicator.border.width, "Default focus leaves an unpainted lane");
                     const image = grabImage(scene);
                     // A straight-edge sample measures an actual unpainted lane,
                     // not merely geometry. Avoid the rounded corner and tick.
                     const lane = indicator.mapToItem(scene, indicator.width / 2,
-                        indicator.border.width + IA.Appearance.metrics.choiceGap / 2);
+                        (indicator.border.width + center.y) / 2);
                     const outside = indicator.mapToItem(scene, -2, indicator.height / 2);
-                    compare(image.pixel(Math.floor(lane.x * image.width / scene.width),
-                        Math.floor(lane.y * image.height / scene.height)),
-                        image.pixel(Math.floor(outside.x * image.width / scene.width),
-                            Math.floor(outside.y * image.height / scene.height)),
-                        "The gap has exactly the host backdrop, not the outline or center fill");
+                    if (reference && focused) {
+                        compare(samplePixel(image, indicator, indicator.width / 2, (indicator.border.width + center.y) / 2),
+                            samplePixel(image, reference, reference.width / 2, (indicator.border.width + center.y) / 2),
+                            "The original focused radio pixel matches independent native outline/center AA");
+                    } else {
+                        compare(image.pixel(Math.floor(lane.x * image.width / scene.width),
+                            Math.floor(lane.y * image.height / scene.height)),
+                            image.pixel(Math.floor(outside.x * image.width / scene.width),
+                                Math.floor(outside.y * image.height / scene.height)),
+                            "The gap has exactly the host backdrop, not the outline or center fill");
+                    }
                 }
                 indicator.focused = false;
                 indicator.hovered = true;
@@ -482,6 +540,108 @@ Item {
             else if (glyph)
                 compare(glyph.color, indicator.markColor);
             compare(indicator.border.color, control.disabledBorderColor);
+        }
+
+        function samplePixel(image: var, item: Item, x: real, y: real): color {
+            const point = item.mapToItem(scene, x, y);
+            return image.pixel(Math.floor(point.x * image.width / scene.width),
+                Math.floor(point.y * image.height / scene.height));
+        }
+
+        function test_radioLaneComposition_data(): var {
+            const rows = [];
+            for (const mode of test_choiceLocalOffTracks_data()) {
+                for (const scale of [1, 2]) {
+                    for (const rtl of [false, true])
+                        rows.push({tag: mode.tag + "-scale" + scale + (rtl ? "-rtl" : "-ltr"),
+                            scheme: mode.scheme, contrast: mode.contrast, scale: scale, rtl: rtl});
+                }
+            }
+            return rows;
+        }
+
+        function test_radioLaneComposition(data: var): void {
+            IA.Appearance.input = {scheme: data.scheme, contrast: data.contrast};
+            const previousWidth = scene.width;
+            scene.width = 800;
+            try {
+                const stage = createTemporaryObject(radioRasterComponent, scene,
+                    {scale: data.scale, transformOrigin: Item.TopLeft});
+                verify(stage !== null);
+                const control = stage.radio as IARadioButton;
+                control.LayoutMirroring.enabled = data.rtl;
+                verify(TestProbe.render(stage));
+                verify(TestProbe.activate(stage));
+                const indicator = control.indicator as IA.ChoiceIndicator;
+                const center = indicator.mark as Rectangle;
+                const references = [];
+                for (let index = 0; index < 3; ++index) {
+                    const reference = createTemporaryObject(radioReferenceComponent, stage, {
+                        x: 180 + 40 * index, y: indicator.mapToItem(stage, 0, 0).y,
+                        referenceBorderColor: indicator.colors.borderColor,
+                        referenceCenterColor: indicator.colors.backgroundColor,
+                        paintsOutline: index !== 1, paintsCenter: index !== 0
+                    });
+                    verify(reference !== null);
+                    references.push(reference);
+                }
+                for (const on of [false, true]) {
+                    control.checked = on;
+                    for (const focused of [false, true]) {
+                        indicator.focused = focused;
+                        for (const reference of references) {
+                            reference.focused = focused;
+                            reference.referenceBorderColor = focused ? indicator.colors.focusedBorderColor : indicator.colors.borderColor;
+                            reference.referenceCenterColor = on ? indicator.colors.choiceCenterColor : indicator.colors.backgroundColor;
+                        }
+                        const laneY = (indicator.border.width + center.y) / 2;
+                        const actualPixels = [];
+                        const referencePixels = [];
+                        for (const backdrop of ["#ffffff", "#000000", "#35794b"]) {
+                            stage.color = backdrop;
+                            verify(TestProbe.render(stage));
+                            const image = grabImage(scene);
+                            verify(image.width > 0 && image.height > 0);
+                            const left = indicator.mapToItem(scene, 0, 0);
+                            const right = indicator.mapToItem(scene, indicator.width, 0);
+                            fuzzyCompare((right.x - left.x) / indicator.width, data.scale, 0.001,
+                                "The native and 2x transforms are actually rendered");
+                            const actual = samplePixel(image, indicator, indicator.width / 2, laneY);
+                            const expected = samplePixel(image, references[2], references[2].width / 2, laneY);
+                            actualPixels.push(actual);
+                            referencePixels.push(expected);
+                            compare(actual, expected, "Exact independent composition at the original physical sample");
+                            const outside = samplePixel(image, indicator, -2, indicator.height / 2);
+                            if (!focused)
+                                compare(actual, outside, "Resting radio gap is exactly the current backdrop");
+                            compare(samplePixel(image, references[1], references[1].width / 2, laneY), outside,
+                                "The isolated center does not paint the original lane sample");
+                            compare(expected, samplePixel(image, references[0], references[0].width / 2, laneY),
+                                "Native outline AA independently accounts for the lane contribution");
+                            // Preserve the measured physical neighborhood, not a
+                            // replacement point chosen because it happens to pass.
+                            const physicalScale = data.scale * image.width / scene.width;
+                            for (let dy = -2; dy <= 2; ++dy) {
+                                for (let dx = -2; dx <= 2; ++dx) {
+                                    compare(samplePixel(image, indicator, indicator.width / 2 + dx / physicalScale, laneY + dy / physicalScale),
+                                        samplePixel(image, references[2], references[2].width / 2 + dx / physicalScale, laneY + dy / physicalScale),
+                                        "Exact native composition across the original pixel neighborhood");
+                                }
+                            }
+                        }
+                        verify(referencePixels[0].r > referencePixels[1].r
+                            && referencePixels[0].g > referencePixels[1].g
+                            && referencePixels[0].b > referencePixels[1].b,
+                            "The independent native lane transmits the backdrop");
+                        verify(actualPixels[0].r > actualPixels[1].r
+                            && actualPixels[0].g > actualPixels[1].g
+                            && actualPixels[0].b > actualPixels[1].b,
+                            "An opaque neutral gap cannot pass the consumer transmission check");
+                    }
+                }
+            } finally {
+                scene.width = previousWidth;
+            }
         }
 
         function test_menuHighlightPair_data(): var {
@@ -597,20 +757,22 @@ Item {
                 {name: "delegate", component: delegateComponent, inset: false}
             ];
             for (const scheme of ["light", "dark"]) {
-                for (const customized of [false, true]) {
-                    for (const control of controls)
-                        rows.push({tag: scheme + "-" + control.name + "-" + customized,
-                            scheme: scheme, component: control.component,
-                            inset: control.inset, customized: customized});
+                for (const contrast of ["normal", "high"]) {
+                    for (const customized of [false, true]) {
+                        for (const control of controls)
+                            rows.push({tag: scheme + "-" + contrast + "-" + control.name + "-" + customized,
+                                scheme: scheme, contrast: contrast, component: control.component,
+                                inset: control.inset, customized: customized});
+                    }
                 }
             }
             return rows;
         }
 
         function test_pressedInset(data: var): void {
-            IA.Appearance.input = data.customized ? {scheme: data.scheme, reducedMotion: true,
+            IA.Appearance.input = data.customized ? {scheme: data.scheme, contrast: data.contrast, reducedMotion: true,
                 tokens: {metrics: {pressInsetDepth: 12, pressContentShift: 2},
-                         motion: {pressInsetOpacity: 0.4}}} : {scheme: data.scheme};
+                         motion: {pressInsetOpacity: 0.4}}} : {scheme: data.scheme, contrast: data.contrast};
             const control = createTemporaryObject(data.component, scene, {
                 x: 40, y: 40, width: 200, height: 50, text: "Press"
             }) as T.AbstractButton;
@@ -646,6 +808,8 @@ Item {
                     content.x, content.y, content.implicitWidth, content.implicitHeight, content.baselineOffset], geometry);
                 if (data.inset) {
                     verify(background.color !== background.resolvedAppearance.pressedBackgroundColor);
+                    // Decorative shading is clipped inside the painted border;
+                    // unlike real indicator contents, it follows focus width.
                     compare(inset.x, background.border.width);
                     compare(inset.y, background.border.width);
                     compare(inset.radius, Math.max(0, background.radius - background.border.width));
@@ -678,6 +842,96 @@ Item {
             compare(inset.visible, false);
             compare(content.contentShift, 0);
             fuzzyCompare(content.mapToItem(control, 0, 0).y - content.y, 0, 0.001);
+        }
+
+        function test_focusedKeyboardPressInset_data(): var {
+            const rows = [];
+            for (const mode of test_choiceLocalOffTracks_data()) {
+                for (const component of [buttonComponent, toolComponent])
+                    rows.push({tag: mode.tag + (component === buttonComponent ? "-button" : "-tool"),
+                        scheme: mode.scheme, contrast: mode.contrast, component: component});
+            }
+            return rows;
+        }
+
+        function test_focusedKeyboardPressInset(data: var): void {
+            IA.Appearance.input = {scheme: data.scheme, contrast: data.contrast};
+            const control = createTemporaryObject(data.component, scene, {
+                x: 40, y: 40, width: 240, height: 60, text: "Keyboard press", hoverEnabled: false
+            }) as T.AbstractButton;
+            verify(control !== null);
+            verify(TestProbe.render(control));
+            verify(TestProbe.activate(control));
+            tryCompare(TestProbe.hostWindow(control), "active", true);
+            verify(TestProbe.move(scene, scene.width - 2, scene.height - 2));
+            control.forceActiveFocus(Qt.TabFocusReason);
+            tryCompare(control, "visualFocus", true);
+            const background = control.background as IA.ControlBackground;
+            const inset = findChild(background, "iaPressInset") as Rectangle;
+            verify(background !== null && inset !== null);
+            verify(TestProbe.render(control));
+            const restingWidth = background.outlined ? IA.Appearance.metrics.borderWidth : 0;
+            const geometry = [inset.x, inset.y, inset.width, inset.height, inset.radius];
+            compare(background.border.width, IA.Appearance.metrics.focusWidth);
+            compare(geometry, [background.border.width, background.border.width,
+                background.width - 2 * background.border.width, background.height - 2 * background.border.width,
+                Math.max(0, background.radius - background.border.width)],
+                "Focused decorative shading is clipped inside the painted border");
+            verify(background.border.width > restingWidth);
+            // Keep the original inward-border sample that caught overpainting
+            // when decorative shading incorrectly used a resting-only inset.
+            const borderPoint = background.mapToItem(scene, background.width / 2,
+                (restingWidth + background.border.width) / 2);
+            const gradientPoint = background.mapToItem(scene, background.width / 4,
+                background.border.width + 1.5);
+            const before = grabImage(scene);
+            const scaleX = before.width / scene.width;
+            const scaleY = before.height / scene.height;
+            verify(before.width > 0 && before.height > 0);
+            fuzzyCompare(before.pixel(Math.floor(borderPoint.x * scaleX), Math.floor(borderPoint.y * scaleY)),
+                background.border.color, 0.03, "Focused border renders before the held key press");
+            const unpressed = before.pixel(Math.floor(gradientPoint.x * scaleX), Math.floor(gradientPoint.y * scaleY));
+            keyPress(Qt.Key_Space);
+            try {
+                tryCompare(control, "down", true);
+                tryCompare(control, "visualFocus", true);
+                verify(TestProbe.render(control));
+                compare(inset.visible, true);
+                compare([inset.x, inset.y, inset.width, inset.height, inset.radius], geometry,
+                    "A held keyboard press retains border-clipped paint geometry");
+                const gradient = inset.gradient as Gradient;
+                verify(gradient !== null);
+                compare(gradient.stops.length, 2);
+                compare(gradient.stops[0].color, Qt.rgba(0, 0, 0, IA.Appearance.motion.pressInsetOpacity));
+                compare(gradient.stops[1].position,
+                    Math.min(0.5, IA.Appearance.metrics.pressInsetDepth / Math.max(1, inset.height)));
+                compare(gradient.stops[1].color, IA.Appearance.colors.transparent);
+                const held = grabImage(scene);
+                fuzzyCompare(held.pixel(Math.floor(borderPoint.x * scaleX), Math.floor(borderPoint.y * scaleY)),
+                    background.border.color, 0.03, "The held press gradient must not tint the inward focus border");
+                compare(held.pixel(Math.floor(borderPoint.x * scaleX), Math.floor(borderPoint.y * scaleY)),
+                    before.pixel(Math.floor(borderPoint.x * scaleX), Math.floor(borderPoint.y * scaleY)),
+                    "The focused border pixel is exactly unchanged during the held key");
+                const pressed = held.pixel(Math.floor(gradientPoint.x * scaleX), Math.floor(gradientPoint.y * scaleY));
+                compare(pressed.a, unpressed.a);
+                verify(pressed.r <= unpressed.r && pressed.g <= unpressed.g && pressed.b <= unpressed.b);
+                verify(pressed.r < unpressed.r - 0.01 || pressed.g < unpressed.g - 0.01
+                    || pressed.b < unpressed.b - 0.01, "The press gradient actually shades the inner surface");
+            } finally {
+                keyRelease(Qt.Key_Space);
+            }
+            tryCompare(control, "down", false);
+            verify(TestProbe.render(control));
+            compare(inset.visible, false);
+            compare([inset.x, inset.y, inset.width, inset.height, inset.radius], geometry);
+            const after = grabImage(scene);
+            fuzzyCompare(after.pixel(Math.floor(borderPoint.x * scaleX), Math.floor(borderPoint.y * scaleY)),
+                background.border.color, 0.03, "Release retains the focused border");
+            compare(after.pixel(Math.floor(borderPoint.x * scaleX), Math.floor(borderPoint.y * scaleY)),
+                before.pixel(Math.floor(borderPoint.x * scaleX), Math.floor(borderPoint.y * scaleY)),
+                "Release preserves the exact focused border pixel");
+            fuzzyCompare(after.pixel(Math.floor(gradientPoint.x * scaleX), Math.floor(gradientPoint.y * scaleY)),
+                unpressed, 0.03, "Release removes the press gradient");
         }
 
         function verifySelectedForeground(control: var, foreground: color): void {
