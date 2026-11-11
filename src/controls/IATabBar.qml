@@ -19,24 +19,15 @@ T.TabBar {
     implicitHeight: contentHeight + topPadding + bottomPadding
     horizontalPadding: appearance.horizontalPadding
     verticalPadding: appearance.verticalPadding
-    spacing: 0
+    spacing: IA.Appearance.metrics.spacingXS
     font: appearance.resolvedFont
-    contentItem: ListView {
+    contentItem: IA.SegmentGroup {
+        id: segments
+        resolvedAppearance: appearance
+        mirrored: control.mirrored
         model: control.contentModel
         currentIndex: control.currentIndex
-        orientation: ListView.Horizontal
         spacing: control.spacing
-        boundsBehavior: Flickable.StopAtBounds
-        flickableDirection: Flickable.AutoFlickIfNeeded
-        snapMode: ListView.SnapToItem
-        highlightRangeMode: ListView.ApplyRange
-        highlightMoveDuration: 0
-        preferredHighlightBegin: 0
-        preferredHighlightEnd: width
-        clip: true
     }
-    background: IA.ControlBackground {
-        resolvedAppearance: appearance
-        outlined: false
-    }
+    background: segments.createBackground(control)
 }

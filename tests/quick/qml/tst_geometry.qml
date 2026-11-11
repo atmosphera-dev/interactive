@@ -42,6 +42,18 @@ Item {
         }
     }
     Component {
+        id: tabsComponent
+        IATabBar {
+            width: 360
+            property bool rtl: false
+            LayoutMirroring.enabled: rtl
+            LayoutMirroring.childrenInherit: true
+            IATabButton { text: "Overview" }
+            IATabButton { text: "Details" }
+            IATabButton { text: "History" }
+        }
+    }
+    Component {
         id: scrollComponent
         IAScrollView {
             width: 360
@@ -187,6 +199,138 @@ Item {
 
         function rectangleGeometry(rectangle: Rectangle): var {
             return [rectangle.x, rectangle.y, rectangle.width, rectangle.height, rectangle.radius];
+        }
+
+        function test_segmentGroup_data(): var {
+            const rows = [];
+            for (const mode of test_singleFocusBorder_data()) {
+                for (const rtl of [false, true]) {
+                    for (const gap of [4, 11])
+                        rows.push({tag: mode.tag + (rtl ? "-rtl-" : "-ltr-") + gap,
+                            scheme: mode.scheme, contrast: mode.contrast, rtl: rtl, gap: gap});
+                }
+            }
+            return rows;
+        }
+
+        function trackCount(item: Item): int {
+            let count = item instanceof IA.ControlBackground
+                && (item as IA.ControlBackground).resolvedAppearance.family === "tabBar" ? 1 : 0;
+            for (const child of item.children)
+                count += trackCount(child);
+            return count;
+        }
+
+        function segmentGap(bar: IATabBar): real {
+            const first = bar.itemAt(0) as IATabButton;
+            const second = bar.itemAt(1) as IATabButton;
+            const firstX = first.mapToItem(bar, 0, 0).x;
+            const secondX = second.mapToItem(bar, 0, 0).x;
+            return bar.mirrored ? firstX - secondX - second.width : secondX - firstX - first.width;
+        }
+
+        function test_segmentGroup(data: var): void {
+            scene.width = 1200;
+            IA.Appearance.input = {scheme: data.scheme, contrast: data.contrast,
+                tokens: data.gap === 4 ? {} : {metrics: {spacingXS: data.gap}}};
+            const bar = createTemporaryObject(tabsComponent, scene, {rtl: data.rtl}) as IATabBar;
+            verify(bar !== null);
+            verify(TestProbe.render(bar));
+            verify(TestProbe.activate(bar));
+            const view = bar.contentItem as IA.SegmentGroup;
+            const track = bar.background as IA.ControlBackground;
+            verify(view !== null && track !== null);
+            compare(bar.count, 3, "Factory track is not a native content-model member");
+            compare(track.parent, bar, "Native background slot owns the track");
+            compare(trackCount(bar), 1, "Exactly one effective track");
+            compare(view.model, bar.contentModel);
+            compare(view.mirrored, data.rtl);
+            compare(view.effectiveLayoutDirection, data.rtl ? Qt.RightToLeft : Qt.LeftToRight);
+            compare(bar.spacing, IA.Appearance.metrics.spacingXS);
+            near(segmentGap(bar), data.gap, "Token-driven adjacent gap");
+            compare([bar.leftPadding, bar.rightPadding, bar.topPadding, bar.bottomPadding],
+                [data.gap, data.gap, data.gap, data.gap], "Existing track insets");
+            compare([track.x, track.y, track.width, track.height], [0, 0, bar.width, bar.height]);
+            near(view.width, bar.availableWidth, "Native viewport width");
+            near(view.height, bar.availableHeight, "Native viewport height");
+            let naturalWidth = 2 * bar.spacing + bar.leftPadding + bar.rightPadding;
+            let naturalHeight = 0;
+            for (let i = 0; i < bar.count; ++i) {
+                const button = bar.itemAt(i) as IATabButton;
+                naturalWidth += button.implicitWidth;
+                naturalHeight = Math.max(naturalHeight, button.implicitHeight);
+            }
+            near(bar.implicitWidth, naturalWidth, "Native implicit content width plus padding");
+            near(bar.implicitHeight, naturalHeight + bar.topPadding + bar.bottomPadding,
+                "Native implicit height plus padding");
+            const second = bar.itemAt(1) as IATabButton;
+            verify(TestProbe.click(second, second.width / 2, second.height / 2));
+            tryCompare(bar, "currentIndex", 1);
+            compare(view.currentIndex, 1);
+            compare(second.checked, true);
+            second.forceActiveFocus(Qt.TabFocusReason);
+            verify(TestProbe.keyClick(second, data.rtl ? Qt.Key_Left : Qt.Key_Right));
+            tryCompare(bar, "currentIndex", 2);
+            compare(view.currentIndex, 2);
+            compare((bar.itemAt(2) as IATabButton).checked, true);
+            compare(second.checked, false);
+
+            // Public aliases, palette replacement, hover and resizing update the
+            // original background, never re-entering the factory binding.
+            bar.backgroundColor = "#59616b";
+            compare(track.color, "#59616b");
+            bar.controlRadius = 9;
+            compare(track.radius, 9);
+            IA.Appearance.input = {scheme: data.scheme === "dark" ? "light" : "dark",
+                contrast: data.contrast, tokens: {metrics: {spacingXS: data.gap}}};
+            compare(track.color, "#59616b", "Local override remains caller-owned");
+            bar.resetAppearance();
+            compare(track.color, bar.backgroundColor);
+            compare(track.radius, bar.controlRadius);
+            IA.Appearance.input = {scheme: data.scheme, contrast: data.contrast,
+                tokens: {metrics: {spacingXS: 13}}};
+            verify(TestProbe.render(bar));
+            compare(bar.spacing, 13, "Live token replacement reaches the native gap");
+            near(segmentGap(bar), 13, "Live token gap");
+            bar.width = 400;
+            verify(TestProbe.render(bar));
+            verify(TestProbe.move(second, second.width / 2, second.height / 2));
+            tryCompare(second, "hovered", true);
+            compare(bar.background, track);
+            compare(bar.contentItem, view);
+            compare(trackCount(bar), 1);
+            compare([track.width, track.height], [bar.width, bar.height]);
+
+            bar.spacing = 7;
+            verify(TestProbe.render(bar));
+            near(segmentGap(bar), 7, "Writable native spacing");
+            compare(view.spacing, 7);
+            // Explicitly wide native buttons exercise the original overflow
+            // viewport, including current-item scrolling in both directions.
+            for (let i = 0; i < bar.count; ++i)
+                (bar.itemAt(i) as IATabButton).width = 180;
+            bar.width = 240;
+            bar.setCurrentIndex(0);
+            verify(TestProbe.render(bar));
+            verify(view.contentWidth > view.width);
+            compare(view.flickableDirection, Flickable.AutoFlickIfNeeded);
+            compare(view.snapMode, ListView.SnapToItem);
+            const startX = view.contentX;
+            const first = bar.itemAt(0) as IATabButton;
+            first.forceActiveFocus(Qt.TabFocusReason);
+            verify(TestProbe.keyClick(first, data.rtl ? Qt.Key_Left : Qt.Key_Right));
+            tryCompare(bar, "currentIndex", 1);
+            verify(TestProbe.keyClick(second, data.rtl ? Qt.Key_Left : Qt.Key_Right));
+            tryCompare(bar, "currentIndex", 2);
+            tryVerify(function() { return Math.abs(view.contentX - startX) > 1; });
+            const last = bar.itemAt(2) as IATabButton;
+            tryVerify(function() {
+                const x = last.mapToItem(view, 0, 0).x;
+                return x >= -1 && x + last.width <= view.width + 1;
+            });
+            compare(view.currentIndex, bar.currentIndex);
+            compare(bar.background, track);
+            compare(trackCount(bar), 1);
         }
 
         function test_choiceInnerGeometry_data(): var {

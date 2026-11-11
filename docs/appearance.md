@@ -685,8 +685,15 @@ No public control property/alias is changed. A fill-only edit now
 emits `stateTableChanged` because fill is represented in the table; unrelated
 font/geometry changes still do not.
 
-`IATabBar` uses the passive `tabBar` family: one quiet track, `spacingXS` insets
-and no inter-segment gap or resting border. The `tab` family selects a raised
+`IATabBar` uses the passive `tabBar` family: one quiet track, unchanged `spacingXS`
+insets and a `spacingXS` gap between adjacent segments (4 logical pixels by
+default), with no resting border. Its native writable `spacing` can override
+the gap. Foundation's `SegmentGroup` shares the horizontal ListView construction
+and track Component, exposing `createBackground(parentItem)` for the native
+template's background slot. The track is created once, not recreated by palette,
+selection, hover or size changes. Qt retains content ownership, implicit sizing,
+mirroring and overflow scrolling; Foundation imports no Controls.
+The `tab` family selects a raised
 `content` segment in light mode and `controlHover` in dark mode. The track is
 finalized once by the same bounded feedback recipe if its seed is too close to
 the segment. Hover reserves the raised segment before deriving its own fill, so

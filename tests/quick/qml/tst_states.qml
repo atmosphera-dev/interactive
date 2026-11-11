@@ -283,7 +283,7 @@ Item {
             compare(track.border.width, 0);
             compare(bar.leftPadding, IA.Appearance.metrics.spacingXS);
             compare(bar.topPadding, bar.leftPadding);
-            compare(bar.spacing, 0);
+            compare(bar.spacing, IA.Appearance.metrics.spacingXS);
             compare(segment.color, data.scheme === "dark" ? IA.Appearance.colors.controlHover : IA.Appearance.colors.content);
             compare(segment.border.width, 0);
             compare((second.background as Rectangle).color.a, 0);
