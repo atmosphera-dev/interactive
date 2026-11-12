@@ -2,7 +2,8 @@
 qt_add_qml_module(interactive_controls SHARED
     URI InterActive
     VERSION 1.0
-    DEPENDENCIES TARGET interactive_foundation
+    DEPENDENCIES QtQuick TARGET interactive_foundation
+    SOURCES DialogButtonBoxLayout.h DialogButtonBoxLayout.cpp
     QML_FILES
         IAButton.qml IAToolButton.qml IALabel.qml IATextField.qml
         IACheckBox.qml IARadioButton.qml IASwitch.qml

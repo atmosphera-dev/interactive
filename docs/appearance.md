@@ -856,6 +856,17 @@ standard-button enum to choose another completion, or `NoButton` for none.
 Missing or non-completion choices produce no Primary button; Cancel/Close stay
 neutral and Discard stays Destructive. Custom buttons retain their own tones.
 
+Horizontal footer layout publishes a component-local snapshot during Qt Quick's
+normal polish phase. `contentWidth` is the allocated lane (at least the available
+width or actual button extent), not the natural button extent; the ListView's
+content width includes its inline alignment spacers. `implicitContentWidth`
+retains Qt's native implicit minimum. Horizontal alignment uses actual button
+widths, including explicit custom widths; fill-mode `implicitWidth` remains a
+natural minimum instead of referring back to stretched allocation. Native
+vertical sizing and model/index/focus/input behavior remain owned by Qt.
+The Controls-local layout helper and underscored bindings are implementation
+details, not an application API or a way to synchronously force polishing.
+
 `IADialog` uses `dialogMinWidth`, not the menu width floor. Its popup padding
 defines the header, content and footer edges; the owned footer takes those same
 four insets explicitly, without offsets. `ControlAppearance.headingPixelSize`
@@ -865,6 +876,61 @@ assignments, win for both ordinary text and the heading; reset resumes the live
 roles. The dialog forwards ordinary typography to its standard buttons and
 heading typography to its title. Surface/radius overrides remain on the dialog
 surface, not its buttons; application content remains application-owned.
+
+Put an ordinary body layout among the dialog's children, not in `contentItem`:
+
+```qml
+import QtQuick.Layouts
+import QtQuick.Templates as T
+import InterActive
+
+IADialog {
+    width: 420
+    title: "Preferences"
+    standardButtons: T.Dialog.Ok | T.Dialog.Cancel
+    ColumnLayout {
+        width: parent.width
+        IATextField { Layout.fillWidth: true }
+    }
+}
+```
+
+The default `bodyData` list forwards visual and nonvisual objects to the owned
+natural-size host. A single body's implicit size supplies the natural size;
+multiple visual children need an application-owned layout. Bind that layout's
+width to `parent.width`, and expose its natural `implicitHeight` independently
+of viewport height. The body host always receives the actual viewport width.
+Do not anchor natural body height to the viewport or add a redundant outer
+ScrollView. A deliberately bounded nested editor may still own its own scroll.
+
+The dialog's implicit height includes body, header, footer, padding, spacing and
+constant edge gaps. Its default actual height grows to fit, capped by the item
+host window's height or the Window popup's host-screen available height, less margins.
+Explicit width and height remain consumer-owned overrides; `dialogMinWidth` is
+an implicit-width floor. Window sizing never uses the popup's own window height.
+`ScreenGeometry` is a public-Qt data adapter with an explicit `QQuickWindow`
+input and read-only per-screen `availableGeometry`; it observes screen changes,
+available-geometry updates and lifetime. It never substitutes virtual-desktop
+geometry. Without a pre-show host, the dialog falls back to its independent
+natural height until the real host is available.
+
+Only the body scrolls vertically. A stable trailing lane, mirrored in RTL,
+reserves the actual vertical scrollbar width plus `spacingXS`, even when the
+bar is hidden. This dialog-local composition does not change general scrolling
+controls or add a global scrollbar setting. Hidden edges alone show a 1px
+separator and a 16px inward surface fade; `spacingS` gaps remain when hidden.
+Reduced motion removes fades, not lines or spacing.
+
+The structural title row elides its title and provides a square, accessible
+Close icon when its `IADialogButtonBox.hasRejectAction` query is true. That live
+query observes standard and custom RejectRole buttons, insertion/removal and
+role changes. The icon calls the native dialog `reject()` path. Qt continues
+to own standard-button actions, modality, keyboard behavior and popup focus.
+
+Migration: replace `contentItem: MyBody { ... }` with `MyBody { width:
+parent.width; ... }`, remove the former body's outer scrolling and height cap,
+and retain any distinct bounded editor inside it. Replacing `contentItem`
+deliberately replaces the owned viewport and is not the ordinary-body API.
 
 ## Verification Boundary
 

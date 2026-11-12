@@ -3,6 +3,7 @@
 #include "AirmailProfiles.h"
 #include "ControlAppearance.h"
 #include "SeparatorAppearance.h"
+#include "ScreenGeometry.h"
 #include "TokenSchema.h"
 #include "AppearanceTrace_p.h"
 #include "TestTraceSetup.h"
@@ -276,6 +277,7 @@ class AppearanceTests : public QObject
 {
     Q_OBJECT
 private slots:
+    void screenGeometryLifetime();
     void defaultsAndSchemaCompleteness();
     void numericSchemaBounds();
     void pressInsetTokens();
@@ -2606,6 +2608,33 @@ void AppearanceTests::contrastingTextFastPath()
     const qreal minimum = std::min(rgbContrast(mixed, black), rgbContrast(mixed, white));
     QVERIFY(minimum >= 4.5);
     QVERIFY(minimum <= std::sqrt(21.0) + 0.001);
+}
+
+void AppearanceTests::screenGeometryLifetime()
+{
+    ScreenGeometry geometry;
+    QCOMPARE(geometry.window(), nullptr);
+    QCOMPARE(geometry.availableGeometry(), QRect());
+    QSignalSpy windowChanged(&geometry, &ScreenGeometry::windowChanged);
+    QSignalSpy geometryChanged(&geometry, &ScreenGeometry::availableGeometryChanged);
+    auto first = std::make_unique<QQuickWindow>();
+    QQuickWindow second;
+    QVERIFY(first->screen());
+    geometry.setWindow(first.get());
+    QCOMPARE(geometry.availableGeometry(), first->screen()->availableGeometry());
+    QCOMPARE(windowChanged.count(), 1);
+    QCOMPARE(geometryChanged.count(), 1);
+    geometry.setWindow(first.get());
+    QCOMPARE(windowChanged.count(), 1);
+    geometry.setWindow(&second);
+    QCOMPARE(geometry.window(), &second);
+    QCOMPARE(geometry.availableGeometry(), second.screen()->availableGeometry());
+    geometry.setWindow(first.get());
+    first.reset();
+    QCOMPARE(geometry.window(), nullptr);
+    QCOMPARE(geometry.availableGeometry(), QRect());
+    QCOMPARE(windowChanged.count(), 4);
+    QCOMPARE(geometryChanged.count(), 2);
 }
 
 void AppearanceTests::defaultsAndSchemaCompleteness()

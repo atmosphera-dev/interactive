@@ -11,7 +11,6 @@ Item {
     // Accept every compatible QQuickWindow host, including QQuickView.
     property var pickerParentWindow: root.Window.window
     property Item accentMenuOpener: null
-    property real maximumHeight: 450
     property string jsonDraft: "{}"
     property var accentDraft: undefined
     readonly property var accentPresets: [
@@ -35,9 +34,7 @@ Item {
     }
     readonly property bool currentAccentSaved: accentDisplayKey.length > 0
         && accentDisplayName !== "Custom" && state.savedAccentKeys.indexOf(accentDisplayKey) >= 0
-    // The consumer supplies the viewport budget. Reading our hosting window's
-    // height here creates a size feedback loop in a Window-hosted dialog.
-    implicitHeight: Math.min(layout.implicitHeight, maximumHeight)
+    implicitHeight: layout.implicitHeight
     implicitWidth: 600
 
     function openAccentPicker(): void { accentPicker.open(); }
@@ -83,19 +80,9 @@ Item {
         root.accentDraft = undefined;
     }
 
-    IAScrollView {
-        id: toolbarScroll
-        objectName: "paletteToolbarScroll"
-        anchors.fill: parent
-        clip: true
-        // Reserve the scrollbar's actual lane, including mirrored layouts.
-        // The editor's fields must not extend underneath either scroll bar.
-        leftPadding: mirrored ? effectiveScrollBarWidth : 0
-        rightPadding: mirrored ? 0 : effectiveScrollBarWidth
-        contentWidth: availableWidth
     ColumnLayout {
         id: layout
-        width: toolbarScroll.availableWidth
+        width: root.width
         spacing: IA.Appearance.metrics.spacingM
         Flow {
             Layout.fillWidth: true
@@ -401,6 +388,5 @@ Item {
             message: root.state.appearanceError
             validation: IA.Presentation.Invalid
         }
-    }
     }
 }

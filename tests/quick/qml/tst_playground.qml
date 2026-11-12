@@ -18,10 +18,17 @@ Item {
         id: layout
         anchors.fill: parent
         spacing: 0
-        AppearanceEditor {
-            id: editor
+        IAScrollView {
+            id: editorScroll
             Layout.fillWidth: true
+            Layout.preferredHeight: Math.min(editor.implicitHeight, 450)
             visible: false
+            padding: 0
+            contentWidth: availableWidth
+            AppearanceEditor {
+                id: editor
+                width: parent.width
+            }
         }
     }
     Component {
@@ -38,11 +45,25 @@ Item {
         maximumWidth: viewportWidth
         minimumHeight: 820
         maximumHeight: 820
-        AppearanceEditor { objectName: "narrowEditor"; width: parent.width; height: implicitHeight }
+        IAScrollView {
+            anchors.fill: parent
+            padding: 0
+            contentWidth: availableWidth
+            AppearanceEditor { objectName: "narrowEditor"; width: parent.width }
+        }
     }
     NarrowMenuWindow { id: narrow320Window; viewportWidth: 320 }
     NarrowMenuWindow { id: narrow360Window; viewportWidth: 360 }
     Main { id: consumerWindow; visible: false }
+
+    Window {
+        id: inputHostWindow
+        visible: false
+        width: 320
+        height: 180
+        flags: Qt.Dialog
+        IATextField { objectName: "inputHostField"; x: 20; y: 40; width: 260 }
+    }
 
     SignalSpy { id: inputSpy; target: PlaygroundState; signalName: "appearanceInputChanged" }
     SignalSpy { id: menuOpenedSpy; signalName: "opened" }
@@ -87,7 +108,7 @@ Item {
             const inputToggle = findChild(editor, "appearanceEditorToggle") as IAToolButton;
             if (inputToggle !== null)
                 inputToggle.checked = false;
-            editor.visible = false;
+            editorScroll.visible = false;
             for (const name of ["deliverySubmenu", "mixedMenu", "editDialog"]) {
                 const popup = findChild(page, name) as T.Popup;
                 verify(popup !== null);
@@ -183,7 +204,7 @@ Item {
             consumerWindow.show();
             const toolbar = findChild(consumerWindow, "appearanceToolbar") as AppearanceToolbar;
             const dialog = findChild(consumerWindow, "appearanceWindow") as IADialog;
-            const owner = dialog.contentItem as AppearanceEditor;
+            const owner = findChild(dialog, "appearanceEditor") as AppearanceEditor;
             verify(toolbar !== null && dialog !== null && owner !== null);
             tryVerify(function() { return TestProbe.exposed(toolbar); });
             verify(TestProbe.activate(toolbar));
@@ -273,7 +294,7 @@ Item {
                 const identity = json;
                 verify(TestProbe.render(owner));
                 const inputScroll = findChild(owner, "appearanceInputScroll") as IAScrollView;
-                const outerScroll = findChild(owner, "paletteToolbarScroll") as IAScrollView;
+                const outerScroll = findChild(dialog, "iaDialogScroll") as IAScrollView;
                 verify(inputScroll !== null && outerScroll !== null);
                 for (const entry of [{scroll: inputScroll, item: json}, {scroll: outerScroll, item: inputScroll}]) {
                     const flick = entry.scroll.contentItem as Flickable;
@@ -330,7 +351,7 @@ Item {
         }
 
         function test_accentPresetSelectionAndPreservation(): void {
-            editor.visible = true;
+            editorScroll.visible = true;
             verify(TestProbe.writePaletteHistory(["#49335f", "#5c9cf5", "#49335f"]));
             const bytes = TestProbe.paletteSampleBytes();
             const expected = [
@@ -401,7 +422,7 @@ Item {
         }
 
         function test_accentMenuKeyboard(data: var): void {
-            editor.visible = true;
+            editorScroll.visible = true;
             verify(TestProbe.writePaletteHistory(["#245bdb"]));
             const before = TestProbe.paletteSampleBytes();
             const opener = findChild(editor, "accentPickerButton") as IAButton;
@@ -453,7 +474,7 @@ Item {
         }
 
         function test_accentHistoryRefreshAndSave(): void {
-            editor.visible = true;
+            editorScroll.visible = true;
             verify(TestProbe.render(editor));
             const menu = accentMenuFor(editor);
             const opener = findChild(editor, "accentPickerButton") as IAButton;
@@ -537,7 +558,7 @@ Item {
 
         function test_accentSavedGreyStates(data: var): void {
             verify(PlaygroundState.setAppearance({scheme: data.scheme, contrast: data.contrast}));
-            editor.visible = true;
+            editorScroll.visible = true;
             verify(TestProbe.writePaletteHistory(["#5c9cf5", "#49335f"]));
             const menu = accentMenuFor(editor);
             const opener = findChild(editor, "accentPickerButton") as IAButton;
@@ -680,12 +701,13 @@ Item {
         }
 
         function revealEditor(item: Item): void {
-            const scroll = findChild(editor, "paletteToolbarScroll") as IAScrollView;
-            verify(scroll !== null);
-            const flick = scroll.contentItem as Flickable;
-            verify(flick !== null);
-            const center = item.mapToItem(flick.contentItem, item.width / 2, item.height / 2);
-            flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height, center.y - flick.height / 2));
+            const input = findChild(editor, "appearanceInputScroll") as IAScrollView;
+            for (const scroll of [input, editorScroll]) {
+                const flick = scroll.contentItem as Flickable;
+                verify(flick !== null);
+                const center = item.mapToItem(flick.contentItem, item.width / 2, item.height / 2);
+                flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height, center.y - flick.height / 2));
+            }
             verify(TestProbe.render(editor));
         }
 
@@ -715,11 +737,42 @@ Item {
         }
 
         function edit(field: IATextField, text: string): void {
+            verify(TestProbe.activateForInput(field));
             click(field);
             tryCompare(field, "activeFocus", true);
             verify(TestProbe.keyClick(field, Qt.Key_A, Qt.ControlModifier));
             verify(TestProbe.typeAscii(field, text));
             compare(field.text, text);
+        }
+
+        function test_inputHostActivationCompletesAcrossReopen(): void {
+            const mainField = findChild(page, "nameField") as IATextField;
+            const window = inputHostWindow;
+            window.transientParent = TestProbe.hostWindow(page);
+            verify(mainField !== null && window !== null);
+            const field = findChild(window, "inputHostField") as IATextField;
+            verify(field !== null);
+            try {
+                for (let opening = 0; opening < 2; ++opening) {
+                    window.show();
+                    tryVerify(function() { return TestProbe.exposed(field); });
+                    verify(TestProbe.activateForInput(field));
+                    verify(TestProbe.inputHostReady(field), "activation completes at the intended native owner");
+                    verify(!TestProbe.inputHostReady(mainField), "transient ancestor is not the global input owner");
+                    verify(TestProbe.hostWindow(mainField).active, "active transient ancestor is insufficient");
+                    verify(TestProbe.click(field, field.width / 2, field.height / 2));
+                    tryCompare(field, "activeFocus", true);
+                    // Match consumer lifecycle: return to the owner after the
+                    // dialog closes, not by stealing focus from an open dialog.
+                    window.close();
+                    tryCompare(window, "visible", false);
+                    verify(TestProbe.activateForInput(mainField));
+                    verify(TestProbe.inputHostReady(mainField), "return to ancestor waits for global ownership");
+                    verify(!TestProbe.inputHostReady(field));
+                    verify(TestProbe.click(mainField, mainField.width / 2, mainField.height / 2));
+                    tryCompare(mainField, "activeFocus", true);
+                }
+            } finally { window.close(); }
         }
 
         function renderedSummary(): string {
@@ -989,7 +1042,7 @@ Item {
         }
 
         function test_accentOpeningAndExplicitDefaultReset(): void {
-            editor.visible = true;
+            editorScroll.visible = true;
             verify(TestProbe.render(editor));
             const opener = findChild(editor, "accentPickerButton") as IAButton;
             const reset = findChild(editor, "resetAccentButton") as IAToolButton;
@@ -1057,7 +1110,7 @@ Item {
         function test_liveCalibrationPickers(data: var): void {
             verify(PlaygroundState.setAppearance({scheme: data.scheme, contrast: data.contrast}));
             verify(PlaygroundState.applyInitialPaletteSuggestions());
-            editor.visible = true;
+            editorScroll.visible = true;
             editor.accentDraft = "#234567";
             editor.jsonDraft = '{"tokens":';
             PlaygroundState.draftName = "Calibration form draft";
@@ -1165,7 +1218,7 @@ Item {
         }
 
         function test_visibleSemanticDialogsSurviveAccentReset(): void {
-            editor.visible = true;
+            editorScroll.visible = true;
             verify(PlaygroundState.applyInitialPaletteSuggestions());
             verify(TestProbe.render(editor));
             const amber = findChild(editor, "amberColorDialog") as Dialogs.ColorDialog;
@@ -1242,7 +1295,7 @@ Item {
             verify(PlaygroundState.setAppearance({scheme: data.scheme, contrast: data.contrast,
                 density: data.touch ? "touch" : "compact", fontScale: data.touch ? 1.5 : 1,
                 tokens: {colors: {primarySurface: "#234567", warning: "#ff7a18", error: "#ff3434"}}}));
-            editor.visible = true;
+            editorScroll.visible = true;
             const host = TestProbe.hostWindow(scene);
             verify(host !== null);
             const minimumWidth = host.minimumWidth;
@@ -1251,13 +1304,21 @@ Item {
             tryVerify(function() { return host.width >= data.width; });
             // Use a same-component specimen with the requested lane width instead
             // of pretending a compositor-ignored window resize is a narrow test.
+            const scrollComponent = Qt.createComponent("qrc:/qt/qml/InterActive/IAScrollView.qml");
+            tryCompare(scrollComponent, "status", Component.Ready);
+            const scroll = createTemporaryObject(scrollComponent, scene, {width: data.width, height: 420, padding: 0}) as IAScrollView;
+            verify(scroll !== null);
+            scroll.contentWidth = Qt.binding(function() { return scroll.availableWidth; });
             const component = Qt.createComponent("qrc:/qt/qml/InterActive/Playground/AppearanceEditor.qml");
             tryCompare(component, "status", Component.Ready);
-            const specimen = createTemporaryObject(component, scene, {width: data.width, height: 420}) as AppearanceEditor;
+            const viewport = scroll.contentItem as Flickable;
+            verify(viewport !== null);
+            const specimen = createTemporaryObject(component, viewport.contentItem) as AppearanceEditor;
+            specimen.width = Qt.binding(function() { return scroll.availableWidth; });
+            scroll.contentHeight = Qt.binding(function() { return specimen.implicitHeight; });
             verify(specimen !== null);
-            editor.visible = false;
+            editorScroll.visible = false;
             verify(TestProbe.render(specimen));
-            const scroll = findChild(specimen, "paletteToolbarScroll") as IAScrollView;
             const flick = scroll.contentItem as Flickable;
             verify(flick !== null);
             const controls = [];
@@ -1330,7 +1391,7 @@ Item {
             const input = {scheme: data.scheme, contrast: data.contrast};
             verify(PlaygroundState.setAppearance(input));
             const defaultAccent = IA.Appearance.colors.accent;
-            editor.visible = true;
+            editorScroll.visible = true;
             editor.accentDraft = "#234567";
             editor.jsonDraft = '{"fontScale":1.2}';
             verify(TestProbe.render(editor));
@@ -1480,7 +1541,7 @@ Item {
             reveal(field);
             edit(field, "Uncommitted accent draft");
             const committed = renderedSummary();
-            editor.visible = true;
+            editorScroll.visible = true;
             verify(TestProbe.render(editor));
             const toggle = findChild(editor, "appearanceEditorToggle") as IAToolButton;
             click(toggle);
@@ -1663,7 +1724,7 @@ Item {
         }
 
         function test_previewTogglePreservesConsumersAndDefaults(): void {
-            editor.visible = true;
+            editorScroll.visible = true;
             verify(TestProbe.render(page));
             const preview = findChild(editor, "appearanceContrast") as IAToolButton;
             const light = findChild(editor, "appearanceLight") as IAButton;

@@ -9,6 +9,16 @@ T.DialogButtonBox {
     // -1 selects automatically; NoButton explicitly removes primary emphasis.
     // This is visual prominence only, not Qt's default/keyboard action.
     property int principalAction: -1
+    // Semantic ownership stays here. Reading the model and every attached role
+    // makes insertion/removal and custom role changes live binding dependencies.
+    readonly property bool hasRejectAction: {
+        for (let index = 0; index < contentChildren.length; ++index) {
+            const button = contentChildren[index] as T.AbstractButton;
+            if (button !== null && button.T.DialogButtonBox.buttonRole === T.DialogButtonBox.RejectRole)
+                return true;
+        }
+        return false;
+    }
     readonly property int _principalAction: {
         if (principalAction !== -1)
             return principalAction;
@@ -32,10 +42,28 @@ T.DialogButtonBox {
     readonly property alias appearanceDiagnostics: appearance.diagnostics
     function resetAppearance(): void { appearance.resetOverrides(); }
     readonly property IA.ControlAppearance _appearance: IA.ControlAppearance { id: appearance; source: IA.Appearance; family: "surface" }
-    implicitWidth: contentWidth + leftPadding + rightPadding
+    readonly property real _buttonExtent: {
+        const buttons = contentChildren;
+        let total = Math.max(0, buttons.length - 1) * spacing;
+        for (const button of buttons)
+            total += button.width;
+        return total;
+    }
+    readonly property DialogButtonBoxLayout _layout: DialogButtonBoxLayout {
+        parent: control
+        actualExtent: control._buttonExtent
+        nativeWidth: control.implicitContentWidth
+        availableWidth: control.availableWidth
+        alignment: control.alignment
+        boxMirrored: control.mirrored
+        rowDirection: buttonRow.effectiveLayoutDirection
+        padLeft: control.leftPadding
+        padRight: control.rightPadding
+    }
+    implicitWidth: _layout.naturalWidth
     implicitHeight: contentHeight + topPadding + bottomPadding
-    // The same row owns actual button extents and the aligned layout width.
-    contentWidth: buttonRow.contentWidth
+    // Allocated horizontal lane includes spacers; Qt owns vertical measurement.
+    contentWidth: _layout.contentWidth
     horizontalPadding: appearance.horizontalPadding
     verticalPadding: appearance.verticalPadding
     spacing: appearance.spacing
@@ -62,12 +90,23 @@ T.DialogButtonBox {
     }
     contentItem: ListView {
         id: buttonRow
-        implicitWidth: contentWidth
+        // Natural extent changes preserve Qt's native resize dependency.
+        implicitWidth: control._layout.committedExtent
         model: control.contentModel
         spacing: control.spacing
         orientation: ListView.Horizontal
         interactive: false
         boundsBehavior: Flickable.StopAtBounds
+        headerPositioning: ListView.InlineHeader
+        footerPositioning: ListView.InlineFooter
+        header: Item {
+            width: control._layout.headerWidth
+            height: 0
+        }
+        footer: Item {
+            width: control._layout.footerWidth
+            height: 0
+        }
     }
     background: IA.ControlBackground {
         resolvedAppearance: appearance

@@ -6,6 +6,25 @@ compositor input or a Wayland grab serial. A separate QQuickWindow alone is not
 proof of an anchored native popup. Qt 6.12 rejects a grabbing popup without the
 required native parent/input state.
 
+## Input-host ownership
+
+`TestProbe.inputHostReady(item)` requires an exposed, active host equal to
+`QGuiApplication::focusWindow()`. Exposure, rendering and `QWindow::isActive()`
+alone are insufficient: a transient ancestor can report active while a different
+window owns input. `TestProbe.activateForInput(item)` requests window activation
+when needed and waits for this exact ownership before reporting success. It does
+not select or repair an item's focus. The lower-level `TestProbe.activate(item)`
+retains its request-only contract for pointer flows; its receipt is not input
+readiness.
+
+The shared playground edit helper establishes input-host ownership before its
+real click, then still requires the field's actual `activeFocus` and text outcome.
+This applies to initial opens, reopens and returning to an owner after closing
+a popup. Pointer-only menu clicks retain their separate path: a native menu can
+legitimately keep its parent's keyboard ownership. `TestProbe.click()` reports
+QTest dispatch only, not activation, native pointer input or a focus outcome.
+The native Space boundary uses the same ownership predicate plus Wayland checks.
+
 ## Native Space boundary
 
 `TestProbe.nativeKeyClick(hostItem, Qt.Key_Space)` is test-only. Its caller first

@@ -2,6 +2,7 @@
 #include "TestProbe.h"
 
 #include <QTest>
+#include <QScreen>
 #include <QSignalSpy>
 #include <QQmlEngine>
 #include <QGuiApplication>
@@ -32,6 +33,12 @@
 #endif
 
 namespace {
+bool isInputHostReady(const QQuickWindow *window)
+{
+    return window && window->isExposed() && window->isActive()
+        && QGuiApplication::focusWindow() == window;
+}
+
 class NativeKeyWitness final : public QObject
 {
 public:
@@ -76,6 +83,12 @@ protected:
 };
 }
 
+QRect TestProbe::screenAvailableGeometry(QQuickItem *item) const
+{
+    const auto *window = hostWindow(item);
+    return window && window->screen() ? window->screen()->availableGeometry() : QRect();
+}
+
 QQuickWindow *TestProbe::hostWindow(QQuickItem *item) const
 {
     auto *window = item ? item->window() : nullptr;
@@ -110,6 +123,23 @@ bool TestProbe::activate(QQuickItem *item) const
         return false;
     item->window()->requestActivate();
     return true;
+}
+
+bool TestProbe::activateForInput(QQuickItem *item) const
+{
+    if (!exposed(item))
+        return false;
+    const QPointer<QQuickWindow> window = item->window();
+    if (!isInputHostReady(window))
+        window->requestActivate();
+    // Unlike a pointer-only request, keyboard input needs the exact global owner.
+    // Keep item focus selection with the subsequent real click/key operation.
+    return QTest::qWaitFor([window] { return isInputHostReady(window); }, 5000);
+}
+
+bool TestProbe::inputHostReady(QQuickItem *item) const
+{
+    return isInputHostReady(item ? item->window() : nullptr);
 }
 
 bool TestProbe::click(QQuickItem *item, qreal x, qreal y) const
@@ -162,9 +192,7 @@ bool TestProbe::isWayland() const
 
 bool TestProbe::nativeKeyHostReady(QQuickItem *hostItem) const
 {
-    const auto *window = hostItem ? hostItem->window() : nullptr;
-    return isWayland() && window && window->isExposed() && window->isActive()
-        && QGuiApplication::focusWindow() == window;
+    return isWayland() && inputHostReady(hostItem);
 }
 
 bool TestProbe::nativeKeyClick(QQuickItem *hostItem, int key) const

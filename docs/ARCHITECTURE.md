@@ -105,6 +105,14 @@ Item- and Window-hosted QML popups belong to the design; native platform-rendere
 popups do not establish IA styling coverage. Alignment belongs in shared layout
 lanes, grids, or anchors, not unrelated pixel offsets.
 
+The dialog button box owns one native model-backed ListView. A small internal
+QQuickItem adapter snapshots only its new horizontal geometry during public
+polish; native vertical measurement, sizing and interaction remain Qt's. The
+view reports the committed actual button extent as its natural implicit width,
+separately from the allocated lane and inline spacer widths. This preserves
+Qt's natural-size invalidation without entering layout during a partial model
+mutation. Consumers neither install the adapter nor force its polish phase.
+
 ## Scope Boundaries
 
 Applications own appearance acquisition, adaptation, and persistence. InterActive

@@ -21,9 +21,12 @@ public:
     explicit TestProbe(QObject *parent = nullptr) : QObject(parent) {}
 
     Q_INVOKABLE QQuickWindow *hostWindow(QQuickItem *item) const;
+    Q_INVOKABLE QRect screenAvailableGeometry(QQuickItem *item) const;
     Q_INVOKABLE bool exposed(QQuickItem *item) const;
     Q_INVOKABLE bool render(QQuickItem *item, int timeout = 5000) const;
     Q_INVOKABLE bool activate(QQuickItem *item) const;
+    Q_INVOKABLE bool activateForInput(QQuickItem *item) const;
+    Q_INVOKABLE bool inputHostReady(QQuickItem *item) const;
     Q_INVOKABLE bool click(QQuickItem *item, qreal x, qreal y) const;
     Q_INVOKABLE bool press(QQuickItem *item, qreal x, qreal y) const;
     Q_INVOKABLE bool move(QQuickItem *item, qreal x, qreal y) const;

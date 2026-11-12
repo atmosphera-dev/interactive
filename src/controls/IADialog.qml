@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 import QtQuick
+import QtQuick.Layouts
 import QtQuick.Templates as T
 import InterActive.Foundation as IA
 
 T.Dialog {
     id: control
+    // Keep Qt's popup lifecycle while ordinary children belong to the natural body.
+    default property alias bodyData: body.contentData
     property alias backgroundColor: appearance.backgroundColor
     property alias foregroundColor: appearance.foregroundColor
     property alias borderColor: appearance.borderColor
@@ -16,32 +19,159 @@ T.Dialog {
     property alias fontWeight: appearance.fontWeight
     readonly property alias appearanceDiagnostics: appearance.diagnostics
     function resetAppearance(): void { appearance.resetOverrides(); }
-    IA.ControlAppearance { id: appearance; source: IA.Appearance; family: "popup" }
-    implicitWidth: Math.max(implicitContentWidth + leftPadding + rightPadding,
+    readonly property IA.ControlAppearance _appearance: IA.ControlAppearance { id: appearance; source: IA.Appearance; family: "popup" }
+    readonly property IA.ScreenGeometry _hostGeometry: IA.ScreenGeometry {
+        window: control.parent ? control.parent.Window.window : null
+    }
+    readonly property real _heightBudget: {
+        const host = _hostGeometry.window;
+        const extent = popupType === T.Popup.Window ? _hostGeometry.availableGeometry.height
+            : (host ? host.height : 0);
+        return extent > 0 ? Math.max(0, extent - Math.max(0, topMargin) - Math.max(0, bottomMargin))
+            : implicitHeight;
+    }
+    readonly property bool _hasRejectAction: (footer as IADialogButtonBox)?.hasRejectAction ?? false
+    implicitWidth: Math.max(body.implicitWidth + scroll._lane + leftPadding + rightPadding,
                             implicitHeaderWidth, implicitFooterWidth, IA.Appearance.metrics.dialogMinWidth)
     implicitHeight: implicitContentHeight + topPadding + bottomPadding
                     + implicitHeaderHeight + implicitFooterHeight
                     + (implicitHeaderHeight > 0 ? spacing : 0) + (implicitFooterHeight > 0 ? spacing : 0)
+    height: Math.min(implicitHeight, _heightBudget)
     horizontalPadding: appearance.horizontalPadding
     verticalPadding: appearance.verticalPadding
     spacing: appearance.spacing
     margins: IA.Appearance.metrics.spacingS
     font: appearance.resolvedFont
     popupType: T.Popup.Item
-    header: IALabel {
-        objectName: "iaTitle"
-        visible: control.title.length > 0
-        text: control.title
-        fontFamily: control.fontFamily
-        fontPixelSize: appearance.headingPixelSize
-        fontWeight: appearance.headingWeight
-        foregroundColor: control.foregroundColor
-        leftPadding: control.leftPadding
-        rightPadding: control.rightPadding
-        topPadding: control.topPadding
-        elide: Text.ElideRight
+    header: Item {
+        implicitWidth: heading.implicitWidth + control.leftPadding + control.rightPadding
+        implicitHeight: heading.implicitHeight + control.topPadding
+        visible: control.title.length > 0 || control._hasRejectAction
+        RowLayout {
+            id: heading
+            x: control.leftPadding
+            y: control.topPadding
+            width: Math.max(0, parent.width - control.leftPadding - control.rightPadding)
+            // This row already receives the owner's resolved direction.
+            LayoutMirroring.enabled: false
+            layoutDirection: control.mirrored ? Qt.RightToLeft : Qt.LeftToRight
+            spacing: control.spacing
+            IALabel {
+                objectName: "iaTitle"
+                Layout.fillWidth: true
+                text: control.title
+                fontFamily: control.fontFamily
+                fontPixelSize: appearance.headingPixelSize
+                fontWeight: appearance.headingWeight
+                foregroundColor: control.foregroundColor
+                elide: Text.ElideRight
+            }
+            IAToolButton {
+                objectName: "iaDialogClose"
+                visible: control._hasRejectAction
+                Layout.preferredWidth: implicitHeight
+                Layout.preferredHeight: implicitHeight
+                icon.source: "qrc:/qt/qml/InterActive/Foundation/icons/close.svg"
+                display: T.AbstractButton.IconOnly
+                Accessible.name: "Close"
+                fontFamily: control.fontFamily
+                fontPixelSize: control.fontPixelSize
+                fontWeight: control.fontWeight
+                foregroundColor: control.foregroundColor
+                onClicked: control.reject()
+            }
+        }
     }
-    contentItem: Item { }
+    contentItem: Item {
+        implicitWidth: body.implicitWidth + scroll._lane
+        implicitHeight: body.implicitHeight + 2 * (1 + IA.Appearance.metrics.spacingS)
+        IAScrollView {
+            id: scroll
+            objectName: "iaDialogScroll"
+            readonly property real _lane: T.ScrollBar.vertical.width + IA.Appearance.metrics.spacingXS
+            anchors.fill: parent
+            anchors.topMargin: 1 + IA.Appearance.metrics.spacingS
+            anchors.bottomMargin: 1 + IA.Appearance.metrics.spacingS
+            padding: 0
+            leftPadding: control.mirrored ? _lane : 0
+            rightPadding: control.mirrored ? 0 : _lane
+            contentWidth: availableWidth
+            contentHeight: body.implicitHeight
+            background: null
+            T.ScrollBar.horizontal.policy: T.ScrollBar.AlwaysOff
+            contentItem: Flickable {
+                id: viewport
+                objectName: "iaDialogViewport"
+                clip: true
+                contentWidth: width
+                contentHeight: body.implicitHeight
+                flickableDirection: Flickable.VerticalFlick
+                boundsBehavior: Flickable.StopAtBounds
+                T.Pane {
+                    id: body
+                    objectName: "iaDialogBody"
+                    width: viewport.width
+                    height: implicitHeight
+                    implicitWidth: implicitContentWidth
+                    implicitHeight: implicitContentHeight
+                    padding: 0
+                }
+            }
+        }
+        // These overlays share the viewport's visual owner. No detached object
+        // property can outlive its explicit visual parent during popup teardown.
+        Item {
+            // Padding is already resolved to physical edges by the scroll owner.
+            LayoutMirroring.enabled: false
+            clip: true
+            anchors.fill: scroll
+            anchors.leftMargin: scroll.leftPadding
+            anchors.rightMargin: scroll.rightPadding
+            anchors.topMargin: scroll.topPadding
+            anchors.bottomMargin: scroll.bottomPadding
+            Rectangle {
+                objectName: "iaDialogTopFade"
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                height: 16
+                visible: topEdge.visible && !IA.Appearance.reducedMotion
+                gradient: Gradient {
+                    GradientStop { position: 0; color: control.backgroundColor }
+                    GradientStop { position: 1; color: "transparent" }
+                }
+            }
+            Rectangle {
+                objectName: "iaDialogBottomFade"
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: 16
+                visible: bottomEdge.visible && !IA.Appearance.reducedMotion
+                gradient: Gradient {
+                    GradientStop { position: 0; color: "transparent" }
+                    GradientStop { position: 1; color: control.backgroundColor }
+                }
+            }
+        }
+        IA.Separator {
+            id: topEdge
+            objectName: "iaDialogTopEdge"
+            x: -control.leftPadding
+            width: control.width
+            height: 1
+            visible: viewport.contentY > viewport.originY
+        }
+        IA.Separator {
+            id: bottomEdge
+            objectName: "iaDialogBottomEdge"
+            x: -control.leftPadding
+            y: parent.height - height
+            width: control.width
+            height: 1
+            visible: viewport.contentY + viewport.height < viewport.originY + viewport.contentHeight
+        }
+    }
     // T.Dialog connects this template footer and forwards standardButtons itself.
     footer: IADialogButtonBox {
         objectName: "iaDialogButtons"
