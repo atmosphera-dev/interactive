@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-find_package(Qt6 6.8 REQUIRED COMPONENTS QuickDialogs2)
+find_package(Qt6 6.12.0 REQUIRED COMPONENTS QuickDialogs2)
 qt_add_qml_module(interactive_playground_scene SHARED
     URI InterActive.Playground
     VERSION 1.0

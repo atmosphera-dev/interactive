@@ -29,6 +29,9 @@ public:
     Q_INVOKABLE bool move(QQuickItem *item, qreal x, qreal y) const;
     Q_INVOKABLE bool release(QQuickItem *item, qreal x, qreal y) const;
     Q_INVOKABLE bool keyClick(QQuickItem *hostItem, int key, int modifiers = 0) const;
+    Q_INVOKABLE bool isWayland() const;
+    Q_INVOKABLE bool nativeKeyHostReady(QQuickItem *hostItem) const;
+    Q_INVOKABLE bool nativeKeyClick(QQuickItem *hostItem, int key) const;
     Q_INVOKABLE bool typeAscii(QQuickItem *hostItem, const QString &text) const;
     Q_INVOKABLE QStringList appearanceProperties(QObject *control) const;
     // Capture tooling only: snapshots include the actual parent/window clipping.

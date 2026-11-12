@@ -1902,7 +1902,15 @@ Item {
             const inspect = findChild(page, "menuInspectCollection") as IAMenuItem;
             const inspector = findChild(page, "selectionInspector") as IALabel;
             verify(opener !== null && inspect !== null && inspector !== null);
-            clickPage(opener);
+            if (data.windowPopups && TestProbe.isWayland()) {
+                reveal(opener);
+                opener.forceActiveFocus(Qt.TabFocusReason);
+                tryCompare(opener, "activeFocus", true);
+                tryVerify(function() { return TestProbe.nativeKeyHostReady(opener); });
+                verify(TestProbe.nativeKeyClick(opener, Qt.Key_Space));
+            } else {
+                clickPage(opener);
+            }
             assertHost(menu, data.windowPopups);
             click(inspect);
             tryCompare(menu, "visible", false);

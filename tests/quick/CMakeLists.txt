@@ -32,6 +32,7 @@ add_test(NAME interactive.geometry COMMAND interactive_quick_tests
     -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_geometry.qml")
 add_test(NAME interactive.popups COMMAND interactive_quick_tests
     -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_popups.qml")
+set_tests_properties(interactive.popups PROPERTIES RUN_SERIAL TRUE)
 add_test(NAME interactive.icons COMMAND interactive_quick_tests
     -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_icons.qml")
 add_test(NAME interactive.states COMMAND interactive_quick_tests
@@ -57,4 +58,5 @@ if(INTERACTIVE_BUILD_PLAYGROUND)
     add_test(NAME interactive.playground COMMAND interactive_quick_tests
         -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_playground.qml")
     set_tests_properties(interactive.playground PROPERTIES LABELS interactive-overview TIMEOUT 180)
+    set_tests_properties(interactive.playground PROPERTIES RUN_SERIAL TRUE)
 endif()

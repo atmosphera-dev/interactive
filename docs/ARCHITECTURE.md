@@ -2,8 +2,12 @@
 
 This document describes the approved architectural direction, not a claim of
 implemented control coverage, stable API spellings, or completed verification.
-InterActive (IA) targets Qt 6.8 or newer and provides explicitly imported,
+InterActive (IA) targets Qt 6.12.0 or newer and provides explicitly imported,
 IA-owned Qt Quick controls and reusable compositions.
+
+This supported minimum includes Qt's native explicit popup sizing fix on both
+axes ([QTBUG-147847](https://bugreports.qt.io/browse/QTBUG-147847)); IA does not
+replace that ownership with a sizing workaround.
 
 ## Module Layers
 

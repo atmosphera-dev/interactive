@@ -6,7 +6,7 @@ shelf, menus, and an editable dialog. Five further pages (Actions, Forms, Values
 
 ## Build And Test
 
-Use CMake 3.21+, a C++17 compiler, and Qt 6.8+ with Core, Gui, Qml, Quick,
+Use CMake 3.21+, a C++17 compiler, and Qt 6.12.0+ with Core, Gui, Qml, Quick,
 QuickControls2, Svg, and ShaderTools. Test builds also need Test and QuickTest.
 The playground additionally needs QuickDialogs2 and the QtQuick.Dialogs QML
 module; these are playground dependencies, not new library requirements.
@@ -23,7 +23,7 @@ QML_IMPORT_PATH="$PWD/build/qml${QML_IMPORT_PATH:+:$QML_IMPORT_PATH}" \
 
 Configure with `-DCMAKE_PREFIX_PATH="$QT_PREFIX"` to select a non-default SDK.
 For minimum-version verification, also pass
-`-DINTERACTIVE_VERIFY_QT_VERSION=6.8.0`. CMake checks the requested exact version;
+`-DINTERACTIVE_VERIFY_QT_VERSION=6.12.0`. CMake checks the requested exact version;
 the identity test compares compiled and runtime Qt versions. Use independent
 build directories and matching runtime libraries/plugins for different SDKs.
 
@@ -398,7 +398,7 @@ Rendered observations have this shape:
   "resolvedScheme": "light",
   "viewport": {"width": 1200, "height": 820},
   "dpr": 1,
-  "qtVersion": "6.8.0",
+  "qtVersion": "6.12.0",
   "renderer": "opengl",
   "popupWindow": true
 }

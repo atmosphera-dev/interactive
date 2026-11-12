@@ -49,7 +49,12 @@ Item {
             fixture.popupMode = mode;
             opener.forceActiveFocus(Qt.TabFocusReason);
             tryCompare(opener, "activeFocus", true);
-            verify(TestProbe.keyClick(opener, Qt.Key_Space));
+            if (mode === T.Popup.Window && TestProbe.isWayland()) {
+                tryVerify(function() { return TestProbe.nativeKeyHostReady(opener); });
+                verify(TestProbe.nativeKeyClick(opener, Qt.Key_Space));
+            } else {
+                verify(TestProbe.keyClick(opener, Qt.Key_Space));
+            }
             assertHost(popup, mode);
         }
 

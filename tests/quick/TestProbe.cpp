@@ -12,6 +12,16 @@
 #include <QSaveFile>
 #include <QtMath>
 #include <QMetaProperty>
+#include <QDeadlineTimer>
+#include <QKeyEvent>
+#include <QPointer>
+#include <QProcess>
+#include <QFile>
+#include <QDebug>
+#ifdef Q_OS_UNIX
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 #include "ControlAppearance.h"
 #ifdef IA_TEST_PLAYGROUND
 #include "PlaygroundState.h"
@@ -20,6 +30,51 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #endif
+
+namespace {
+class NativeKeyWitness final : public QObject
+{
+public:
+    explicit NativeKeyWitness(QWindow *host) : window(host) { qApp->installEventFilter(this); }
+    ~NativeKeyWitness() override { qApp->removeEventFilter(this); }
+
+    QPointer<QWindow> window;
+    QString failure;
+    int phase = 0;
+    bool spaceHeld = false;
+
+protected:
+    bool eventFilter(QObject *receiver, QEvent *event) override
+    {
+        // Qt forwards the same event into items too; witness the QWindow boundary once.
+        if (!qobject_cast<QWindow *>(receiver)
+            || (event->type() != QEvent::KeyPress && event->type() != QEvent::KeyRelease))
+            return false;
+        const auto *key = static_cast<QKeyEvent *>(event);
+        if (key->nativeScanCode() == 0 && key->nativeVirtualKey() == 0)
+            return false;
+        const bool press = event->type() == QEvent::KeyPress;
+        if (key->nativeScanCode() == 65 && key->nativeVirtualKey() == 0x20)
+            spaceHeld = press;
+        qInfo().nospace() << "IA_NATIVE_KEY witness=" << (press ? "press" : "release")
+                          << " receiver=" << receiver << " intended=" << window.data()
+                          << " key=" << key->key() << " scan=" << key->nativeScanCode()
+                          << " keysym=" << key->nativeVirtualKey()
+                          << " spontaneous=" << key->spontaneous()
+                          << " repeat=" << key->isAutoRepeat() << " timestamp=" << key->timestamp();
+        if (!failure.isEmpty())
+            return false;
+        if (!window || receiver != window.data() || !key->spontaneous() || key->isAutoRepeat()
+            || key->key() != Qt::Key_Space || key->nativeScanCode() != 65
+            || key->nativeVirtualKey() != 0x20 || (press ? phase != 0 : phase != 1)) {
+            failure = QStringLiteral("unexpected native key, receiver or press/release order");
+        } else {
+            ++phase;
+        }
+        return false; // Observe real input; never consume or synthesize its replacement.
+    }
+};
+}
 
 QQuickWindow *TestProbe::hostWindow(QQuickItem *item) const
 {
@@ -98,6 +153,99 @@ bool TestProbe::keyClick(QQuickItem *hostItem, int key, int modifiers) const
         return false;
     QTest::keyClick(hostItem->window(), static_cast<Qt::Key>(key), Qt::KeyboardModifiers(modifiers));
     return true;
+}
+
+bool TestProbe::isWayland() const
+{
+    return QGuiApplication::platformName().startsWith(QLatin1String("wayland"));
+}
+
+bool TestProbe::nativeKeyHostReady(QQuickItem *hostItem) const
+{
+    const auto *window = hostItem ? hostItem->window() : nullptr;
+    return isWayland() && window && window->isExposed() && window->isActive()
+        && QGuiApplication::focusWindow() == window;
+}
+
+bool TestProbe::nativeKeyClick(QQuickItem *hostItem, int key) const
+{
+    const auto fail = [](const QString &reason) {
+        qWarning().noquote() << "IA_NATIVE_KEY FAIL:" << reason;
+        return false;
+    };
+    if (key != Qt::Key_Space)
+        return fail(QStringLiteral("only Space is supported; no key dispatched"));
+    if (!nativeKeyHostReady(hostItem))
+        return fail(QStringLiteral("intended Wayland host is not exposed, active and focused; no key dispatched"));
+    const QString socket = qEnvironmentVariable("IA_TEST_YDOTOOL_SOCKET");
+    if (socket.isEmpty())
+        return fail(QStringLiteral("missing IA_TEST_YDOTOOL_SOCKET; no key dispatched"));
+#ifdef Q_OS_UNIX
+    struct stat socketStat {}, directoryStat {};
+    const QByteArray socketPath = QFile::encodeName(socket);
+    const QByteArray directoryPath = QFile::encodeName(QFileInfo(socket).absolutePath());
+    if (!QDir::isAbsolutePath(socket) || ::lstat(socketPath.constData(), &socketStat) != 0
+        || !S_ISSOCK(socketStat.st_mode) || socketStat.st_uid != ::geteuid()
+        || (socketStat.st_mode & 0777) != 0600
+        || ::lstat(directoryPath.constData(), &directoryStat) != 0
+        || !S_ISDIR(directoryStat.st_mode) || directoryStat.st_uid != ::geteuid()
+        || (directoryStat.st_mode & 0777) != 0700)
+        return fail(QStringLiteral("invalid private ydotool socket/owner/permissions; no key dispatched"));
+#else
+    return fail(QStringLiteral("native keyboard backend requires Unix; no key dispatched"));
+#endif
+    QProcessEnvironment environment;
+    environment.insert(QStringLiteral("YDOTOOL_SOCKET"), socket);
+    environment.insert(QStringLiteral("TMPDIR"), qEnvironmentVariable("TMPDIR"));
+    environment.insert(QStringLiteral("LANG"), QStringLiteral("C.UTF-8"));
+    NativeKeyWitness witness(hostItem->window());
+    QProcess process;
+    process.setProcessEnvironment(environment);
+    bool finished = false;
+    QObject::connect(&process, &QProcess::finished, &process,
+                     [&finished](int, QProcess::ExitStatus) { finished = true; });
+    QObject::connect(&process, &QProcess::errorOccurred, &process,
+                     [&witness, &process](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart && witness.failure.isEmpty())
+            witness.failure = QStringLiteral("ydotool failed to start: ") + process.errorString();
+    });
+    const QDeadlineTimer deadline(5000, Qt::PreciseTimer);
+    qInfo() << "IA_NATIVE_KEY dispatch=Space evdev=57 deadline_ms=5000";
+    process.start(QStringLiteral("/usr/bin/ydotool"),
+                  {QStringLiteral("key"), QStringLiteral("57:1"), QStringLiteral("57:0")});
+    const bool observed = QTest::qWaitFor([&] {
+        return !witness.failure.isEmpty()
+            || (finished && (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0
+                             || witness.phase == 2));
+    }, deadline);
+    if (!observed && witness.failure.isEmpty())
+        witness.failure = QStringLiteral("native press/release or process completion missed the 5s deadline");
+    if (process.state() != QProcess::NotRunning) {
+        process.kill();
+        process.waitForFinished(500); // Bounded failure cleanup, never an action retry.
+    }
+    if (finished && (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0)
+        && witness.failure.isEmpty())
+        witness.failure = QStringLiteral("ydotool failed: ") + QString::fromLocal8Bit(process.readAllStandardError())
+            + QString::fromLocal8Bit(process.readAllStandardOutput());
+    if (witness.spaceHeld) {
+        // Release only our observed held Space after failure; never replay a press.
+        qWarning() << "IA_NATIVE_KEY cleanup=release-observed-held-Space (not a retry)";
+        QProcess release;
+        release.setProcessEnvironment(environment);
+        release.start(QStringLiteral("/usr/bin/ydotool"), {QStringLiteral("key"), QStringLiteral("57:0")});
+        const bool released = QTest::qWaitFor([&] { return release.state() == QProcess::NotRunning; }, 500);
+        if (!released) {
+            release.kill();
+            release.waitForFinished(500);
+        }
+        if (!released || release.exitStatus() != QProcess::NormalExit || release.exitCode() != 0 || witness.spaceHeld)
+            qWarning() << "IA_NATIVE_KEY cleanup release not confirmed; stop the owned keyboard backend";
+    }
+    if (!witness.failure.isEmpty())
+        return fail(witness.failure);
+    qInfo() << "IA_NATIVE_KEY OK press=1 release=1 process_exit=0";
+    return finished && witness.phase == 2;
 }
 
 bool TestProbe::typeAscii(QQuickItem *hostItem, const QString &text) const

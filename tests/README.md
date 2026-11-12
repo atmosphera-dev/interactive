@@ -1,0 +1,59 @@
+# Test input on Wayland
+
+Run verification only in the project's authorized graphical test VM. Ordinary
+QTest key/pointer helpers exercise in-process semantics; they do not generate
+compositor input or a Wayland grab serial. A separate QQuickWindow alone is not
+proof of an anchored native popup. Qt 6.12 rejects a grabbing popup without the
+required native parent/input state.
+
+## Native Space boundary
+
+`TestProbe.nativeKeyClick(hostItem, Qt.Key_Space)` is test-only. Its caller first
+waits for `nativeKeyHostReady`: an exposed, active Wayland host equal to
+`QGuiApplication::focusWindow()`. It invokes fixed `/usr/bin/ydotool key 57:1
+57:0` once, using only the explicitly selected private socket and a minimal
+environment. It never substitutes a QTest event, retries, primes a keymap or
+changes the popup type.
+
+An application-wide observer requires exactly one spontaneous, non-repeating
+Space press followed by release at the intended QWindow, native scan code 65
+and keysym 0x20, plus successful process exit, within one 5-second deadline.
+Other native keys, duplicate/out-of-order events and wrong receivers fail.
+`IA_NATIVE_KEY` logs include native metadata, receiver, event timestamp, process
+receipt and failure reason. Process exit zero alone is not success. The observer
+does not consume events or access Qt private state.
+
+On failure, an unfinished owned client is killed/reaped with a bounded cleanup
+wait. Only an actually observed held Space may receive one release-only cleanup
+command; it is logged and never changes failure to success. Cleanup has a
+separate bounded wait and never retries the press. If release cannot be
+confirmed, stop the owned keyboard backend before continuing.
+
+`tst_popups.qml` uses this boundary for shared Wayland Window openings, including
+reopens and dialogs. The playground Window-menu transaction opener uses the same
+boundary. Other platforms and Item rows retain their explicit QTest path. All
+existing outcome/hosting assertions and other pointer/key checks remain.
+The popup and playground CTest suites are `RUN_SERIAL` because native focus and
+the seat are shared.
+
+## Isolated guest backend
+
+Prepare this explicitly inside the authorized VM, never on a physical host.
+Tests do not install packages, run sudo, start a daemon or modify permissions.
+
+| # | Requirement | Setup/verification |
+|---|---|---|
+| 1 | Existing system Qt lane and graphical session | Use matching Qt libraries, plugins and QML imports, and disk-backed `TMPDIR` for every command. |
+| 2 | ydotool with keyboard-only daemon support | Inspect the installed version/help; require `--mouse-off`, `--socket-path` and `--socket-perm`. No mouse or touch device. |
+| 3 | Temporary uinput access | Save `getfacl -p /dev/uinput`; grant only the test account an ACL for this task. No group/udev rule or mode 0666. |
+| 4 | Private backend | New `build/native-input/`, owned by the test account, mode 0700. Tester-owned transient user unit runs `ydotoold --mouse-off --socket-path=<absolute build/native-input/ydotool.sock> --socket-perm=0600`. |
+| 5 | Observed readiness | libinput inspection must identify `ydotoold virtual device` on the intended seat with keyboard capability and no pointer/touch capability. Verify the socket is owned by the test account and mode 0600. Do not send a priming key or use a fixed readiness sleep. |
+| 6 | Backend lifetime | Record the original linger setting; enable only if required to survive SSH disconnects. Track the exact owned user unit. |
+| 7 | Explicit test selection | Export `IA_TEST_YDOTOOL_SOCKET` as that absolute socket path into the sanitized test environment. Missing/invalid path or ownership/permissions fails before any key dispatch. |
+| 8 | Teardown | After the last required native-input run, stop the owned unit, restore the saved uinput ACL and original linger setting, verify device removal/no owned clients, then shut down an idle guest. |
+
+For native-role auditing, use `WAYLAND_DEBUG=client` in the same VM. Preserve the
+native key press/release and `get_popup`/`xdg_popup.grab` serial chain, including
+nested popups; no extra toplevel fallback is acceptable. Retain actual process
+exits and complete QtTest totals. A failed proof stops for root-cause review,
+not another input transport or retries until green.

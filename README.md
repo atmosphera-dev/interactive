@@ -1,6 +1,6 @@
 # InterActive
 
-InterActive is a Qt 6.8+ library of explicitly imported, IA-owned Qt Quick
+InterActive is a Qt 6.12.0+ library of explicitly imported, IA-owned Qt Quick
 controls. Qt templates provide interaction semantics; IA owns the appearance
 resolution and visuals. It does not install a global Qt Controls style or require
 an IA window, portal, shell, or appearance root.
@@ -202,9 +202,15 @@ The launcher has a 15-second render deadline.
 
 ## Build And Test
 
-Requirements: CMake 3.21+, a C++17 compiler, and Qt 6.8+ with Core, Gui, Qml,
+Requirements: CMake 3.21+, a C++17 compiler, and Qt 6.12.0+ with Core, Gui, Qml,
 Quick, QuickControls2, Svg, and ShaderTools. Tests also require Test and QuickTest
-and a working graphical session. Run these commands in your test environment:
+and a working graphical session.
+
+Qt 6.12.0 is the supported minimum because it includes the native popup sizing
+fix on both axes ([QTBUG-147847](https://bugreports.qt.io/browse/QTBUG-147847)),
+preserving explicit popup dimensions during content changes.
+
+Run these commands in your test environment:
 
 ```sh
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug \
@@ -216,8 +222,16 @@ QML_IMPORT_PATH="$PWD/build/qml${QML_IMPORT_PATH:+:$QML_IMPORT_PATH}" \
 ```
 
 To select a non-default Qt SDK, pass `-DCMAKE_PREFIX_PATH="$QT_PREFIX"` at
-configure time. `-DINTERACTIVE_VERIFY_QT_VERSION=6.8.0` additionally asserts that
-exact version. Keep each SDK in a separate build directory and use its matching
+configure time. For an exact Qt 6.12.0 SDK verification lane:
+
+```sh
+cmake -S . -B build/qt612-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_PREFIX_PATH="$QT_PREFIX" -DINTERACTIVE_VERIFY_QT_VERSION=6.12.0 \
+  -DINTERACTIVE_BUILD_PLAYGROUND=ON -DINTERACTIVE_BUILD_TESTS=ON
+```
+
+Set `QT_PREFIX` to that SDK's installation prefix. Keep each SDK in a separate
+build directory and use its matching
 runtime libraries and plugins. QtTest and QML tests are registered directly with
 CTest; no separate orchestration tool is required.
 
