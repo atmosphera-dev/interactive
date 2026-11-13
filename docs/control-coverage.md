@@ -8,7 +8,7 @@ Ordinary Qt Controls are not an IA fallback.
 |---|---|---|
 | 1 | Actions and navigation | IAButton, IAToolButton, IAToolBar, IAToolSeparator, IATabBar, IATabButton |
 | 2 | Text and forms | IALabel, IATextField |
-| 3 | Choices | IACheckBox, IARadioButton, IASwitch |
+| 3 | Choices | IACheckBox, IARadioButton, IASwitch (leading/trailing), IASegmentedControl, IASegmentedButton |
 | 4 | Lists and scrolling | IAItemDelegate, IAScrollView, IAScrollBar |
 | 5 | Values | IASlider, IAProgressBar |
 | 6 | Surfaces and overlays | IAPane, IAFrame, IAMenu, IAMenuItem, IAMenuSeparator, IAPopup, IADialog, IADialogButtonBox, standalone IAToolTip |
@@ -21,7 +21,7 @@ helpers. See [test coverage](playground.md#test-coverage) for observed outcomes:
 implementation presence is not runtime proof.
 
 Planned controls: IARoundButton, IATextArea, IAComboBox, IASpinBox,
-IASegmentedSelector, IACheckDelegate, IARadioDelegate, IASwitchDelegate,
+IACheckDelegate, IARadioDelegate, IASwitchDelegate,
 IAScrollIndicator, IARangeSlider, IABusyIndicator, IAApplicationWindow,
 IAPage, IAGroupBox, IAMenuBar, IAMenuBarItem and the attached-tooltip helper.
 Also planned: the five further gallery pages (Actions, Forms, Values, Lists,

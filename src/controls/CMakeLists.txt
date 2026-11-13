@@ -8,6 +8,7 @@ qt_add_qml_module(interactive_controls SHARED
         IAButton.qml IAToolButton.qml IALabel.qml IATextField.qml
         IACheckBox.qml IARadioButton.qml IASwitch.qml
         IATabBar.qml IATabButton.qml IASlider.qml IAProgressBar.qml
+        IASegmentedControl.qml IASegmentedButton.qml
         IAItemDelegate.qml IAScrollBar.qml IAScrollView.qml
         IAPane.qml IAFrame.qml IAToolBar.qml IAToolSeparator.qml
         IAMenu.qml IAMenuItem.qml IAMenuSeparator.qml

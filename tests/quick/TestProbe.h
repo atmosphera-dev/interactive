@@ -37,6 +37,8 @@ public:
     Q_INVOKABLE bool nativeKeyClick(QQuickItem *hostItem, int key) const;
     Q_INVOKABLE bool typeAscii(QQuickItem *hostItem, const QString &text) const;
     Q_INVOKABLE QStringList appearanceProperties(QObject *control) const;
+    Q_INVOKABLE QVariantMap accessibleState(QQuickItem *item) const;
+    Q_INVOKABLE bool accessibleAction(QQuickItem *item, const QString &action) const;
     // Capture tooling only: snapshots include the actual parent/window clipping.
     Q_INVOKABLE QString captureDirectory() const;
     Q_INVOKABLE bool createCaptureMode(const QString &mode) const;

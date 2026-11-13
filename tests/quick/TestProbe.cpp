@@ -19,6 +19,7 @@
 #include <QProcess>
 #include <QFile>
 #include <QDebug>
+#include <QAccessible>
 #ifdef Q_OS_UNIX
 #include <sys/stat.h>
 #include <unistd.h>
@@ -308,6 +309,34 @@ QStringList TestProbe::appearanceProperties(QObject *control) const
             result.append(QString::fromLatin1(property.name()));
     }
     return result;
+}
+
+QVariantMap TestProbe::accessibleState(QQuickItem *item) const
+{
+    auto *interface = QAccessible::queryAccessibleInterface(item);
+    if (!interface || !interface->isValid())
+        return {};
+    const auto state = interface->state();
+    auto *actions = interface->actionInterface();
+    return {{QStringLiteral("role"), int(interface->role())},
+            {QStringLiteral("name"), interface->text(QAccessible::Name)},
+            {QStringLiteral("checked"), bool(state.checked)},
+            {QStringLiteral("checkable"), bool(state.checkable)},
+            {QStringLiteral("focused"), bool(state.focused)},
+            {QStringLiteral("disabled"), bool(state.disabled)},
+            {QStringLiteral("pressAction"), QAccessibleActionInterface::pressAction()},
+            {QStringLiteral("toggleAction"), QAccessibleActionInterface::toggleAction()},
+            {QStringLiteral("actions"), actions ? actions->actionNames() : QStringList{}}};
+}
+
+bool TestProbe::accessibleAction(QQuickItem *item, const QString &action) const
+{
+    auto *interface = QAccessible::queryAccessibleInterface(item);
+    auto *actions = interface && interface->isValid() ? interface->actionInterface() : nullptr;
+    if (!actions || !actions->actionNames().contains(action))
+        return false;
+    actions->doAction(action);
+    return true; // Dispatch only; the caller must assert the actual control outcome.
 }
 
 QString TestProbe::captureDirectory() const

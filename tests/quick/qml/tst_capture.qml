@@ -39,6 +39,16 @@ Item {
         }
     }
     Component {
+        id: segmentedComponent
+        IASegmentedControl {
+            width: 280
+            property alias target: second
+            Accessible.name: "Appearance"
+            IASegmentedButton { text: "Light" }
+            IASegmentedButton { id: second; text: "Dark" }
+        }
+    }
+    Component {
         id: listComponent
         ListView {
             id: list
@@ -162,6 +172,7 @@ Item {
         property int pngCount: 0
 
         function initTestCase(): void {
+            failOnWarning(/.*(TypeError|ReferenceError|Binding loop|polish loop).*/);
             destination = TestProbe.captureDirectory();
             verify(destination.length > 0,
                    "IA_CAPTURE_DIR must name an absolute, existing, writable directory");
@@ -191,14 +202,14 @@ Item {
                 {name: "IAToolButton", kind: "tool", component: toolComponent,
                     states: ["rest", "hover", "pressed", "focus", "checked", "checked+hover"], columns: ["Text", "Icon only"]},
                 {name: "IATabButton", kind: "tab", states: ["rest", "hover", "pressed", "selected", "selected+focus", "selected+hover"],
-                    columns: ["In IATabBar"]},
+                    columns: ["In IATabBar", "IASegmentedControl"]},
                 {name: "IAItemDelegate", kind: "delegate",
                     states: ["rest", "hover", "pressed", "selected", "selected+hover", "focus"], columns: ["In list"]},
                 {name: "IAMenuItem", kind: "menu", states: ["rest", "highlighted", "checked", "disabled"],
                     columns: ["Default blue", "Yellow", "Near background", "Dark red"]},
                 {name: "IACheckBox", kind: "choice", component: checkComponent, states: choiceStates, columns: ["Check"]},
                 {name: "IARadioButton", kind: "choice", component: radioComponent, states: choiceStates, columns: ["Radio"]},
-                {name: "IASwitch", kind: "choice", component: switchComponent, states: choiceStates, columns: ["Switch"]},
+                {name: "IASwitch", kind: "choice", component: switchComponent, states: choiceStates, columns: ["Switch", "Trailing switch row"]},
                 {name: "IASlider", kind: "slider", component: sliderComponent,
                     states: ["rest", "hover", "pressed", "focus"], columns: ["50%"]},
                 {name: "IATextField", kind: "field", component: fieldComponent,
@@ -256,8 +267,8 @@ Item {
             let held = false;
             try {
                 if (spec.kind === "tab") {
-                    host = createTemporaryObject(tabsComponent, stage, {x: 24, y: 24});
-                    control = host.target;
+                    host = createTemporaryObject(column === 1 ? segmentedComponent : tabsComponent, stage, {x: 24, y: 24});
+                    control = host.target as T.AbstractButton;
                 } else if (spec.kind === "delegate") {
                     host = createTemporaryObject(listComponent, stage, {x: 24, y: 24});
                     host.forceLayout();
@@ -269,6 +280,8 @@ Item {
                     control = createTemporaryObject(spec.component, stage, {x: 24, y: 24, width: 208});
                 }
                 verify(control !== null);
+                if (spec.name === "IASwitch" && column === 1)
+                    control.indicatorPosition = IA.Presentation.Trailing;
                 stage.target = control;
                 if (spec.kind === "button")
                     control.tone = spec.tones[column];
@@ -337,7 +350,8 @@ Item {
                 }
                 if (spec.kind === "menu")
                     tryCompare(control, "highlighted", state === "highlighted");
-                return snapshot(control, 2 * IA.Appearance.metrics.focusWidth);
+                return snapshot(spec.kind === "tab" && column === 1 ? host : control,
+                    2 * IA.Appearance.metrics.focusWidth);
             } finally {
                 if (held)
                     TestProbe.release(scene, scene.width - 2, scene.height - 2);

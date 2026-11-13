@@ -17,6 +17,8 @@ public:
     Q_ENUM(Tone)
     enum Validation { None, Warning, Invalid };
     Q_ENUM(Validation)
+    enum IndicatorPosition { Leading, Trailing };
+    Q_ENUM(IndicatorPosition)
     enum State { Rest, Hover, Pressed, Selected, SelectedHover, SelectedPressed,
                  Inactive, InactiveHover, Disabled };
     Q_ENUM(State)

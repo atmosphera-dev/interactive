@@ -14,13 +14,15 @@ Text {
     property bool active: true
     property bool focused: false
     property bool mirrored: false
+    property int indicatorPosition: Presentation.Leading
+    readonly property bool indicatorOnLeft: (indicatorPosition === Presentation.Leading) !== mirrored
     property real spacing: resolvedAppearance.spacing
     property real visualPosition: checked ? 1 : 0
     readonly property alias indicator: mark
     objectName: "iaLabel"
     LayoutMirroring.enabled: false
-    leftPadding: !mirrored ? mark.width + (text.length ? spacing : 0) : 0
-    rightPadding: mirrored ? mark.width + (text.length ? spacing : 0) : 0
+    leftPadding: indicatorOnLeft ? mark.width + (text.length ? spacing : 0) : 0
+    rightPadding: !indicatorOnLeft ? mark.width + (text.length ? spacing : 0) : 0
     color: resolvedAppearance.stateTable.colors(
         ControlState.of(controlEnabled, false, false, false, true, false)).foregroundColor
     textFormat: Text.PlainText
@@ -30,6 +32,7 @@ Text {
 
     ChoiceIndicator {
         id: mark
+        LayoutMirroring.enabled: false
         resolvedAppearance: root.resolvedAppearance
         kind: root.kind
         checked: root.checked
@@ -40,7 +43,8 @@ Text {
         active: root.active
         focused: root.focused
         visualPosition: root.visualPosition
-        x: root.mirrored ? root.width - width : 0
+        anchors.left: root.indicatorOnLeft ? root.left : undefined
+        anchors.right: root.indicatorOnLeft ? undefined : root.right
         anchors.verticalCenter: root.verticalCenter
     }
 }

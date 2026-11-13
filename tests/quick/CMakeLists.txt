@@ -13,6 +13,7 @@ qt_add_qml_module(interactive_quick_tests
         qml/PopupFixture.qml
         qml/tst_controls.qml
         qml/tst_geometry.qml
+        qml/tst_segmented.qml
         qml/tst_popups.qml
         qml/tst_dialogbuttonbox.qml
         qml/tst_icons.qml
@@ -31,6 +32,8 @@ add_test(NAME interactive.controls COMMAND interactive_quick_tests
     -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_controls.qml")
 add_test(NAME interactive.geometry COMMAND interactive_quick_tests
     -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_geometry.qml")
+add_test(NAME interactive.segmented COMMAND interactive_quick_tests
+    -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_segmented.qml")
 add_test(NAME interactive.popups COMMAND interactive_quick_tests
     -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_popups.qml")
 set_tests_properties(interactive.popups PROPERTIES RUN_SERIAL TRUE)
@@ -47,7 +50,7 @@ add_test(NAME interactive.palette-state COMMAND interactive_quick_tests
     -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_palette_state.qml")
 add_test(NAME interactive.long-document COMMAND interactive_quick_tests
     -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_long_document.qml")
-set_tests_properties(interactive.qt-version interactive.controls interactive.geometry interactive.popups interactive.dialogbuttonbox interactive.icons interactive.states interactive.solid interactive.palette-state interactive.long-document
+set_tests_properties(interactive.qt-version interactive.controls interactive.geometry interactive.segmented interactive.popups interactive.dialogbuttonbox interactive.icons interactive.states interactive.solid interactive.palette-state interactive.long-document
     PROPERTIES LABELS interactive-overview TIMEOUT 180)
 add_test(NAME interactive.capture COMMAND interactive_quick_tests
     -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_capture.qml")

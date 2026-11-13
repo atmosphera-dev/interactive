@@ -61,6 +61,7 @@ skipped, blacklisted, or expected-failure cases do not satisfy a required check.
 | 11 | `interactive.long-document` | A test-only editable TextEdit with 10,000 deterministic paragraphs and at least one million characters preserves document/editing/scroll/undo state across accent edits; foreground and font-size changes are positive controls. |
 | 12 | `interactive.playground-calibration` | Actual launcher startup, transactional correction ownership/rejection/reentrancy, full-precision append/readback, preserved fragments, contention/dead-owner recovery and injected I/O failures against the real playground writer. |
 | 13 | `interactive.trace` | Appearance trace recorder: nesting, outcomes, reentrancy, threads, overflow, stop semantics, export refusal and parseable output. |
+| 14 | `interactive.segmented` | Native exclusive checked/index selection, user-only activation, binding preservation, mutation/reentrancy, RTL arrows/endpoints, equal-share/natural sizing and overflow, stable track/local appearance, and trailing-switch geometry/native pointer/Space/drag. Public Qt accessible interfaces/actions are inspected; this is not AT-SPI or Orca coverage. |
 
 The long-document suite observes real QQuickTextDocument state and QML font binding
 evaluations. Equal document dimensions or absent size signals alone do not prove

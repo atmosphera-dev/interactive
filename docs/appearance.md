@@ -708,6 +708,49 @@ feedback cannot consume the current segment's color. Tab feedback and focus are 
 not the content surface behind the group. Explicit local colors remain exact;
 Qt still owns current index, keyboard navigation and scrolling.
 
+### Segmented choices and switch rows
+
+`IASegmentedControl` selects a value, rather than a page. Its entries are
+`IASegmentedButton` children. It shares the tab track, spacingXS gap, tab state
+palette and appearance aliases; no separate tab-versus-segmented visual treatment
+is defined yet. The container manages equal member widths/heights through public
+bindings. Its natural size comes from member implicit dimensions, and a narrow
+allocation scrolls rather than overlapping labels. Taking a member out restores
+its previous width/height values or bindings.
+
+```qml
+IASegmentedControl {
+    width: 300
+    Accessible.name: "Appearance"
+    onActivated: index => application.setDarkMode(index === 1)
+    IASegmentedButton { text: "Light" }
+    IASegmentedButton { text: "Dark" }
+}
+IASwitch {
+    width: 300
+    text: "Touch targets"
+    indicatorPosition: IA.Presentation.Trailing
+}
+```
+
+`currentIndex`/`currentItem` and add/insert/move/take/remove remain native Container
+APIs. Use `setCurrentIndex(index)` to retain an existing index binding; `-1` clears
+selection and an out-of-range index has no current item. First nonempty construction
+selects the native first index. Checking another member programmatically updates
+the index without `activated`. Clear through the container, not by unchecking an
+individual member. Pointer, Space and accessible activation use native button
+semantics. `activated(index)` reports a changed interactive selection only, not
+programmatic updates, structural changes or activating an already checked member.
+Native `click()`/`animateClick()` also simulate interaction; the group does not call
+them internally. Left/Right selects and focuses the next enabled, visible member,
+mirrored in RTL, without wrapping. Disabling/hiding the selected member preserves
+selection. Group and member accessibility roles are Grouping and RadioButton.
+
+`IASwitch.indicatorPosition` defaults to `IA.Presentation.Leading`, preserving
+existing rows. `Trailing` puts the label in the leading content lane and the switch
+in the trailing lane, mirrored once in RTL. Labels stay single-line and elide;
+outer control padding, native drag/Space behavior and focus geometry are unchanged.
+
 `IAMenuSeparator` and `IAToolSeparator` retain `foregroundColor`,
 `appearanceDiagnostics` and `resetAppearance()`, but use the sparse Foundation
 `SeparatorAppearance` color facade instead of a text/font facade. Their default
