@@ -64,6 +64,24 @@ Item {
             LayoutMirroring.childrenInherit: true
         }
     }
+    Component {
+        id: checkComponent
+        IACheckBox {
+            width: 360; text: "Include notes"
+            property bool rtl: false
+            LayoutMirroring.enabled: rtl
+            LayoutMirroring.childrenInherit: true
+        }
+    }
+    Component {
+        id: radioComponent
+        IARadioButton {
+            width: 360; text: "Daily updates"
+            property bool rtl: false
+            LayoutMirroring.enabled: rtl
+            LayoutMirroring.childrenInherit: true
+        }
+    }
     TestCase {
         name: "SegmentedChoice"
         when: windowShown
@@ -428,6 +446,72 @@ Item {
         }
         function test_trailingSwitchInteraction_data(): var {
             return [{tag: "ltr", rtl: false}, {tag: "rtl", rtl: true}];
+        }
+        function test_liveChoiceDirection_data(): var {
+            const rows = [];
+            for (const kind of ["check", "radio", "switch"])
+                for (const scheme of ["light", "dark"])
+                    for (const contrast of ["normal", "high"])
+                        for (const density of ["compact", "touch"])
+                            for (const scale of [1, 1.5])
+                                rows.push({tag: kind + scheme + contrast + density + scale, kind: kind,
+                                    scheme: scheme, contrast: contrast, density: density, scale: scale});
+            return rows;
+        }
+        function test_liveChoiceDirection(data: var): void {
+            IA.Appearance.input = {scheme: data.scheme, contrast: data.contrast, density: data.density, fontScale: data.scale};
+            const component = data.kind === "check" ? checkComponent : data.kind === "radio" ? radioComponent : switchComponent;
+            const control = createTemporaryObject(component, scene);
+            verify(control !== null);
+            ready(control);
+            click(control);
+            compare(control.checked, true);
+            control.forceActiveFocus(Qt.TabFocusReason);
+            verify(TestProbe.keyClick(control, Qt.Key_Space));
+            compare(control.checked, data.kind === "radio");
+            const checked = control.checked;
+            const center = findChild(control, "iaChoiceCenter") as Item;
+            verify(center !== null);
+            const natural = Qt.size(control.indicator.implicitWidth, control.indicator.implicitHeight);
+            const centerSize = Qt.size(center.width, center.height);
+            const thumb = findChild(control, "iaThumb") as Item;
+            const thumbSize = thumb !== null ? Qt.size(thumb.width, thumb.height) : Qt.size(0, 0);
+            const positions = data.kind === "switch"
+                ? [IA.Presentation.Leading, IA.Presentation.Trailing, IA.Presentation.Leading] : [IA.Presentation.Leading];
+            for (const position of positions) {
+                if (data.kind === "switch") control.indicatorPosition = position;
+                for (const rtl of [false, true, false]) {
+                    control.rtl = rtl;
+                    verify(TestProbe.render(control));
+                    const row = control.contentItem as Text;
+                    const left = (position === IA.Presentation.Leading) !== rtl;
+                    near(control.indicator.width, natural.width, "Live direction retains natural indicator width");
+                    near(control.indicator.height, natural.height, "Live direction retains natural indicator height");
+                    near(control.indicator.mapToItem(control, 0, 0).x,
+                        left ? control.leftPadding : control.width - control.rightPadding - control.indicator.width,
+                        "One logical anchor selects the physical edge");
+                    near(control.indicator.mapToItem(control, 0, control.indicator.height / 2).y,
+                        row.mapToItem(control, 0, row.height / 2).y, "Live centerline");
+                    compare(row.leftPadding > 0, left);
+                    compare(row.rightPadding > 0, !left);
+                    compare(Qt.size(center.width, center.height), centerSize);
+                    compare(control.checked, checked);
+                    compare(control.activeFocus, true);
+                    if (thumb !== null) {
+                        compare(Qt.size(thumb.width, thumb.height), thumbSize);
+                        const gap = (center.height - thumb.height) / 2;
+                        near(thumb.x, control.visualPosition === 0 ? gap : center.width - gap - thumb.width,
+                            "Native visualPosition is not mirrored twice");
+                    }
+                }
+            }
+            if (data.kind === "switch") {
+                const indicator = control.indicator;
+                verify(TestProbe.press(indicator, indicator.width * 0.2, indicator.height / 2));
+                verify(TestProbe.move(indicator, indicator.width * 0.95, indicator.height / 2));
+                verify(TestProbe.release(indicator, indicator.width * 0.95, indicator.height / 2));
+                compare(control.checked, true, "Native drag still reaches its on endpoint after live flips");
+            }
         }
         function test_trailingSwitchInteraction(data: var): void {
             const toggle = createTemporaryObject(switchComponent, scene,

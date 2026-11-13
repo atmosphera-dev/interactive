@@ -16,6 +16,8 @@ Window {
     visible: true
     title: "InterActive / Foundations"
     color: IA.Appearance.colors.canvas
+    LayoutMirroring.enabled: window.rightToLeft
+    LayoutMirroring.childrenInherit: true
 
     property string initialScene: "default"
     property bool windowPopups: false
@@ -47,8 +49,6 @@ Window {
 
     Item {
         anchors.fill: parent
-        LayoutMirroring.enabled: window.rightToLeft
-        LayoutMirroring.childrenInherit: true
         RowLayout {
             anchors.fill: parent
             spacing: 0

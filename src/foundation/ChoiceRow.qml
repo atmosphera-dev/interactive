@@ -32,7 +32,7 @@ Text {
 
     ChoiceIndicator {
         id: mark
-        LayoutMirroring.enabled: false
+        LayoutMirroring.enabled: !root.indicatorOnLeft
         resolvedAppearance: root.resolvedAppearance
         kind: root.kind
         checked: root.checked
@@ -43,8 +43,7 @@ Text {
         active: root.active
         focused: root.focused
         visualPosition: root.visualPosition
-        anchors.left: root.indicatorOnLeft ? root.left : undefined
-        anchors.right: root.indicatorOnLeft ? undefined : root.right
+        anchors.left: root.left
         anchors.verticalCenter: root.verticalCenter
     }
 }

@@ -10,6 +10,19 @@ Item {
     id: scene
     width: 800
     height: 640
+    property bool hostRtl: false
+    Binding {
+        target: scene.Window.window ? scene.Window.window.LayoutMirroring : null
+        property: "enabled"
+        value: scene.hostRtl
+        restoreMode: Binding.RestoreBindingOrValue
+    }
+    Binding {
+        target: scene.Window.window ? scene.Window.window.LayoutMirroring : null
+        property: "childrenInherit"
+        value: true
+        restoreMode: Binding.RestoreBindingOrValue
+    }
     Component { id: popupComponent; PopupFixture {} }
     Component { id: buttonBoxComponent; IADialogButtonBox {} }
     Component { id: emptyDialogComponent; IADialog {} }
@@ -78,6 +91,7 @@ Item {
             fixture.menu.close();
             fixture.dialog.close();
             fixture.popup.close();
+            scene.hostRtl = false;
             IA.Appearance.input = {};
         }
 
@@ -436,8 +450,7 @@ Item {
                 density: data.touch ? "touch" : "compact", fontScale: data.touch ? 1.5 : 1};
             const dialog = createTemporaryObject(scrollingDialogComponent, fixture, {parent: fixture, popupType: data.mode}) as IADialog;
             verify(dialog !== null);
-            dialog.contentItem.parent.LayoutMirroring.enabled = data.rtl;
-            dialog.contentItem.parent.LayoutMirroring.childrenInherit = true;
+            scene.hostRtl = data.rtl;
             dialog.open();
             assertHost(dialog, data.mode);
             const scroll = findChild(dialog, "iaDialogScroll") as IAScrollView;
@@ -613,8 +626,7 @@ Item {
             IA.Appearance.input = {scheme: data.scheme, contrast: data.contrast};
             const dialog = createTemporaryObject(emptyDialogComponent, fixture, {parent: fixture, title: "Actions", width: 340, popupType: data.mode}) as IADialog;
             verify(dialog !== null);
-            dialog.contentItem.parent.LayoutMirroring.enabled = data.rtl;
-            dialog.contentItem.parent.LayoutMirroring.childrenInherit = true;
+            scene.hostRtl = data.rtl;
             dialog.open();
             tryCompare(dialog, "opened", true);
             const box = dialog.footer as IADialogButtonBox;

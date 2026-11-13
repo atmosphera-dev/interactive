@@ -105,6 +105,24 @@ Item- and Window-hosted QML popups belong to the design; native platform-rendere
 popups do not establish IA styling coverage. Alignment belongs in shared layout
 lanes, grids, or anchors, not unrelated pixel offsets.
 
+Qt reparents Window-hosted popup content outside the owner's visual tree. The
+four popup roots share Foundation's internal nonvisual `PopupDirection` adapter.
+Its explicit inputs are Qt's public source overlay and the public content item.
+It reads the exact implicit-child inheritance metadata along that supplied
+overlay's Item parent chain and binds only the popup-exclusive native Window.
+Native target classification occurs on content-window change, content replacement
+and completion, not on the earlier logical-source change during host migration.
+Each popup root supplies its content input only after its own QML completion,
+after Qt finishes parser-status callbacks and deferred content. The binding stays
+live for later replacement; the adapter cannot eagerly execute deferred content.
+At a Window's content root it reads both public mirroring aliases: they share
+values, but Qt can notify either attachment. Other source Items are unchanged.
+All four popup roots own nonvisual appearance metadata through explicit readonly
+properties, never public default contentData. A helper cannot begin deferred
+visual-content construction before a consumer's custom content is recorded.
+No visual witness is added to Overlay, no host is written, and no theme provider,
+locale/global direction, private popup item or application direction API is added.
+
 The dialog button box owns one native model-backed ListView. A small internal
 QQuickItem adapter snapshots only its new horizontal geometry during public
 polish; native vertical measurement, sizing and interaction remain Qt's. The

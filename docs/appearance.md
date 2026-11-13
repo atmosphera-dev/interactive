@@ -750,6 +750,10 @@ selection. Group and member accessibility roles are Grouping and RadioButton.
 existing rows. `Trailing` puts the label in the leading content lane and the switch
 in the trailing lane, mirrored once in RTL. Labels stay single-line and elide;
 outer control padding, native drag/Space behavior and focus geometry are unchanged.
+The shared choice lane keeps one logical horizontal anchor and mirrors its edge.
+Live direction and Leading/Trailing changes never transiently set opposing anchors,
+so check, radio and switch indicators retain natural dimensions. Switch thumb
+direction remains Qt's `visualPosition`, without a second mirror.
 
 `IAMenuSeparator` and `IAToolSeparator` retain `foregroundColor`,
 `appearanceDiagnostics` and `resetAppearance()`, but use the sparse Foundation
@@ -888,6 +892,27 @@ equal-valued assignments/replacements with no specific value notification.
 `resetOverrides()` clears all local values/errors in one aggregate operation,
 without changing source, family, tone, validation, global input or interaction data.
 IA controls expose this as `resetAppearance()`.
+
+## Popup Direction
+
+Direction is Qt layout inheritance, not appearance input. `IAPopup`, `IADialog`,
+`IAMenu` and `IAToolTip` share an internal nonvisual Foundation adapter for Qt's
+separate popup-window boundary. It receives the public overlay/content objects;
+the inherited value is the first source ancestor with
+`LayoutMirroring.childrenInherit`, using its effective `enabled` value. Thus an
+overlay's own enabled bit without child inheritance does not override its
+ancestor's child value. No helper Item is inserted into the overlay.
+Each root gates the adapter's content input until its own component completion,
+so reading that input cannot prematurely execute Qt's deferred custom content.
+Later content replacement remains declaratively observed.
+Nonvisual appearance helpers belong to explicit root properties, not the public
+content/model route, so they do not prematurely begin deferred custom content.
+
+Only the popup-exclusive native Window receives enabled/childrenInherit bindings.
+Item hosting and host migration never write the owner's Window properties. The
+target is reclassified on content-window changes, replacement and completion,
+not on the earlier source-overlay notification. This is an implementation detail,
+not a new popup option, locale mutation or application direction provider.
 
 ## Dialog Composition
 

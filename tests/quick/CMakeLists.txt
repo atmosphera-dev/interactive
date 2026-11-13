@@ -15,6 +15,7 @@ qt_add_qml_module(interactive_quick_tests
         qml/tst_geometry.qml
         qml/tst_segmented.qml
         qml/tst_popups.qml
+        qml/tst_popup_direction.qml
         qml/tst_dialogbuttonbox.qml
         qml/tst_icons.qml
         qml/tst_states.qml
@@ -37,6 +38,11 @@ add_test(NAME interactive.segmented COMMAND interactive_quick_tests
 add_test(NAME interactive.popups COMMAND interactive_quick_tests
     -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_popups.qml")
 set_tests_properties(interactive.popups PROPERTIES RUN_SERIAL TRUE)
+add_test(NAME interactive.popup-direction COMMAND interactive_quick_tests
+    -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_popup_direction.qml" -maxwarnings 0)
+set_tests_properties(interactive.popup-direction PROPERTIES LABELS interactive-overview TIMEOUT 180 RUN_SERIAL TRUE)
+set_tests_properties(interactive.popup-direction PROPERTIES
+    FAIL_REGULAR_EXPRESSION "items in the process of being created at engine destruction")
 add_test(NAME interactive.dialogbuttonbox COMMAND interactive_quick_tests
     -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_dialogbuttonbox.qml")
 set_tests_properties(interactive.dialogbuttonbox PROPERTIES RUN_SERIAL TRUE)
@@ -61,9 +67,12 @@ target_compile_definitions(interactive_quick_tests PRIVATE
 if(INTERACTIVE_BUILD_PLAYGROUND)
     target_compile_definitions(interactive_quick_tests PRIVATE IA_TEST_PLAYGROUND=1)
     target_link_libraries(interactive_quick_tests PRIVATE interactive_playground_scene InterActive::Components)
-    qt_target_qml_sources(interactive_quick_tests QML_FILES qml/tst_playground.qml)
+    qt_target_qml_sources(interactive_quick_tests QML_FILES qml/tst_playground.qml qml/tst_appearance_capture.qml)
     add_test(NAME interactive.playground COMMAND interactive_quick_tests
         -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_playground.qml")
     set_tests_properties(interactive.playground PROPERTIES LABELS interactive-overview TIMEOUT 180)
     set_tests_properties(interactive.playground PROPERTIES RUN_SERIAL TRUE)
+    add_test(NAME interactive.appearance-capture COMMAND interactive_quick_tests
+        -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_appearance_capture.qml")
+    set_tests_properties(interactive.appearance-capture PROPERTIES LABELS interactive-appearance-capture TIMEOUT 180 RUN_SERIAL TRUE)
 endif()

@@ -12,6 +12,7 @@ import InterActive.Tests
 
 Item {
     id: scene
+    property bool editorRtl: false
     width: Window.window ? Window.window.width : 1200
     height: Window.window ? Window.window.height : 820
     ColumnLayout {
@@ -28,6 +29,8 @@ Item {
             AppearanceEditor {
                 id: editor
                 width: parent.width
+                LayoutMirroring.enabled: scene.editorRtl
+                LayoutMirroring.childrenInherit: true
             }
         }
     }
@@ -36,7 +39,11 @@ Item {
         FoundationsPage { Layout.fillWidth: true; Layout.fillHeight: true }
     }
     component NarrowMenuWindow: Window {
+        id: narrowHost
         required property int viewportWidth
+        property bool rightToLeft: false
+        LayoutMirroring.enabled: narrowHost.rightToLeft
+        LayoutMirroring.childrenInherit: true
         flags: Qt.Dialog
         visible: false
         width: viewportWidth
@@ -46,6 +53,7 @@ Item {
         minimumHeight: 820
         maximumHeight: 820
         IAScrollView {
+            objectName: "narrowAppearanceScroll"
             anchors.fill: parent
             padding: 0
             contentWidth: availableWidth
@@ -55,6 +63,7 @@ Item {
     NarrowMenuWindow { id: narrow320Window; viewportWidth: 320 }
     NarrowMenuWindow { id: narrow360Window; viewportWidth: 360 }
     Main { id: consumerWindow; visible: false }
+    Main { id: directionWindow; visible: false }
 
     Window {
         id: inputHostWindow
@@ -67,6 +76,8 @@ Item {
 
     SignalSpy { id: inputSpy; target: PlaygroundState; signalName: "appearanceInputChanged" }
     SignalSpy { id: menuOpenedSpy; signalName: "opened" }
+    SignalSpy { id: choiceActivatedSpy; signalName: "activated" }
+    SignalSpy { id: switchToggledSpy; signalName: "toggled" }
 
     TestCase {
         name: "PlaygroundConsumers"
@@ -95,6 +106,9 @@ Item {
             accentMenu.close();
             tryCompare(accentMenu, "visible", false);
             menuOpenedSpy.target = null;
+            choiceActivatedSpy.target = null;
+            switchToggledSpy.target = null;
+            scene.editorRtl = false;
             for (const role of ["accent", "amber", "danger"]) {
                 const colorDialog = findChild(editor, role + "ColorDialog") as Dialogs.ColorDialog;
                 if (colorDialog !== null && colorDialog.visible) {
@@ -105,7 +119,7 @@ Item {
             verify(TestProbe.paletteSampleLock(false));
             editor.accentDraft = undefined;
             editor.jsonDraft = "{}";
-            const inputToggle = findChild(editor, "appearanceEditorToggle") as IAToolButton;
+            const inputToggle = findChild(editor, "appearanceEditorToggle") as IASwitch;
             if (inputToggle !== null)
                 inputToggle.checked = false;
             editorScroll.visible = false;
@@ -168,6 +182,363 @@ Item {
                 for (const touch of [false, true])
                     rows.push({tag: width + "-" + touch, width: width, touch: touch});
             return rows;
+        }
+
+        function test_appearanceSchemeChoice_data(): var {
+            return [{tag: "ltr", rtl: false}, {tag: "rtl", rtl: true}];
+        }
+
+        function test_appearanceSchemeChoice(data: var): void {
+            editorScroll.visible = true;
+            scene.editorRtl = data.rtl;
+            const choice = findChild(editor, "appearanceSchemeChoice") as IASegmentedControl;
+            const light = findChild(editor, "appearanceLight") as IASegmentedButton;
+            const dark = findChild(editor, "appearanceDark") as IASegmentedButton;
+            const field = findChild(page, "nameField") as IATextField;
+            verify(choice !== null && light !== null && dark !== null && field !== null);
+            choiceActivatedSpy.target = choice;
+            choiceActivatedSpy.clear();
+            inputSpy.clear();
+            click(dark);
+            compare(choice.currentIndex, 1);
+            verify(dark.checked && !light.checked);
+            compare(IA.Appearance.scheme, "dark");
+            compare(PlaygroundState.appearanceInput.scheme, "dark");
+            compare(choiceActivatedSpy.count, 1);
+            compare(inputSpy.count, 1);
+            verify(TestProbe.render(page));
+            compare((field.background as Rectangle).color, IA.Appearance.colors.content);
+            const darkSurface = String((field.background as Rectangle).color);
+            verify(TestProbe.activateForInput(dark));
+            verify(TestProbe.keyClick(dark, data.rtl ? Qt.Key_Right : Qt.Key_Left));
+            compare(choice.currentIndex, 0);
+            compare(IA.Appearance.scheme, "light");
+            verify(light.checked && !dark.checked);
+            compare(choiceActivatedSpy.count, 2);
+            verify(TestProbe.render(page));
+            verify(String((field.background as Rectangle).color) !== darkSurface);
+            verify(TestProbe.keyClick(light, data.rtl ? Qt.Key_Left : Qt.Key_Right));
+            compare(IA.Appearance.scheme, "dark");
+            compare(choiceActivatedSpy.count, 3);
+            // Space on the selected native radio button cannot clear selection.
+            verify(TestProbe.keyClick(dark, Qt.Key_Space));
+            verify(dark.checked && !light.checked);
+            compare(choiceActivatedSpy.count, 3);
+            verify(TestProbe.keyClick(dark, Qt.Key_Backtab, Qt.ShiftModifier));
+            tryCompare(light, "activeFocus", true);
+            verify(TestProbe.keyClick(light, Qt.Key_Space));
+            compare(IA.Appearance.scheme, "light");
+            compare(choice.currentIndex, 0);
+            compare(choiceActivatedSpy.count, 4, "Space selects the keyboard-reached native segment");
+            for (const scheme of ["dark", "light", "dark"]) {
+                inputSpy.clear();
+                verify(PlaygroundState.setAppearanceJson(JSON.stringify({scheme: scheme})));
+                verify(TestProbe.render(editor));
+                compare(choice.currentIndex, scheme === "dark" ? 1 : 0);
+                compare(light.checked, scheme === "light");
+                compare(dark.checked, scheme === "dark");
+                compare(inputSpy.count, 1, "External replacement is not echoed by selection synchronization");
+                compare(choiceActivatedSpy.count, 4);
+                compare(findChild(editor, "appearanceLight"), light);
+                compare(findChild(editor, "appearanceDark"), dark);
+            }
+        }
+
+        function test_appearanceIndependentSwitches(): void {
+            editorScroll.visible = true;
+            const names = ["appearanceTouch", "appearanceContrast", "appearanceEditorToggle", "appearanceReducedMotion"];
+            const rows = names.map(function(name) { return findChild(editor, name) as IASwitch; });
+            for (const row of rows) {
+                verify(row !== null);
+                compare(row.indicatorPosition, IA.Presentation.Trailing);
+                compare(row.checked, false);
+            }
+            const json = findChild(editor, "appearanceJson") as IATextField;
+            const hex = findChild(editor, "accentHexField") as IATextField;
+            editor.jsonDraft = '{"tokens":';
+            editor.accentDraft = "#123abc";
+            for (let index = 0; index < rows.length; ++index) {
+                click(rows[index]);
+                for (let peer = 0; peer < rows.length; ++peer)
+                    compare(rows[peer].checked, peer <= index, "Only the activated independent row changes");
+            }
+            compare(IA.Appearance.density, "touch");
+            compare(IA.Appearance.contrast, "high");
+            compare(IA.Appearance.reducedMotion, true);
+            compare((findChild(editor, "appearanceInputScroll") as IAScrollView).visible, true);
+            // The existing resolved setting is the consumer contract; native
+            // switch visuals must also show its on endpoint.
+            compare(rows[3].position, 1);
+            for (const index of [0, 1, 2, 3]) {
+                const row = rows[index];
+                const peers = rows.map(function(peer) { return peer.checked; });
+                revealEditor(row);
+                switchToggledSpy.target = row;
+                switchToggledSpy.clear();
+                const indicator = row.indicator;
+                verify(TestProbe.press(indicator, indicator.width * 0.8, indicator.height / 2));
+                verify(TestProbe.move(indicator, indicator.width * 0.05, indicator.height / 2));
+                verify(TestProbe.release(indicator, indicator.width * 0.05, indicator.height / 2));
+                compare(row.checked, false, "Native switch drag reaches the off endpoint");
+                compare(switchToggledSpy.count, 1);
+                for (let peer = 0; peer < rows.length; ++peer)
+                    if (peer !== index) compare(rows[peer].checked, peers[peer], "Dragging never changes peers");
+            }
+            compare(IA.Appearance.density, "compact");
+            compare(IA.Appearance.contrast, "normal");
+            compare(IA.Appearance.reducedMotion, false);
+            click(rows[2]);
+            compare(rows[2].checked, true);
+            for (const row of [rows[0], rows[1], rows[3]]) {
+                switchToggledSpy.target = row;
+                switchToggledSpy.clear();
+                inputSpy.clear();
+                verify(PlaygroundState.setAppearance({density: "touch", contrast: "high", reducedMotion: true}));
+                verify(TestProbe.render(editor));
+                compare(row.checked, true);
+                compare(switchToggledSpy.count, 0, "Resolved checked changes are not user toggles");
+                compare(inputSpy.count, 1);
+                verify(PlaygroundState.setAppearance({}));
+            }
+            click(rows[2]);
+            compare(rows[2].checked, false);
+            compare((findChild(editor, "appearanceInputScroll") as IAScrollView).visible, false);
+            click(rows[2]);
+            compare(findChild(editor, "appearanceJson"), json);
+            compare(findChild(editor, "accentHexField"), hex);
+            compare(json.text, '{"tokens":');
+            compare(hex.text, "#123abc");
+            click(findChild(editor, "appearanceDark") as IASegmentedButton);
+            click(findChild(editor, "appearanceReset") as IAButton);
+            compare(PlaygroundState.appearanceInput, {});
+            compare(rows[2].checked, true);
+            compare(json.text, '{"tokens":');
+            compare(hex.text, "#123abc");
+        }
+
+        function test_actualMainDirectionAndLive_data(): var {
+            return [{tag: "initial-ltr", rtl: false}, {tag: "initial-rtl", rtl: true}];
+        }
+
+        function assertMainDirection(owner: AppearanceEditor, dialog: IADialog, rtl: bool): void {
+            // opened is a Qt logical-state signal; a recreated native surface
+            // must be exposed before the existing frame-observation assertion.
+            tryVerify(function() { return TestProbe.exposed(owner); });
+            verify(TestProbe.render(owner));
+            const host = TestProbe.hostWindow(owner);
+            verify(host !== null && host !== TestProbe.hostWindow(findChild(directionWindow, "appearanceOpen") as Item));
+            compare(dialog.popupType, T.Popup.Window);
+            compare(dialog.mirrored, rtl);
+            const choice = findChild(owner, "appearanceSchemeChoice") as IASegmentedControl;
+            const lane = findChild(owner, "appearanceSwitchRows") as ColumnLayout;
+            compare(choice.mirrored, rtl);
+            fuzzyCompare(lane.mapToItem(owner, 0, 0).x, rtl ? owner.width - lane.width : 0, 0.5);
+            for (const name of ["appearanceTouch", "appearanceContrast", "appearanceEditorToggle", "appearanceReducedMotion"]) {
+                const row = findChild(owner, name) as IASwitch;
+                compare(row.mirrored, rtl);
+                const point = row.indicator.mapToItem(row, 0, 0);
+                fuzzyCompare(row.indicator.width, row.indicator.implicitWidth, 0.5,
+                    "Live direction preserves the native indicator's natural width");
+                fuzzyCompare(row.indicator.height, row.indicator.implicitHeight, 0.5);
+                fuzzyCompare(point.x, rtl ? row.leftPadding : row.width - row.rightPadding - row.indicator.width, 0.5);
+                const nativePoint = row.mapToItem(host.contentItem, 0, 0);
+                verify(nativePoint.x >= 0 && nativePoint.x + row.width <= host.width + 0.5);
+            }
+            const close = findChild(dialog, "iaDialogClose") as IAToolButton;
+            const title = findChild(dialog, "iaTitle") as IALabel;
+            const footer = dialog.footer as IADialogButtonBox;
+            const dismiss = dialog.standardButton(T.Dialog.Close);
+            compare(close.mirrored, rtl);
+            compare(footer.mirrored, rtl);
+            const closePoint = close.mapToItem(dialog.header, 0, 0);
+            fuzzyCompare(closePoint.x, rtl ? dialog.leftPadding : dialog.header.width - dialog.rightPadding - close.width, 0.5);
+            const titlePoint = title.mapToItem(dialog.header, 0, 0);
+            if (rtl)
+                fuzzyCompare(titlePoint.x + title.width, dialog.header.width - dialog.rightPadding, 0.5);
+            else
+                fuzzyCompare(titlePoint.x, dialog.leftPadding, 0.5);
+            const footerPoint = dismiss.mapToItem(footer, 0, 0);
+            fuzzyCompare(footerPoint.x, rtl ? footer.leftPadding : footer.width - footer.rightPadding - dismiss.width, 0.5);
+            const choicePoint = choice.mapToItem(owner, 0, 0);
+            fuzzyCompare(choicePoint.x, rtl ? owner.width - choice.width : 0, 0.5);
+            console.info("IA_MAIN_DIRECTION " + JSON.stringify({rtl: rtl, dialog: dialog.mirrored,
+                choice: choice.mirrored, laneX: lane.mapToItem(owner, 0, 0).x,
+                editorWidth: owner.width, laneWidth: lane.width, headerCloseX: closePoint.x,
+                footerCloseX: footerPoint.x, hostWidth: host.width, hostHeight: host.height}));
+        }
+
+        function test_actualMainDirectionAndLive(data: var): void {
+            directionWindow.rightToLeft = data.rtl;
+            directionWindow.show();
+            const opener = findChild(directionWindow, "appearanceOpen") as IAToolButton;
+            const dialog = findChild(directionWindow, "appearanceWindow") as IADialog;
+            const owner = findChild(dialog, "appearanceEditor") as AppearanceEditor;
+            try {
+                tryVerify(function() { return TestProbe.exposed(opener); });
+                verify(TestProbe.activateForInput(opener));
+                verify(TestProbe.click(opener, opener.width / 2, opener.height / 2));
+                tryCompare(dialog, "opened", true);
+                tryVerify(function() { return TestProbe.exposed(owner); });
+                assertMainDirection(owner, dialog, data.rtl);
+                const toggle = findChild(owner, "appearanceEditorToggle") as IASwitch;
+                if (!toggle.checked)
+                    verify(TestProbe.click(toggle, toggle.width / 2, toggle.height / 2));
+                compare(toggle.checked, true);
+                verify(TestProbe.render(owner));
+                const dark = findChild(owner, "appearanceDark") as IASegmentedButton;
+                verify(TestProbe.click(dark, dark.width / 2, dark.height / 2));
+                compare(IA.Appearance.scheme, "dark");
+                const hex = findChild(owner, "accentHexField") as IATextField;
+                const json = findChild(owner, "appearanceJson") as IATextField;
+                edit(hex, "#123abc");
+                edit(json, '{"tokens":');
+                verify(TestProbe.keyClick(json, Qt.Key_A, Qt.ControlModifier));
+                const selection = json.selectedText;
+                const input = JSON.stringify(PlaygroundState.appearanceInput);
+                const nativeHost = TestProbe.hostWindow(owner);
+                const names = ["appearanceSchemeChoice", "appearanceLight", "appearanceDark", "appearanceSwitchRows",
+                    "appearanceTouch", "appearanceContrast", "appearanceEditorToggle", "appearanceReducedMotion", "accentHexField", "appearanceJson"];
+                const identities = names.map(function(name) { return findChild(owner, name); });
+                for (const rtl of [data.rtl, !data.rtl, data.rtl]) {
+                    directionWindow.rightToLeft = rtl;
+                    assertMainDirection(owner, dialog, rtl);
+                    compare(TestProbe.hostWindow(owner), nativeHost, "Live direction does not replace the native host");
+                    for (let index = 0; index < names.length; ++index)
+                        compare(findChild(owner, names[index]), identities[index]);
+                    compare(owner.jsonDraft, '{"tokens":');
+                    compare(owner.accentDraft, "#123abc");
+                    compare(json.text, '{"tokens":');
+                    compare(hex.text, "#123abc");
+                    compare(json.selectedText, selection);
+                    compare(json.activeFocus, true, "Live mirroring retains the actually edited field's focus");
+                    compare(toggle.checked, true);
+                    compare((findChild(owner, "appearanceSchemeChoice") as IASegmentedControl).currentIndex, 1);
+                    compare(JSON.stringify(PlaygroundState.appearanceInput), input, "Direction is not an appearance write");
+                }
+                const dismiss = dialog.standardButton(T.Dialog.Close);
+                verify(TestProbe.click(dismiss, dismiss.width / 2, dismiss.height / 2));
+                tryCompare(dialog, "visible", false);
+                verify(TestProbe.activateForInput(opener));
+                verify(TestProbe.click(opener, opener.width / 2, opener.height / 2));
+                tryCompare(dialog, "opened", true);
+                assertMainDirection(owner, dialog, data.rtl);
+                compare(owner.jsonDraft, '{"tokens":');
+                compare(owner.accentDraft, "#123abc");
+                compare(toggle.checked, true);
+                for (let index = 0; index < names.length; ++index)
+                    compare(findChild(owner, names[index]), identities[index]);
+            } finally {
+                dialog.close();
+                tryCompare(dialog, "visible", false);
+                directionWindow.close();
+                verify(TestProbe.activate(page));
+            }
+        }
+
+        function test_appearanceRowsGeometry_data(): var {
+            const rows = [];
+            for (const width of [320, 360, 1200])
+                for (const touch of [false, true])
+                    for (const rtl of [false, true])
+                        rows.push({tag: width + "-" + touch + "-" + rtl, width: width, touch: touch, rtl: rtl});
+            return rows;
+        }
+
+        function test_appearanceRowsGeometry(data: var): void {
+            verify(PlaygroundState.setAppearance({density: data.touch ? "touch" : "compact", fontScale: data.touch ? 1.5 : 1}));
+            const host = data.width === 320 ? narrow320Window : data.width === 360 ? narrow360Window : consumerWindow;
+            host.rightToLeft = data.rtl;
+            host.show();
+            const dialog = data.width === 1200 ? findChild(host, "appearanceWindow") as IADialog : null;
+            try {
+                let owner = findChild(host, data.width === 1200 ? "appearanceEditor" : "narrowEditor") as AppearanceEditor;
+                if (dialog !== null) {
+                    const opener = findChild(host, "appearanceOpen") as IAToolButton;
+                    tryVerify(function() { return TestProbe.exposed(opener); });
+                    verify(TestProbe.activateForInput(opener));
+                    verify(TestProbe.click(opener, opener.width / 2, opener.height / 2));
+                    tryCompare(dialog, "opened", true);
+                }
+                verify(owner !== null);
+                tryVerify(function() { return TestProbe.exposed(owner); });
+                verify(TestProbe.render(owner));
+                const lane = findChild(owner, "appearanceSwitchRows") as ColumnLayout;
+                verify(lane !== null);
+                fuzzyCompare(lane.width, Math.min(360, owner.width), 0.5);
+                let previousBottom = -1;
+                for (const name of ["appearanceTouch", "appearanceContrast", "appearanceEditorToggle", "appearanceReducedMotion"]) {
+                    const row = findChild(owner, name) as IASwitch;
+                    verify(row !== null);
+                    const label = row.contentItem as Text;
+                    const indicator = row.indicator;
+                    compare(label.wrapMode, Text.NoWrap);
+                    compare(label.elide, Text.ElideRight);
+                    compare(row.mirrored, data.rtl);
+                    fuzzyCompare(row.width, lane.width, 0.5);
+                    const edge = indicator.mapToItem(row, 0, 0).x;
+                    fuzzyCompare(edge, data.rtl ? row.leftPadding : row.width - row.rightPadding - indicator.width, 0.5);
+                    fuzzyCompare(indicator.mapToItem(row, 0, indicator.height / 2).y,
+                        label.mapToItem(row, 0, label.height / 2).y, 0.5);
+                    const position = row.mapToItem(owner, 0, 0);
+                    verify(position.x >= -0.5 && position.x + row.width <= owner.width + 0.5);
+                    verify(position.y >= previousBottom);
+                    previousBottom = position.y + row.height;
+                    if (data.touch) verify(row.height >= 44);
+                    // Scroll the actual owning viewport, then require native
+                    // input ownership and click/Tab reachability without focus repair.
+                    const scroll = findChild(dialog !== null ? dialog : host,
+                        dialog !== null ? "iaDialogScroll" : "narrowAppearanceScroll") as IAScrollView;
+                    verify(scroll !== null);
+                    const flick = scroll.contentItem as Flickable;
+                    verify(flick !== null);
+                    const center = row.mapToItem(flick.contentItem, 0, row.height / 2).y;
+                    flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height, center - flick.height / 2));
+                    verify(TestProbe.render(owner));
+                    const point = row.mapToItem(TestProbe.hostWindow(owner).contentItem, 0, 0);
+                    verify(point.x >= -0.5 && point.x + row.width <= host.width + 0.5);
+                    verify(point.y >= -0.5 && point.y + row.height <= TestProbe.hostWindow(owner).height + 0.5);
+                    verify(TestProbe.activateForInput(row));
+                    verify(TestProbe.click(row, row.width / 2, row.height / 2));
+                    tryCompare(row, "activeFocus", true);
+                    verify(TestProbe.keyClick(row, Qt.Key_Tab));
+                    verify(!row.activeFocus, "Tab leaves the current visible row");
+                    // Restore the requested density without changing the next row's peers.
+                    verify(PlaygroundState.setAppearance({density: data.touch ? "touch" : "compact", fontScale: data.touch ? 1.5 : 1}));
+                    verify(TestProbe.render(owner));
+                }
+                const choice = findChild(owner, "appearanceSchemeChoice") as IASegmentedControl;
+                const reset = findChild(owner, "appearanceReset") as IAButton;
+                const choicePoint = choice.mapToItem(owner, 0, 0);
+                const resetPoint = reset.mapToItem(owner, 0, 0);
+                verify(choicePoint.x >= -0.5 && choicePoint.x + choice.width <= owner.width + 0.5);
+                verify(resetPoint.x >= -0.5 && resetPoint.x + reset.width <= owner.width + 0.5);
+                verify(choicePoint.x + choice.width <= resetPoint.x + 0.5 || resetPoint.x + reset.width <= choicePoint.x + 0.5);
+                fuzzyCompare(choicePoint.y + choice.height / 2, resetPoint.y + reset.height / 2, 0.5);
+                const outer = findChild(dialog !== null ? dialog : host,
+                    dialog !== null ? "iaDialogScroll" : "narrowAppearanceScroll") as IAScrollView;
+                const viewport = outer.contentItem as Flickable;
+                viewport.contentY = 0;
+                verify(TestProbe.render(owner));
+                const light = findChild(owner, "appearanceLight") as IASegmentedButton;
+                verify(TestProbe.activateForInput(light));
+                verify(TestProbe.click(light, light.width / 2, light.height / 2));
+                tryCompare(light, "activeFocus", true);
+                verify(TestProbe.keyClick(light, data.rtl ? Qt.Key_Left : Qt.Key_Right));
+                compare(choice.currentIndex, 1);
+                compare(IA.Appearance.scheme, "dark");
+                verify(TestProbe.render(owner));
+                const selected = choice.currentItem;
+                const selectedPoint = selected.mapToItem(choice.contentItem, 0, 0);
+                verify(selectedPoint.x >= -0.5 && selectedPoint.x + selected.width <= choice.contentItem.width + 0.5,
+                    "Native segmented viewport reveals its keyboard-selected choice at narrow widths");
+                console.info("IA_APPEARANCE_ROWS " + JSON.stringify({width: data.width, touch: data.touch,
+                    rtl: data.rtl, editorWidth: owner.width, laneWidth: lane.width, choiceWidth: choice.width}));
+            } finally {
+                if (dialog !== null) dialog.close();
+                host.close();
+                host.rightToLeft = false;
+                verify(TestProbe.activate(page));
+            }
         }
 
         function test_toolbarGeometry(data: var): void {
@@ -271,12 +642,12 @@ Item {
                 verify(TestProbe.render(owner));
                 for (const name of ["appearanceLight", "appearanceDark", "appearanceReset", "accentPickerButton", "resetAccentButton",
                     "amberPickerButton", "resetAmberButton", "dangerPickerButton", "resetDangerButton", "savePaletteButton",
-                    "appearanceTouch", "appearanceContrast", "appearanceEditorToggle", "paletteSamplePath", "paletteHistoryStatus",
+                    "appearanceTouch", "appearanceContrast", "appearanceEditorToggle", "appearanceReducedMotion", "paletteSamplePath", "paletteHistoryStatus",
                     "paletteRootExplanation", "paletteSaveStatus", "accentHexField", "applyAccentHex", "appearanceJson", "appearanceInspector"])
                     verify(findChild(owner, name) !== null, name + " retained in Appearance window");
-                const touch = findChild(owner, "appearanceTouch") as IAToolButton;
-                const preview = findChild(owner, "appearanceContrast") as IAToolButton;
-                const toggle = findChild(owner, "appearanceEditorToggle") as IAToolButton;
+                const touch = findChild(owner, "appearanceTouch") as IASwitch;
+                const preview = findChild(owner, "appearanceContrast") as IASwitch;
+                const toggle = findChild(owner, "appearanceEditorToggle") as IASwitch;
                 const save = findChild(owner, "savePaletteButton") as IAButton;
                 verify(TestProbe.click(save, save.width / 2, save.height / 2));
                 compare(TestProbe.paletteSamples().length, 1);
@@ -324,7 +695,9 @@ Item {
                     for (const child of item.children)
                         queue.push(child);
                 }
+                verify(TestProbe.activateForInput(json));
                 verify(TestProbe.click(json, json.width / 2, json.height / 2));
+                tryCompare(json, "activeFocus", true);
                 verify(TestProbe.keyClick(json, Qt.Key_A, Qt.ControlModifier));
                 verify(TestProbe.typeAscii(json, '{"tokens":'));
                 compare(owner.jsonDraft, '{"tokens":');
@@ -737,7 +1110,16 @@ Item {
         }
 
         function edit(field: IATextField, text: string): void {
-            verify(TestProbe.activateForInput(field));
+            const ready = TestProbe.activateForInput(field);
+            if (field.objectName === "dialogNameField") {
+                console.info("IA_DIALOG_INPUT_PHASE " + JSON.stringify({text: text,
+                    ready: ready, exposed: TestProbe.exposed(field),
+                    active: TestProbe.hostWindow(field).active,
+                    mainReady: TestProbe.inputHostReady(page),
+                    mainActive: TestProbe.hostWindow(page).active,
+                    sameHost: TestProbe.hostWindow(field) === TestProbe.hostWindow(page)}));
+            }
+            verify(ready, "Native input owner ready for " + field.objectName);
             click(field);
             tryCompare(field, "activeFocus", true);
             verify(TestProbe.keyClick(field, Qt.Key_A, Qt.ControlModifier));
@@ -1267,7 +1649,7 @@ Item {
             const specimen = createTemporaryObject(component, scene, {width: 1000, height: 450,
                 accentDraft: "#123abc", jsonDraft: '{"tokens":'}) as AppearanceEditor;
             verify(specimen !== null);
-            const toggle = findChild(specimen, "appearanceEditorToggle") as IAToolButton;
+            const toggle = findChild(specimen, "appearanceEditorToggle") as IASwitch;
             verify(toggle !== null);
             toggle.checked = true;
             verify(TestProbe.render(specimen));
@@ -1543,7 +1925,7 @@ Item {
             const committed = renderedSummary();
             editorScroll.visible = true;
             verify(TestProbe.render(editor));
-            const toggle = findChild(editor, "appearanceEditorToggle") as IAToolButton;
+            const toggle = findChild(editor, "appearanceEditorToggle") as IASwitch;
             click(toggle);
             verify(TestProbe.render(editor));
             const hex = findChild(editor, "accentHexField") as IATextField;
@@ -1726,9 +2108,9 @@ Item {
         function test_previewTogglePreservesConsumersAndDefaults(): void {
             editorScroll.visible = true;
             verify(TestProbe.render(page));
-            const preview = findChild(editor, "appearanceContrast") as IAToolButton;
-            const light = findChild(editor, "appearanceLight") as IAButton;
-            const dark = findChild(editor, "appearanceDark") as IAButton;
+            const preview = findChild(editor, "appearanceContrast") as IASwitch;
+            const light = findChild(editor, "appearanceLight") as IASegmentedButton;
+            const dark = findChild(editor, "appearanceDark") as IASegmentedButton;
             const defaults = findChild(editor, "appearanceReset") as IAButton;
             verify(preview !== null && light !== null && dark !== null && defaults !== null);
             compare(IA.Appearance.contrast, "normal");

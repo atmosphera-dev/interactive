@@ -195,7 +195,13 @@ appearance editor. Closing and reopening it retains manual hex/JSON drafts and
 the Input editor disclosure, without replacing gallery consumers. Defaults,
 expanded palette readouts/reset actions, Amber/Danger live pickers, Save and its
 destination/status, Touch targets, 7:1 preview, and the JSON/input tooling live
-there. Light and Dark remain available there as explicit scheme actions too.
+there. A Light/Dark segmented choice shares its first row with Defaults; the
+palette pickers, resets and Save wrap in a separate group below. Four independent
+trailing switch rows control Touch targets, 7:1 preview, Input editor and Reduced
+motion. Native user toggles, including dragging, write through the existing
+appearance writer; external input updates checked/selected state without echo.
+Input editor is local disclosure state, not appearance input. Hiding it, changing
+scheme and Defaults preserve its objects, disclosure and pending hex/JSON drafts.
 
 Use `--contrast high` or the Appearance window's **7:1 preview** toggle for the text-contrast
 visual trial. `--contrast normal` explicitly selects the normal 5:1 design target;
@@ -494,6 +500,38 @@ These are agent review artifacts under `~/TemporaryFiles/InterActive/ark-vm-buil
 not final screenshot delivery to the user. No image processing runs on the laptop.
 
 ## Visual Review
+
+`interactive.appearance-capture` has its own `interactive-appearance-capture`
+label, separate from overview and the fixed 72-frame capture run. In the same
+graphical guest environment, set `IA_CAPTURE_DIR` to an existing directory outside
+that run and execute `interactive-quick-tests -input
+tests/quick/qml/tst_appearance_capture.qml`. The fixture imports real `Main`, opens
+Appearance through its toolbar action, proves distinct native hosting and bounded
+height, then grabs the entire host content extent. Ten full frames cover
+light/dark, normal/high and closed/expanded Input editor, plus two light-normal
+RTL frames driven only through Main's application direction. Its manifest records
+actual window bounds, region boxes and the unmodified sample destination text.
+That destination includes the test's temporary-directory suffix and is not a
+deterministic image region; it is not hidden or replaced for comparison.
+
+The consumer suite also checks scheme pointer/RTL arrows/Space endpoints, resolved
+consumer colors, external synchronization without user activation, switch peer
+independence/drag/reduced-motion endpoints, and 320/360/desktop row geometry with
+RTL and enlarged touch text. Existing picker, saving, draft, focus and reopen
+checks remain in the same suite.
+
+Main's Window is the single application mirroring owner, including its overlay
+and, through the shared native-popup adapter, separate Appearance popup.
+Actual-Main tests set only `rightToLeft` for
+initial LTR/RTL and live changes while Appearance stays open; they check native
+header/footer and row edges, scheme selection, object/draft/focus preservation
+and close/reopen without injecting mirroring into the dialog or editor.
+
+`interactive.popup-direction` exercises all four real popup roots in Item/native
+hosting, public overlay inheritance flags, first native-frame state, live changes,
+reopen, content/type/modal changes, destruction, opposite-direction host migration
+and a nested native menu. Both hosts' public mirror notifications are checked
+throughout, including preserved input bindings and idle-overlay pass-through.
 
 Capture the whole composited scene when inspecting Window popups; grabbing only
 the main QQuickWindow omits separate surfaces. Check for obstructions, native

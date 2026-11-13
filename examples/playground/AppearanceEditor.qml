@@ -84,25 +84,39 @@ Item {
         id: layout
         width: root.width
         spacing: IA.Appearance.metrics.spacingM
-        Flow {
+        RowLayout {
+            objectName: "appearanceSchemeRow"
             Layout.fillWidth: true
             spacing: IA.Appearance.metrics.spacingS
-            IAButton {
-                id: lightButton
-                objectName: "appearanceLight"
-                text: "Light"
-                onClicked: root.state.setAppearanceOption("scheme", "light")
-            }
-            IAButton {
-                objectName: "appearanceDark"
-                text: "Dark"
-                onClicked: root.state.setAppearanceOption("scheme", "dark")
+            IASegmentedControl {
+                objectName: "appearanceSchemeChoice"
+                Layout.fillWidth: true
+                Layout.preferredWidth: 240
+                Layout.maximumWidth: 240
+                Layout.minimumWidth: 0
+                Accessible.name: "Appearance"
+                currentIndex: IA.Appearance.scheme === "dark" ? 1 : 0
+                onActivated: index => root.state.setAppearanceOption("scheme", index === 1 ? "dark" : "light")
+                IASegmentedButton {
+                    objectName: "appearanceLight"
+                    text: "Light"
+                }
+                IASegmentedButton {
+                    objectName: "appearanceDark"
+                    text: "Dark"
+                }
             }
             IAButton {
                 objectName: "appearanceReset"
                 text: "Defaults"
                 onClicked: root.state.setAppearance({})
             }
+            Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
+        }
+        Flow {
+            objectName: "appearancePaletteFlow"
+            Layout.fillWidth: true
+            spacing: IA.Appearance.metrics.spacingS
             PaletteColorPicker {
                 id: accentPicker
                 namePrefix: "accent"
@@ -173,25 +187,49 @@ Item {
                 Accessible.description: "Append the three applied root colors to the calibration text file."
                 onClicked: root.state.savePaletteSample()
             }
-            IAToolButton {
+        }
+        ColumnLayout {
+            objectName: "appearanceSwitchRows"
+            Layout.fillWidth: true
+            Layout.preferredWidth: 360
+            Layout.maximumWidth: 360
+            Layout.minimumWidth: 0
+            Layout.alignment: Qt.AlignLeading
+            spacing: IA.Appearance.metrics.spacingS
+            IASwitch {
                 objectName: "appearanceTouch"
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
                 text: "Touch targets"
-                checkable: true
+                indicatorPosition: IA.Presentation.Trailing
                 checked: IA.Appearance.density === "touch"
-                onClicked: root.state.setAppearanceOption("density", checked ? "touch" : "compact")
+                onToggled: root.state.setAppearanceOption("density", checked ? "touch" : "compact")
             }
-            IAToolButton {
+            IASwitch {
                 objectName: "appearanceContrast"
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
                 text: "7:1 preview"
-                checkable: true
+                indicatorPosition: IA.Presentation.Trailing
                 checked: IA.Appearance.contrast === "high"
-                onClicked: root.state.setAppearanceOption("contrast", checked ? "high" : "normal")
+                onToggled: root.state.setAppearanceOption("contrast", checked ? "high" : "normal")
             }
-            IAToolButton {
+            IASwitch {
                 id: inputButton
                 objectName: "appearanceEditorToggle"
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
                 text: "Input editor"
-                checkable: true
+                indicatorPosition: IA.Presentation.Trailing
+            }
+            IASwitch {
+                objectName: "appearanceReducedMotion"
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                text: "Reduced motion"
+                indicatorPosition: IA.Presentation.Trailing
+                checked: IA.Appearance.reducedMotion
+                onToggled: root.state.setAppearanceOption("reducedMotion", checked)
             }
         }
         IALabel {
@@ -326,11 +364,6 @@ Item {
                     IAButton {
                         text: "Serif"
                         onClicked: root.state.setAppearanceToken("typography", "family", "Serif")
-                    }
-                    IACheckBox {
-                        text: "Reduced motion"
-                        checked: IA.Appearance.reducedMotion
-                        onClicked: root.state.setAppearanceOption("reducedMotion", checked)
                     }
                     IAButton {
                         text: "Partial profile"

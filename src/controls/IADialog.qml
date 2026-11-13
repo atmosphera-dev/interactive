@@ -6,6 +6,12 @@ import InterActive.Foundation as IA
 
 T.Dialog {
     id: control
+    property bool _popupDirectionReady: false
+    Component.onCompleted: control._popupDirectionReady = true
+    readonly property IA.PopupDirection _popupDirection: IA.PopupDirection {
+        source: control.T.Overlay.overlay
+        contentItem: control._popupDirectionReady ? control.contentItem : null
+    }
     // Keep Qt's popup lifecycle while ordinary children belong to the natural body.
     default property alias bodyData: body.contentData
     property alias backgroundColor: appearance.backgroundColor
