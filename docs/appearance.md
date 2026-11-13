@@ -10,6 +10,33 @@ appearance data. No special window or parent appearance provider is required.
 This document describes the initial Foundation source API, not a stable theme
 ABI or a claim that the library has passed runtime or visual verification.
 
+## Color Well Ownership
+
+`InterActive.IAColorWell` accepts `colorValue` (default current accent), `label`
+(default "Color"), `presets` (default empty list of `{name, hex}` records), and
+`customColors` (default true). The sample opens a titled quick palette; Default
+is available even with no presets. The optional trailing circle requests the
+consumer's full picker, closing the quick palette before the callback.
+
+`colorSelected(color)`, `defaultRequested()` and `customColorRequested()` are
+requests only: the control never assigns `colorValue`. The consumer applies the
+selection, resolves Default and owns the full picker. Appearance forwarding,
+`resetAppearance()` and diagnostics use the ordinary shared ControlAppearance
+path; no parent provider or color solver is involved.
+
+Its natural capsule height follows the resolved button height, width is twice
+that height, and the selected sample has a fixed `spacingXS` inset. The wheel
+matches the sample height and logical trailing edge. Focus borders never resize
+the sample or artwork. The six-color SVG keeps its original colors and circular
+alpha; a stationary foreground-role rim touches it directly. Only the rainbow
+rotates 0/180 on native circle hover, reversing from its current angle with
+`motion.feedbackDuration`. Reduced motion cancels the owned animation and
+immediately restores zero, including during a return. Plain and custom variants
+have identical outer dimensions. In touch density the outer height is at least
+44; the inner circle retains the approved inset rather than claiming a 44px hit
+region. Native sample/custom buttons have separate focus, accessible names and
+hit regions; square circle corners remain sample territory.
+
 ## Application Input
 
 Import `InterActive.Foundation` for the engine-local `Appearance` singleton.

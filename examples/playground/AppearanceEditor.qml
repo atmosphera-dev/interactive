@@ -148,6 +148,7 @@ Item {
             }
             PaletteColorPicker {
                 id: amberPicker
+                openerVisible: false
                 namePrefix: "amber"
                 label: "Amber"
                 dialogTitle: "Amber warning/caution color (live)"
@@ -166,6 +167,7 @@ Item {
             }
             PaletteColorPicker {
                 id: dangerPicker
+                openerVisible: false
                 namePrefix: "danger"
                 label: "Danger"
                 dialogTitle: "Danger error color (live)"
@@ -180,6 +182,36 @@ Item {
                 traceEnd: root.endPickerTrace
                 onColorSelected: value => root.state.setSemanticCorrection("error", value)
                 onResetRequested: root.state.resetSemanticCorrection("error")
+            }
+            RowLayout {
+                objectName: "amberColorWellRow"
+                spacing: IA.Appearance.metrics.spacingS
+                IALabel { text: "Amber"; Layout.alignment: Qt.AlignVCenter }
+                IAColorWell {
+                    objectName: "amberColorWell"
+                    label: "Amber"
+                    Layout.alignment: Qt.AlignVCenter
+                    colorValue: IA.Appearance.colors.warning
+                    presets: root.accentPresets
+                    onColorSelected: value => root.state.setSemanticCorrection("warning", value)
+                    onDefaultRequested: root.state.resetSemanticCorrection("warning")
+                    onCustomColorRequested: amberPicker.open()
+                }
+            }
+            RowLayout {
+                objectName: "dangerColorWellRow"
+                spacing: IA.Appearance.metrics.spacingS
+                IALabel { text: "Danger"; Layout.alignment: Qt.AlignVCenter }
+                IAColorWell {
+                    objectName: "dangerColorWell"
+                    label: "Danger"
+                    Layout.alignment: Qt.AlignVCenter
+                    colorValue: IA.Appearance.colors.error
+                    presets: root.accentPresets
+                    onColorSelected: value => root.state.setSemanticCorrection("error", value)
+                    onDefaultRequested: root.state.resetSemanticCorrection("error")
+                    onCustomColorRequested: dangerPicker.open()
+                }
             }
             IAButton {
                 objectName: "savePaletteButton"

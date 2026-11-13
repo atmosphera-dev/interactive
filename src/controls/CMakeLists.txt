@@ -5,7 +5,7 @@ qt_add_qml_module(interactive_controls SHARED
     DEPENDENCIES QtQuick TARGET interactive_foundation
     SOURCES DialogButtonBoxLayout.h DialogButtonBoxLayout.cpp
     QML_FILES
-        IAButton.qml IAToolButton.qml IALabel.qml IATextField.qml
+        IAButton.qml IAToolButton.qml IALabel.qml IATextField.qml IAColorWell.qml
         IACheckBox.qml IARadioButton.qml IASwitch.qml
         IATabBar.qml IATabButton.qml IASlider.qml IAProgressBar.qml
         IASegmentedControl.qml IASegmentedButton.qml

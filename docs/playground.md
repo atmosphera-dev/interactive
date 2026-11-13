@@ -62,6 +62,25 @@ skipped, blacklisted, or expected-failure cases do not satisfy a required check.
 | 12 | `interactive.playground-calibration` | Actual launcher startup, transactional correction ownership/rejection/reentrancy, full-precision append/readback, preserved fragments, contention/dead-owner recovery and injected I/O failures against the real playground writer. |
 | 13 | `interactive.trace` | Appearance trace recorder: nesting, outcomes, reentrancy, threads, overflow, stop semantics, export refusal and parseable output. |
 | 14 | `interactive.segmented` | Native exclusive checked/index selection, user-only activation, binding preservation, mutation/reentrancy, RTL arrows/endpoints, equal-share/natural sizing and overflow, stable track/local appearance, and trailing-switch geometry/native pointer/Space/drag. Public Qt accessible interfaces/actions are inspected; this is not AT-SPI or Orca coverage. |
+| 15 | `interactive.color-well` | Native sibling targets, circle/corner routing, titled preset/Default menu, input-binding preservation, accessible names/native Space/Tab, RTL/touch and stable sample/art geometry, reversible rainbow hover and immediate reduced-motion cancellation. |
+
+Amber and Danger in Appearance use label-plus-`IAColorWell` rows bound to the
+resolved warning/error colors. Both reuse the existing twelve Accent preset
+records. Preset and live full-dialog edits enter `setSemanticCorrection`; Default
+uses `resetSemanticCorrection`, restoring prior raw input or current generation.
+The persistent `PaletteColorPicker` adapters keep dialog/window identity,
+synchronization and tracing; `openerVisible: false` hides only their legacy Flow
+and removes its implicit footprint. Accent's existing saved-palette flow is
+unchanged. Consumer tests retain simultaneous dialogs, live hue/alpha/plane
+updates, reset ownership, peer isolation, validation, drafts and Save outcomes.
+
+`interactive.color-well-capture` is a separate non-overview capture suite. With
+an existing absolute `IA_CAPTURE_DIR`, it captures full native frames in all four
+scheme/contrast modes and seven real states: rest, sample hover/focus/press and
+circle hover/focus/press. `interactive.appearance-capture` retains the ten actual
+Appearance frames, including RTL. These fixtures do not alter the fixed 72-image
+gallery capture driver and do not claim AT-SPI/Orca or compositor-native pointer
+coverage. Native Space is observed through the existing keyboard backend.
 
 The long-document suite observes real QQuickTextDocument state and QML font binding
 evaluations. Equal document dimensions or absent size signals alone do not prove

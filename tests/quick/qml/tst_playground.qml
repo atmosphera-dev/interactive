@@ -641,7 +641,7 @@ Item {
                 verify(TestProbe.hostWindow(owner) !== TestProbe.hostWindow(toolbar), "Appearance is a real separate IA dialog window");
                 verify(TestProbe.render(owner));
                 for (const name of ["appearanceLight", "appearanceDark", "appearanceReset", "accentPickerButton", "resetAccentButton",
-                    "amberPickerButton", "resetAmberButton", "dangerPickerButton", "resetDangerButton", "savePaletteButton",
+                    "amberColorWell", "dangerColorWell", "savePaletteButton",
                     "appearanceTouch", "appearanceContrast", "appearanceEditorToggle", "appearanceReducedMotion", "paletteSamplePath", "paletteHistoryStatus",
                     "paletteRootExplanation", "paletteSaveStatus", "accentHexField", "applyAccentHex", "appearanceJson", "appearanceInspector"])
                     verify(findChild(owner, name) !== null, name + " retained in Appearance window");
@@ -1110,16 +1110,23 @@ Item {
         }
 
         function edit(field: IATextField, text: string): void {
+            const started = Date.now();
             const ready = TestProbe.activateForInput(field);
+            const elapsedMs = Date.now() - started;
+            const host = TestProbe.hostWindow(field);
+            const mainHost = TestProbe.hostWindow(page);
+            const diagnostic = {text: text,
+                phase: field.objectName === "dialogNameField" ? text.split(" ")[0] : field.objectName,
+                elapsedMs: elapsedMs, ready: ready, exposed: TestProbe.exposed(field),
+                active: host !== null && host.active,
+                exactOwner: TestProbe.inputHostReady(field),
+                mainReady: TestProbe.inputHostReady(page),
+                mainActive: mainHost !== null && mainHost.active,
+                sameHost: host !== null && host === mainHost};
             if (field.objectName === "dialogNameField") {
-                console.info("IA_DIALOG_INPUT_PHASE " + JSON.stringify({text: text,
-                    ready: ready, exposed: TestProbe.exposed(field),
-                    active: TestProbe.hostWindow(field).active,
-                    mainReady: TestProbe.inputHostReady(page),
-                    mainActive: TestProbe.hostWindow(page).active,
-                    sameHost: TestProbe.hostWindow(field) === TestProbe.hostWindow(page)}));
+                console.info("IA_DIALOG_INPUT_PHASE " + JSON.stringify(diagnostic));
             }
-            verify(ready, "Native input owner ready for " + field.objectName);
+            verify(ready, "Native input owner ready for " + field.objectName + " " + JSON.stringify(diagnostic));
             click(field);
             tryCompare(field, "activeFocus", true);
             verify(TestProbe.keyClick(field, Qt.Key_A, Qt.ControlModifier));
@@ -1373,6 +1380,74 @@ Item {
                       "The rendered picker, not just the wrapper, must adopt external input");
         }
 
+        function semanticWell(owner: Item, role: string): IAColorWell {
+            const well = findChild(owner, role + "ColorWell") as IAColorWell;
+            verify(well !== null && well.visible);
+            return well;
+        }
+
+        function semanticAction(owner: Item, role: string, custom: bool): T.AbstractButton {
+            return findChild(semanticWell(owner, role), custom ? "iaColorWellCustomButton" : "iaColorWellSampleButton") as T.AbstractButton;
+        }
+
+        function semanticDefault(owner: Item, role: string): void {
+            const well = semanticWell(owner, role);
+            const opener = semanticAction(owner, role, false);
+            revealEditor(opener);
+            verify(TestProbe.click(opener, 8, opener.height / 2));
+            const menu = findChild(well, "iaColorWellMenu") as IAMenu;
+            tryCompare(menu, "opened", true);
+            const action = menu.itemAt(menu.count - 1);
+            (menu.contentItem as ListView).positionViewAtIndex(menu.count - 1, ListView.Contain);
+            verify(TestProbe.render(action));
+            click(action);
+            tryCompare(menu, "visible", false);
+        }
+
+        function test_semanticWellPresetsAndDefaults_data(): var {
+            return [{tag:"amber-generated",role:"amber",prior:false},{tag:"danger-generated",role:"danger",prior:false},
+                {tag:"amber-input",role:"amber",prior:true},{tag:"danger-input",role:"danger",prior:true}];
+        }
+
+        function test_semanticWellPresetsAndDefaults(data): void {
+            editorScroll.visible = true;
+            const key = data.role === "amber" ? "warning" : "error";
+            const peer = data.role === "amber" ? "error" : "warning";
+            // Hold the peer's raw input explicitly, as the live-dialog isolation
+            // fixture does. A generated peer may legitimately be re-derived.
+            const input = {tokens:{colors:{[peer]:"#cf3456"}}};
+            if (data.prior) input.tokens.colors[key] = "#cd951a";
+            verify(PlaygroundState.setAppearance(input));
+            const underlying = String(IA.Appearance.colors[key]), peerColor = String(IA.Appearance.colors[peer]);
+            const well = semanticWell(editor, data.role);
+            compare(well.presets, editor.accentPresets);
+            const legacy = findChild(editor, data.role + "PickerButton") as IAButton;
+            compare(legacy.visible, false);
+            compare(legacy.parent.parent.implicitWidth, 0);
+            compare(legacy.parent.parent.implicitHeight, 0);
+            const opener = semanticAction(editor, data.role, false);
+            revealEditor(opener);
+            verify(TestProbe.click(opener, 8, opener.height / 2));
+            const menu = findChild(well, "iaColorWellMenu") as IAMenu;
+            tryCompare(menu, "opened", true);
+            click(menu.itemAt(1));
+            tryCompare(menu, "visible", false);
+            compare(String(IA.Appearance.colors[key]), editor.accentPresets[0].hex.toLowerCase());
+            compare(well.colorValue, IA.Appearance.colors[key]);
+            compare((findChild(well,"iaColorWellSample") as Rectangle).color, IA.Appearance.colors[key]);
+            compare(String(IA.Appearance.colors[peer]), peerColor);
+            semanticDefault(editor, data.role);
+            compare(String(IA.Appearance.colors[key]), underlying);
+            compare(well.colorValue, IA.Appearance.colors[key]);
+            compare(String(IA.Appearance.colors[peer]), peerColor);
+            compare(data.role === "amber" ? PlaygroundState.hasAmberCorrection : PlaygroundState.hasDangerCorrection, false);
+            const rawColors = PlaygroundState.appearanceInput.tokens.colors;
+            if (data.prior) compare(String(rawColors[key]), "#cd951a");
+            else verify(rawColors[key] === undefined, "Default resumes generation, not a captured color override");
+            compare(String(rawColors[peer]), "#cf3456");
+            verify(!TestProbe.paletteSampleExists());
+        }
+
         function assertAccentConsumers(expected: color): void {
             verify(TestProbe.render(page));
             compare(IA.Appearance.colors.accent, expected);
@@ -1504,8 +1579,8 @@ Item {
             const dialog = findChild(editor, role + "ColorDialog") as Dialogs.ColorDialog;
             const otherRole = role === "amber" ? "danger" : "amber";
             const other = findChild(editor, otherRole + "ColorDialog") as Dialogs.ColorDialog;
-            const opener = findChild(editor, role + "PickerButton") as IAButton;
-            const otherOpener = findChild(editor, otherRole + "PickerButton") as IAButton;
+            const opener = semanticAction(editor, role, true);
+            const otherOpener = semanticAction(editor, otherRole, true);
             verify(dialog !== null && other !== null && opener !== null && otherOpener !== null);
             const identities = [findChild(page, "opencode-amber"), findChild(page, "opencode-rose"),
                 findChild(page, "customPurpleButton"), findChild(page, "nameField")];
@@ -1540,7 +1615,7 @@ Item {
                     tryVerify(function() { return !Qt.colorEqual(before, IA.Appearance.colors[key]); });
                     compare(control.pressed, true);
                     compare(IA.Appearance.colors[key], dialog.selectedColor);
-                    compare((findChild(editor, role + "Swatch") as Rectangle).color, dialog.selectedColor);
+                    compare((findChild(semanticWell(editor, role), "iaColorWellSample") as Rectangle).color, dialog.selectedColor);
                     assertSemanticConsumers();
                     const invalidEmail = findChild(page, "emailField") as IATextField;
                     verify(invalidEmail !== null);
@@ -1592,7 +1667,7 @@ Item {
             assertSample(TestProbe.paletteSamples()[1]);
             verify(TestProbe.paletteSampleBytes().startsWith(first));
             const bytes = TestProbe.paletteSampleBytes();
-            click(findChild(editor, "reset" + (role === "amber" ? "Amber" : "Danger") + "Button") as IAToolButton);
+            semanticDefault(editor, role);
             compare(TestProbe.paletteSampleBytes(), bytes);
             click(findChild(editor, "appearanceReset") as IAButton);
             compare(JSON.stringify(PlaygroundState.appearanceInput), "{}");
@@ -1704,8 +1779,8 @@ Item {
             const flick = scroll.contentItem as Flickable;
             verify(flick !== null);
             const controls = [];
-            for (const name of ["accentPickerButton", "resetAccentButton", "amberPickerButton", "resetAmberButton",
-                                "dangerPickerButton", "resetDangerButton", "savePaletteButton"]) {
+            for (const name of ["accentPickerButton", "resetAccentButton", "amberColorWellRow",
+                                "dangerColorWellRow", "savePaletteButton"]) {
                 const item = findChild(specimen, name) as Item;
                 verify(item !== null);
                 if (!item.visible) continue;
@@ -1733,13 +1808,26 @@ Item {
                         || a.y + a.h <= b.y + 0.5 || b.y + b.h <= a.y + 0.5,
                         a.name + " and " + b.name + " do not overlap");
                 }
-            for (const role of ["accent", "amber", "danger"]) {
+            for (const role of ["accent"]) {
                 const button = findChild(specimen, role + "PickerButton") as IAButton;
                 const swatch = findChild(specimen, role + "Swatch") as Rectangle;
                 const readout = findChild(specimen, role + "Readout") as IALabel;
                 const centers = [swatch.mapToItem(button, 0, swatch.height / 2).y,
                     readout.mapToItem(button, 0, readout.height / 2).y];
                 fuzzyCompare(centers[0], centers[1], 0.5, "Swatch/readout shared centerline");
+            }
+            for (const role of ["amber", "danger"]) {
+                const well = semanticWell(specimen, role);
+                const label = well.parent.children[0] as IALabel;
+                fuzzyCompare(label.mapToItem(well, 0, label.height / 2).y, well.height / 2, 0.5, "Label/well centerline");
+                if (data.touch) verify(well.height >= 44);
+                const circle = semanticAction(specimen, role, true);
+                compare(circle.height, well.height - 2 * IA.Appearance.metrics.spacingXS);
+                const point = circle.mapToItem(flick.contentItem, 0, 0);
+                flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height, point.y));
+                verify(TestProbe.render(specimen));
+                const visiblePoint = circle.mapToItem(flick, 0, 0);
+                verify(visiblePoint.y >= -0.5 && visiblePoint.y + circle.height <= flick.height + 0.5);
             }
             console.info("IA_CALIBRATION_GEOMETRY " + JSON.stringify({width: data.width,
                 scheme: data.scheme, contrast: data.contrast, touch: data.touch, controls: controls}));

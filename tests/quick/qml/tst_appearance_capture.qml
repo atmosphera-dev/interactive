@@ -99,7 +99,7 @@ Item {
                     width: item.width, height: item.height, visible: item.visible});
             }
             for (const name of ["iaTitle", "iaDialogClose", "appearanceLight", "appearanceDark", "appearanceReset",
-                "accentPickerButton", "amberPickerButton", "dangerPickerButton", "savePaletteButton", "appearanceTouch",
+                "accentPickerButton", "amberColorWell", "dangerColorWell", "savePaletteButton", "appearanceTouch",
                 "appearanceContrast", "appearanceEditorToggle", "appearanceReducedMotion", "accentHexField", "appearanceJson"]) {
                 const item = findChild(dialog, name) as Item;
                 verify(item !== null);

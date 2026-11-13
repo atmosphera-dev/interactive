@@ -14,6 +14,8 @@ qt_add_qml_module(interactive_quick_tests
         qml/tst_controls.qml
         qml/tst_geometry.qml
         qml/tst_segmented.qml
+        qml/tst_color_well.qml
+        qml/tst_color_well_capture.qml
         qml/tst_popups.qml
         qml/tst_popup_direction.qml
         qml/tst_dialogbuttonbox.qml
@@ -35,6 +37,12 @@ add_test(NAME interactive.geometry COMMAND interactive_quick_tests
     -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_geometry.qml")
 add_test(NAME interactive.segmented COMMAND interactive_quick_tests
     -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_segmented.qml")
+add_test(NAME interactive.color-well COMMAND interactive_quick_tests
+    -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_color_well.qml")
+set_tests_properties(interactive.color-well PROPERTIES LABELS interactive-overview TIMEOUT 180 RUN_SERIAL TRUE)
+add_test(NAME interactive.color-well-capture COMMAND interactive_quick_tests
+    -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_color_well_capture.qml")
+set_tests_properties(interactive.color-well-capture PROPERTIES LABELS interactive-color-well-capture TIMEOUT 180 RUN_SERIAL TRUE)
 add_test(NAME interactive.popups COMMAND interactive_quick_tests
     -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_popups.qml")
 set_tests_properties(interactive.popups PROPERTIES RUN_SERIAL TRUE)

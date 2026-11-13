@@ -16,6 +16,7 @@ Item {
     property string displayName: label
     property color readoutForeground: pickerButton.foregroundColor
     property bool dropdownIndicator: false
+    property bool openerVisible: true
     property bool openerEnterEnabled: false
     property var activation: function(anchor) { root.open(); }
     property bool resetEnabled: false
@@ -28,8 +29,8 @@ Item {
     property bool synchronizing: false
     signal colorSelected(color value)
     signal resetRequested()
-    implicitWidth: pickerButton.implicitWidth + (resetButton.visible ? resetButton.implicitWidth + itemSpacing : 0)
-    implicitHeight: pair.implicitHeight
+    implicitWidth: openerVisible ? pickerButton.implicitWidth + (resetButton.visible ? resetButton.implicitWidth + itemSpacing : 0) : 0
+    implicitHeight: openerVisible ? pair.implicitHeight : 0
     width: Math.min(implicitWidth, maximumWidth)
     height: implicitHeight
 
@@ -90,6 +91,7 @@ Item {
     // makes a single row wider than the available toolbar lane.
     Flow {
         id: pair
+        visible: root.openerVisible
         width: root.width
         spacing: root.itemSpacing
         IAButton {
