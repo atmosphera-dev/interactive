@@ -392,7 +392,7 @@ Item {
             group.setCurrentIndex(2);
             compare(group.background, track);
             group.itemAt(2).selectedBackgroundColor = "#743185";
-            const surface = group.itemAt(2).background;
+            const surface = findChild(group.itemAt(2).background, "iaSegmentFrame");
             compare(surface.color, "#743185");
             group.itemAt(2).resetAppearance();
             verify(surface.color !== "#743185");

@@ -53,8 +53,9 @@ T.AbstractButton {
         spacing: control.spacing
         mirrored: control.mirrored
     }
-    background: IA.ControlBackground {
+    background: IA.SegmentBackground {
         id: surface
+        mirrored: control.mirrored
         resolvedAppearance: appearance
         controlEnabled: control.enabled
         down: control.down

@@ -63,6 +63,7 @@ skipped, blacklisted, or expected-failure cases do not satisfy a required check.
 | 15 | `interactive.color-well` | Native sibling targets, circle/corner routing, titled preset/Default menu, input-binding preservation, accessible names/native Space/Tab, RTL/touch and stable sample/art geometry, reversible rainbow hover and immediate reduced-motion cancellation. |
 | 16 | `interactive.color-edit-state` | Same production state source: full-precision channels, user-only notifications, feedback, domains/drafts, ARGB and HSL/HSV hue memory. |
 | 17 | `interactive.color-picker` | Real shared editor/dialog, live plane/rails, four formats, persistent drafts/modes, native dismissal, public accessible interfaces and square/responsive geometry. AT-SPI/Orca is not exercised. |
+| 18 | `interactive.segment-marker` | Native tab/segmented consumer pixels, persistent leading cap across hover/press/focus, unchanged finished fills and complete native focus frame, LTR/RTL, light/dark normal/high, live accent/contrast/direction, touch density, resize and local radius. Run at actual DPR 1, 1.25 and 2; source coverage alone is not rendered proof. |
 
 Amber and Danger in Appearance use label-plus-`IAColorWell` rows bound to the
 resolved warning/error colors. Both reuse the existing twelve Accent preset

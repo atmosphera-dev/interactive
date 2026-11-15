@@ -14,6 +14,7 @@ qt_add_qml_module(interactive_quick_tests
         qml/tst_controls.qml
         qml/tst_geometry.qml
         qml/tst_segmented.qml
+        qml/tst_segment_marker.qml
         qml/tst_color_well.qml
         qml/tst_color_picker.qml
         qml/tst_color_picker_capture.qml
@@ -40,6 +41,9 @@ add_test(NAME interactive.geometry COMMAND interactive_quick_tests
     -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_geometry.qml")
 add_test(NAME interactive.segmented COMMAND interactive_quick_tests
     -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_segmented.qml")
+add_test(NAME interactive.segment-marker COMMAND interactive_quick_tests
+    -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_segment_marker.qml" -maxwarnings 0)
+set_tests_properties(interactive.segment-marker PROPERTIES LABELS interactive-overview TIMEOUT 180 RUN_SERIAL TRUE)
 add_test(NAME interactive.color-well COMMAND interactive_quick_tests
     -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_color_well.qml")
 add_test(NAME interactive.color-picker COMMAND interactive_quick_tests

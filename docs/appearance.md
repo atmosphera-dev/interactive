@@ -735,6 +735,20 @@ feedback cannot consume the current segment's color. Tab feedback and focus are 
 not the content surface behind the group. Explicit local colors remain exact;
 Qt still owns current index, keyboard navigation and scrolling.
 
+Current enabled tabs and segmented choices share Foundation's `SegmentBackground`,
+a shared owner of two full-size native rounded `ControlBackground` frames. A
+complementary hard clip assigns each pixel to exactly one frame; the leading
+frame uses the exact effective accent (left LTR, right RTL). Both frames keep
+identical geometry and the original native border, including antialiasing.
+The cap extent is the finished focused border width plus two logical
+pixels: four normally, five in high contrast. Focus paints the unchanged native
+inward frame over the cap, leaving two pixels inside; focus never resizes it.
+Hover, press and inactive selection retain the cap and existing finished state
+fills. Unselected and disabled members have no cap. Live accent/direction/contrast
+changes preserve the native control and background. Local fill, focus and radius
+overrides keep their existing ownership; a consumer's custom background replaces
+this artwork. The group track and spacing are unchanged.
+
 ### Segmented choices and switch rows
 
 `IASegmentedControl` selects a value, rather than a page. Its entries are

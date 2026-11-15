@@ -277,7 +277,7 @@ Item {
             const track = bar.background as IA.ControlBackground;
             const first = bar.itemAt(0) as IATabButton;
             const second = bar.itemAt(1) as IATabButton;
-            const segment = first.background as IA.ControlBackground;
+            const segment = findChild(first.background, "iaSegmentFrame") as IA.ControlBackground;
             compare(track.resolvedAppearance.family, "tabBar");
             compare(track.color, bar.backgroundColor);
             compare(track.border.width, 0);
@@ -286,15 +286,15 @@ Item {
             compare(bar.spacing, IA.Appearance.metrics.spacingXS);
             compare(segment.color, data.scheme === "dark" ? IA.Appearance.colors.controlHover : IA.Appearance.colors.content);
             compare(segment.border.width, 0);
-            compare((second.background as Rectangle).color.a, 0);
+            compare((findChild(second.background, "iaSegmentFrame") as Rectangle).color.a, 0);
             verify(segment.color !== track.color);
             fuzzyCompare(first.mapToItem(bar, 0, 0).x, bar.leftPadding, 0.001);
             fuzzyCompare(first.mapToItem(bar, 0, 0).y, bar.topPadding, 0.001);
             first.forceActiveFocus(Qt.TabFocusReason);
             verify(TestProbe.keyClick(first, Qt.Key_Right));
             tryCompare(bar, "currentIndex", 1);
-            compare((first.background as Rectangle).color.a, 0);
-            compare((second.background as Rectangle).color, second.selectedBackgroundColor);
+            compare((findChild(first.background, "iaSegmentFrame") as Rectangle).color.a, 0);
+            compare((findChild(second.background, "iaSegmentFrame") as Rectangle).color, second.selectedBackgroundColor);
             // Already-focused items keep their native focus reason. Enter with
             // a real Tab event, as the existing capture/focus probes do.
             scene.forceActiveFocus(Qt.OtherFocusReason);
@@ -303,7 +303,7 @@ Item {
                 verify(TestProbe.keyClick(scene, Qt.Key_Tab));
             tryCompare(second, "activeFocus", true);
             tryCompare(second, "visualFocus", true);
-            compare((second.background as Rectangle).border.width, IA.Appearance.metrics.focusWidth);
+            compare((findChild(second.background, "iaSegmentFrame") as Rectangle).border.width, IA.Appearance.metrics.focusWidth);
         }
 
         function test_menuSlots_data(): var {
@@ -803,7 +803,8 @@ Item {
             verify(TestProbe.activate(control));
             verify(TestProbe.move(scene, scene.width - 2, scene.height - 2));
             tryCompare(control, "hovered", false);
-            const background = control.background as IA.ControlBackground;
+            const background = (control instanceof IATabButton
+                ? findChild(control.background, "iaSegmentFrame") : control.background) as IA.ControlBackground;
             const content = control.contentItem as IA.IconLabel;
             verify(background !== null && content !== null);
             const inset = findChild(background, "iaPressInset") as Rectangle;
@@ -1001,7 +1002,8 @@ Item {
                 (control as IACheckBox).checkState = Qt.PartiallyChecked;
             verify(TestProbe.render(control));
             verify(TestProbe.activate(control));
-            const background = (data.choice ? control.indicator : control.background) as Rectangle;
+            const background = (data.choice ? control.indicator : control instanceof IATabButton
+                ? findChild(control.background, "iaSegmentFrame") : control.background) as Rectangle;
             verify(background !== null);
             let foreground = null;
             if (!data.choice) {

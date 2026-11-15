@@ -460,7 +460,8 @@ Item {
                 tryCompare(control, "activeFocus", false);
                 // Choice focus belongs to its indicator; slider focus to its thumb.
                 const border = (index >= 4 && index <= 6 ? control.indicator
-                    : index === 10 ? control.handle : control.background) as Rectangle;
+                    : index === 10 ? control.handle : control instanceof IATabButton
+                    ? findChild(control.background, "iaSegmentFrame") : control.background) as Rectangle;
                 verify(border !== null);
                 const borderless = [2, 7, 8, 9].indexOf(index) !== -1;
                 compare(border.border.width, borderless ? 0 : IA.Appearance.metrics.borderWidth);
