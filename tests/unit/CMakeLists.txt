@@ -1,4 +1,11 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
+qt_add_executable(interactive_color_edit_state_tests tst_color_edit_state.cpp
+    ../../src/components/ColorEditState.h ../../src/components/ColorEditState.cpp)
+target_include_directories(interactive_color_edit_state_tests PRIVATE ../../src/components)
+target_link_libraries(interactive_color_edit_state_tests PRIVATE Qt6::Test Qt6::Gui Qt6::Qml)
+set_target_properties(interactive_color_edit_state_tests PROPERTIES OUTPUT_NAME interactive-color-edit-state-tests)
+add_test(NAME interactive.color-edit-state COMMAND interactive_color_edit_state_tests)
+set_tests_properties(interactive.color-edit-state PROPERTIES LABELS interactive-overview TIMEOUT 180)
 qt_add_executable(interactive_appearance_tests tst_appearance.cpp ../shared/TestTraceSetup.h ../shared/TestTraceSetup.cpp)
 target_link_libraries(interactive_appearance_tests PRIVATE
     InterActive::Foundation Qt6::Test Qt6::Gui Qt6::Qml

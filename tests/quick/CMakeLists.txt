@@ -3,7 +3,7 @@ qt_add_executable(interactive_quick_tests runner.cpp ../shared/TestTraceSetup.h 
 set_target_properties(interactive_quick_tests PROPERTIES OUTPUT_NAME interactive-quick-tests)
 target_include_directories(interactive_quick_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
 target_link_libraries(interactive_quick_tests PRIVATE
-    InterActive::Foundation InterActive::Controls Qt6::QuickTest Qt6::Quick Qt6::Gui Qt6::Test)
+    InterActive::Foundation InterActive::Controls InterActive::Components Qt6::QuickTest Qt6::Quick Qt6::Gui Qt6::Test)
 qt_add_qml_module(interactive_quick_tests
     URI InterActive.Tests
     DEPENDENCIES QtQuick
@@ -15,8 +15,11 @@ qt_add_qml_module(interactive_quick_tests
         qml/tst_geometry.qml
         qml/tst_segmented.qml
         qml/tst_color_well.qml
+        qml/tst_color_picker.qml
+        qml/tst_color_picker_capture.qml
         qml/tst_color_well_capture.qml
         qml/tst_popups.qml
+        qml/tst_dialog_header.qml
         qml/tst_popup_direction.qml
         qml/tst_dialogbuttonbox.qml
         qml/tst_icons.qml
@@ -39,6 +42,12 @@ add_test(NAME interactive.segmented COMMAND interactive_quick_tests
     -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_segmented.qml")
 add_test(NAME interactive.color-well COMMAND interactive_quick_tests
     -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_color_well.qml")
+add_test(NAME interactive.color-picker COMMAND interactive_quick_tests
+    -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_color_picker.qml" -maxwarnings 0)
+set_tests_properties(interactive.color-picker PROPERTIES LABELS interactive-overview TIMEOUT 180 RUN_SERIAL TRUE)
+add_test(NAME interactive.color-picker-capture COMMAND interactive_quick_tests
+    -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_color_picker_capture.qml" -maxwarnings 0)
+set_tests_properties(interactive.color-picker-capture PROPERTIES LABELS interactive-color-picker-capture TIMEOUT 300 RUN_SERIAL TRUE)
 set_tests_properties(interactive.color-well PROPERTIES LABELS interactive-overview TIMEOUT 180 RUN_SERIAL TRUE)
 add_test(NAME interactive.color-well-capture COMMAND interactive_quick_tests
     -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_color_well_capture.qml")
@@ -46,6 +55,9 @@ set_tests_properties(interactive.color-well-capture PROPERTIES LABELS interactiv
 add_test(NAME interactive.popups COMMAND interactive_quick_tests
     -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_popups.qml")
 set_tests_properties(interactive.popups PROPERTIES RUN_SERIAL TRUE)
+add_test(NAME interactive.dialog-header COMMAND interactive_quick_tests
+    -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_dialog_header.qml" -maxwarnings 0)
+set_tests_properties(interactive.dialog-header PROPERTIES RUN_SERIAL TRUE TIMEOUT 180 LABELS interactive-overview)
 add_test(NAME interactive.popup-direction COMMAND interactive_quick_tests
     -input "${CMAKE_CURRENT_SOURCE_DIR}/qml/tst_popup_direction.qml" -maxwarnings 0)
 set_tests_properties(interactive.popup-direction PROPERTIES LABELS interactive-overview TIMEOUT 180 RUN_SERIAL TRUE)

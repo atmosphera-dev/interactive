@@ -1,10 +1,8 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-find_package(Qt6 6.12.0 REQUIRED COMPONENTS QuickDialogs2)
 qt_add_qml_module(interactive_playground_scene SHARED
     URI InterActive.Playground
     VERSION 1.0
     DEPENDENCIES
-        QtQuick.Dialogs
         TARGET interactive_foundation
         TARGET interactive_controls
         TARGET interactive_components
@@ -19,7 +17,7 @@ target_include_directories(interactive_playground_scene PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}")
 target_link_libraries(interactive_playground_scene PUBLIC
     Qt6::Quick InterActive::Foundation
-    PRIVATE InterActive::Controls InterActive::Components Qt6::QuickDialogs2)
+    PRIVATE InterActive::Controls InterActive::Components)
 
 qt_add_executable(interactive_playground main.cpp)
 target_link_libraries(interactive_playground PRIVATE

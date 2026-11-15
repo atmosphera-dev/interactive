@@ -24,6 +24,7 @@ qt_add_qml_module(interactive_foundation
         StateTable.h StateTable.cpp
         Presentation.h Presentation.cpp
         ThemeIconItem.h ThemeIconItem.cpp
+        ColorPlaneSurface.h ColorPlaneSurface.cpp
         IconSource.h
         ScreenGeometry.h ScreenGeometry.cpp
     QML_FILES Icon.qml IconLabel.qml Separator.qml ControlState.qml ControlBackground.qml ChoiceIndicator.qml ChoiceRow.qml ValueTrack.qml SegmentGroup.qml PopupDirection.qml

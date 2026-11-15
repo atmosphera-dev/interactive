@@ -50,33 +50,54 @@ T.Dialog {
     font: appearance.resolvedFont
     popupType: T.Popup.Item
     header: Item {
-        implicitWidth: heading.implicitWidth + control.leftPadding + control.rightPadding
-        implicitHeight: heading.implicitHeight + control.topPadding
+        id: heading
+        readonly property real actionExtent: Math.max(Math.ceil(headingMetrics.height) + 2 * control.topPadding,
+            IA.Appearance.metrics.toolHeight, IA.Appearance.metrics.targetSize)
+        readonly property real titleGap: control.title.length > 0 && control._hasRejectAction ? IA.Appearance.metrics.spacingS : 0
+        implicitWidth: titleLabel.implicitWidth + (control._hasRejectAction
+            ? (control.mirrored ? control.rightPadding : control.leftPadding) + actionExtent + titleGap
+            : control.leftPadding + control.rightPadding)
+        implicitHeight: visible ? actionExtent : 0
         visible: control.title.length > 0 || control._hasRejectAction
+        // The row consumes the resolved direction once. The header owns
+        // both the title lane and the square top-trailing action, independently
+        // of body spacing and the tool button's hidden text metrics.
+        LayoutMirroring.enabled: false
+        LayoutMirroring.childrenInherit: true
+        FontMetrics { id: headingMetrics; font: titleLabel.font }
         RowLayout {
-            id: heading
-            x: control.leftPadding
-            y: control.topPadding
-            width: Math.max(0, parent.width - control.leftPadding - control.rightPadding)
-            // This row already receives the owner's resolved direction.
+            anchors.fill: parent
             LayoutMirroring.enabled: false
             layoutDirection: control.mirrored ? Qt.RightToLeft : Qt.LeftToRight
-            spacing: control.spacing
+            spacing: heading.titleGap
             IALabel {
+                id: titleLabel
                 objectName: "iaTitle"
                 Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                Layout.alignment: Qt.AlignVCenter
+                Layout.leftMargin: !control.mirrored || !closeButton.visible ? control.leftPadding : 0
+                Layout.rightMargin: control.mirrored || !closeButton.visible ? control.rightPadding : 0
                 text: control.title
                 fontFamily: control.fontFamily
                 fontPixelSize: appearance.headingPixelSize
                 fontWeight: appearance.headingWeight
                 foregroundColor: control.foregroundColor
+                horizontalAlignment: control.mirrored ? Text.AlignRight : Text.AlignLeft
                 elide: Text.ElideRight
             }
             IAToolButton {
+                id: closeButton
                 objectName: "iaDialogClose"
                 visible: control._hasRejectAction
-                Layout.preferredWidth: implicitHeight
-                Layout.preferredHeight: implicitHeight
+                Layout.preferredWidth: heading.actionExtent
+                Layout.preferredHeight: heading.actionExtent
+                Layout.minimumWidth: heading.actionExtent
+                Layout.minimumHeight: heading.actionExtent
+                LayoutMirroring.enabled: control.mirrored
+                // The native hover/focus surface shares the popup's resolved
+                // corner, so its full target stays inside the visible outline.
+                controlRadius: control.controlRadius
                 icon.source: "qrc:/qt/qml/InterActive/Foundation/icons/close.svg"
                 display: T.AbstractButton.IconOnly
                 Accessible.name: "Close"

@@ -105,6 +105,41 @@ Item- and Window-hosted QML popups belong to the design; native platform-rendere
 popups do not establish IA styling coverage. Alignment belongs in shared layout
 lanes, grids, or anchors, not unrelated pixel offsets.
 
+The color picker has one narrow specialized interaction: `IAColorPlane` uses a
+public template Control, pointer handler and Keys for its two physical HSL axes.
+There is no public Qt color-plane template. Its Grouping accessibility role
+describes both axes; native fields provide equivalent channel editing. Native
+sliders, fields, segments, popup and dialog buttons keep their Qt semantics.
+Foundation's stateless `ColorPlaneSurface` caches an opaque QColor HSL image on
+the GUI thread; only hue, physical size and DPR invalidate it. The marker and
+opacity are separate consumers, never renderer-owned state. The plane's shared
+ControlBackground owns its complete inside-bounds focus frame. Constant resolved
+maximum normal/focused border padding keeps data geometry stable on focus. A live
+ShaderEffectSource combines the existing surface and separate QML marker into
+one offscreen texture; QtQuick.Shapes ShapePath.fillItem/PathRectangle clips that
+texture to the resolved inner radius. The component-local CurveRenderer supplies
+antialiased path edges without global MSAA. Marker movement updates the offscreen
+composition, not the cached CPU color image. Endpoint centers retain physical
+coordinates and the plane owns their clipping, never its containing viewport.
+
+Components' internal `ColorEditState` is the sole full-precision color/draft/hue
+owner for each persistent `IAColorEditor`. `colorValue` synchronizes external
+authority without emitting an edit; `currentColor` is installed before user-only
+`colorEdited`. Display formatting, mode changes and same-color feedback do not
+roundtrip through RGB8 text. Drafts and mode objects persist across reflow/hiding.
+After the synchronous edit callback, currentColor reconciles to authoritative
+colorValue without an edit echo, including ignored or application-corrected
+requests. A clean field's native focus loss is not a text edit.
+`IAColorDialog` composes this editor under the shared IADialog header and a direct
+native Close button box. Its measured caption uses public background/padding
+slots, with natural width independent of narrow reflow. The explicit source
+`parentWindow` accepts any compatible QQuickWindow, including QQuickView; no
+application-window subtype or parent theme lookup is needed. Playground's thin
+adapter alone owns role writing, synchronization trace scopes and persistence.
+The dialog explicitly closes only through Escape, its shared header or native
+Close button, not on main-window/peer clicks. Hue/opacity artwork mirrors with
+native slider visualPosition; the plane's physical HSL axes do not.
+
 Qt reparents Window-hosted popup content outside the owner's visual tree. The
 four popup roots share Foundation's internal nonvisual `PopupDirection` adapter.
 Its explicit inputs are Qt's public source overlay and the public content item.

@@ -487,7 +487,7 @@ Item {
             verify(String(close.icon.source).indexOf("close.svg") >= 0);
             fuzzyCompare(close.width, close.height, 0.5);
             const closePoint = close.mapToItem(dialog.header, 0, 0);
-            fuzzyCompare(closePoint.x, data.rtl ? dialog.leftPadding : dialog.width - dialog.rightPadding - close.width, 0.5,
+            fuzzyCompare(closePoint.x, data.rtl ? 0 : dialog.width - close.width, 0.5,
                 "Close occupies the structural trailing header slot");
             const icon = iconIn(close.contentItem);
             verify(icon !== null);

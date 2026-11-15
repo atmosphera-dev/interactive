@@ -15,7 +15,7 @@ page, Foundations; the planned controls and pages are listed in
 |---|---|---|
 | 1 | `InterActive.Foundation` / `InterActive::Foundation` | Engine-local appearance, typed tokens, shared control resolution. |
 | 2 | `InterActive` / `InterActive::Controls` | IA visual controls rooted in Qt templates. |
-| 3 | `InterActive.Components` / `InterActive::Components` | Used compositions: `IAFieldRow`, `IASettingsRow`, `IAStatusBanner`, `IAEmptyState`. No speculative stubs. |
+| 3 | `InterActive.Components` / `InterActive::Components` | Used compositions: `IAFieldRow`, `IASettingsRow`, `IAStatusBanner`, `IAEmptyState`, `IAColorEditor`, `IAColorDialog`. No speculative stubs. |
 | 4 | `InterActive.Playground` / `interactive_playground_scene` | Non-installed shared QML backing target and generated plugin, real gallery fixtures and engine-local `PlaygroundState`. |
 
 See [architecture](docs/ARCHITECTURE.md), [appearance](docs/appearance.md), and
@@ -88,8 +88,9 @@ replacement. Controls and popups are persistent objects during input changes.
 The state shelf includes disabled, primary, destructive, read-only, invalid,
 and an explicit purple/font/radius override with a local reset action.
 
-Three live **Accent / Amber / Danger** pickers support calibration through the same
-input writer. Amber/Danger picker corrections are temporary for the current accent;
+Three live **Accent / Amber / Danger** pickers use the shared IA color editor/dialog
+and the same input writer. The editor retains full-precision color, alpha,
+Hex/RGB/HSV/HSL fields and live HSL plane/rails. Amber/Danger corrections are temporary for the current accent;
 a different effective accent restores their underlying inputs/default generation
 without a prompt or autosave. Closing keeps live edits. **Save** appends the three
 applied root colors to DocumentsLocation + `InterActive/palette-samples.txt`, or
@@ -232,7 +233,8 @@ cmake -S . -B build/qt612-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug \
 
 Set `QT_PREFIX` to that SDK's installation prefix. Keep each SDK in a separate
 build directory and use its matching
-runtime libraries and plugins. QtTest and QML tests are registered directly with
+runtime libraries and plugins, including the QtQuick.Shapes QML module used by
+the color plane's rounded texture fill. QtTest and QML tests are registered directly with
 CTest; no separate orchestration tool is required.
 
 See [the verification contract](docs/playground.md) for suite coverage, runtime

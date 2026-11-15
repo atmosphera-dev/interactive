@@ -10,6 +10,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QImage>
+#include <QPainter>
 #include <QSaveFile>
 #include <QtMath>
 #include <QMetaProperty>
@@ -25,6 +26,7 @@
 #include <unistd.h>
 #endif
 #include "ControlAppearance.h"
+#include "ColorPlaneSurface.h"
 #ifdef IA_TEST_PLAYGROUND
 #include "PlaygroundState.h"
 #include <QFile>
@@ -318,13 +320,23 @@ QVariantMap TestProbe::accessibleState(QQuickItem *item) const
         return {};
     const auto state = interface->state();
     auto *actions = interface->actionInterface();
+    auto *value = interface->valueInterface();
     return {{QStringLiteral("role"), int(interface->role())},
             {QStringLiteral("name"), interface->text(QAccessible::Name)},
+            {QStringLiteral("description"), interface->text(QAccessible::Description)},
+            {QStringLiteral("focusable"), bool(state.focusable)},
+            {QStringLiteral("editable"), bool(state.editable)},
+            {QStringLiteral("readOnly"), bool(state.readOnly)},
+            {QStringLiteral("textInterface"), interface->textInterface() != nullptr},
+            {QStringLiteral("minimum"), value ? value->minimumValue() : QVariant{}},
+            {QStringLiteral("maximum"), value ? value->maximumValue() : QVariant{}},
+            {QStringLiteral("value"), value ? value->currentValue() : QVariant{}},
             {QStringLiteral("checked"), bool(state.checked)},
             {QStringLiteral("checkable"), bool(state.checkable)},
             {QStringLiteral("focused"), bool(state.focused)},
             {QStringLiteral("disabled"), bool(state.disabled)},
             {QStringLiteral("pressAction"), QAccessibleActionInterface::pressAction()},
+            {QStringLiteral("increaseAction"), QAccessibleActionInterface::increaseAction()},
             {QStringLiteral("toggleAction"), QAccessibleActionInterface::toggleAction()},
             {QStringLiteral("actions"), actions ? actions->actionNames() : QStringList{}}};
 }
@@ -397,25 +409,80 @@ bool TestProbe::writeCaptureManifest(const QString &text) const
     return file.open(QIODevice::WriteOnly) && file.write(bytes) == bytes.size() && file.commit();
 }
 
-QQuickItem *TestProbe::pickerItem(QObject *dialog, const QString &name) const
+quint64 TestProbe::colorPlaneRebuilds(QQuickItem *surface) const
 {
-    if (!dialog)
-        return nullptr;
-    const QString title = dialog->property("title").toString();
-    const auto windows = QGuiApplication::allWindows();
-    for (auto *window : windows) {
-        const auto objects = window->findChildren<QObject *>();
-        for (auto *object : objects) {
-            if (object == dialog || object->property("title").toString() != title)
-                continue;
-            auto *item = object->findChild<QQuickItem *>(name);
-            if (item && item->isVisible()) {
-                QQmlEngine::setObjectOwnership(item, QQmlEngine::CppOwnership);
-                return item;
-            }
-        }
-    }
-    return nullptr;
+    const auto *plane = qobject_cast<InterActive::ColorPlaneSurface *>(surface);
+    return plane ? plane->rebuildCount() : 0;
+}
+
+QVariantMap TestProbe::colorPlaneCache(QQuickItem *surface) const
+{
+    const auto *plane = qobject_cast<InterActive::ColorPlaneSurface *>(surface);
+    if (!plane) return {};
+    return {{"rebuilds", plane->rebuildCount()}, {"lastRebuildNs", plane->lastRebuildNanoseconds()},
+            {"pixelWidth", plane->cachedPixelSize().width()}, {"pixelHeight", plane->cachedPixelSize().height()},
+            {"dpr", plane->cachedDpr()}};
+}
+
+QColor TestProbe::paintedRasterPixel(QQuickItem *item, int x, int y, qreal dpr) const
+{
+    auto *painted = qobject_cast<QQuickPaintedItem *>(item);
+    if (!painted || !qIsFinite(dpr) || dpr <= 0) return {};
+    QImage image(QSize(qCeil(item->width() * dpr), qCeil(item->height() * dpr)), QImage::Format_ARGB32_Premultiplied);
+    if (image.isNull() || !image.rect().contains(x, y)) return {};
+    image.setDevicePixelRatio(dpr);
+    image.fill(Qt::transparent);
+    QPainter painter(&image);
+    painted->paint(&painter);
+    painter.end();
+    return image.pixelColor(x, y);
+}
+
+qreal TestProbe::effectiveDpr(QQuickItem *item) const
+{
+    return item && item->window() ? item->window()->effectiveDevicePixelRatio() : 1;
+}
+
+bool TestProbe::touch(QQuickItem *item, const QString &phase, qreal x, qreal y)
+{
+    if (!exposed(item)) return false;
+    if (!m_touchDevice) m_touchDevice = QTest::createTouchDevice(QInputDevice::DeviceType::TouchScreen);
+    const QPoint position = item->mapToScene(QPointF(x,y)).toPoint();
+    if (phase == "press") QTest::touchEvent(item->window(), m_touchDevice).press(0, position, item->window()).commit();
+    else if (phase == "move") QTest::touchEvent(item->window(), m_touchDevice).move(0, position, item->window()).commit();
+    else if (phase == "release") QTest::touchEvent(item->window(), m_touchDevice).release(0, position, item->window()).commit();
+    else if (phase == "cancel") {
+        const QEventPoint point(0, QEventPoint::Released, position, item->window()->mapToGlobal(position));
+        QTouchEvent event(QEvent::TouchCancel, m_touchDevice, Qt::NoModifier, QList<QEventPoint>{point});
+        QCoreApplication::sendEvent(item->window(), &event);
+    } else return false;
+    return true;
+}
+
+bool TestProbe::captureWindow(QQuickItem *item, const QString &name) const
+{
+    const QString root = captureDirectory();
+    if (root.isEmpty() || !exposed(item) || name.contains('/') || !name.endsWith(".png"))
+        return false;
+    return item->window()->grabWindow().save(QDir(root).filePath(name));
+}
+
+QColor TestProbe::renderedPixel(QQuickItem *item, qreal x, qreal y) const
+{
+    if (!exposed(item)) return {};
+    const QImage frame=item->window()->grabWindow();
+    const QPointF scene=item->mapToScene(QPointF(x,y));
+    const QPoint pixel(qFloor(scene.x()*frame.width()/item->window()->width()),
+                       qFloor(scene.y()*frame.height()/item->window()->height()));
+    return frame.rect().contains(pixel) ? frame.pixelColor(pixel) : QColor{};
+}
+
+int TestProbe::idleFrames(QQuickItem *item, int milliseconds) const
+{
+    if (!exposed(item)) return -1;
+    QSignalSpy frames(item->window(), &QQuickWindow::frameSwapped);
+    QTest::qWait(milliseconds);
+    return frames.count();
 }
 
 #ifdef IA_TEST_PLAYGROUND

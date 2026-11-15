@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Dialogs
 import InterActive
+import InterActive.Components
 import InterActive.Foundation as IA
 
 Item {
@@ -37,16 +37,9 @@ Item {
     function synchronize(): void {
         const token = traceBegin("sync");
         try {
-            if (Qt.colorEqual(dialog.selectedColor, resolvedColor))
-                return;
-            const reopen = dialog.visible;
             synchronizing = true;
-            // Public Qt 6.8 workaround: the fallback picker is seeded on open.
-            if (reopen)
-                dialog.close();
-            dialog.selectedColor = resolvedColor;
-            if (reopen)
-                dialog.open();
+            // The generic persistent editor synchronizes without reopening its host.
+            dialog.colorValue = resolvedColor;
         } finally {
             synchronizing = false;
             traceEnd(token);
@@ -68,19 +61,16 @@ Item {
     function focusOpener(): void { pickerButton.forceActiveFocus(Qt.PopupFocusReason); }
     onResolvedColorChanged: synchronize()
 
-    ColorDialog {
+    readonly property IAColorDialog _dialog: IAColorDialog {
         id: dialog
         objectName: root.namePrefix + "ColorDialog"
         title: root.dialogTitle
         parentWindow: root.pickerParentWindow
-        modality: Qt.NonModal
-        options: ColorDialog.NoButtons | ColorDialog.ShowAlphaChannel
-            | ColorDialog.NoEyeDropperButton | ColorDialog.DontUseNativeDialog
-        onSelectedColorChanged: {
+        onColorEdited: value => {
             const token = root.traceBegin("color");
             try {
                 if (visible && !root.synchronizing)
-                    root.colorSelected(selectedColor);
+                    root.colorSelected(value);
             } finally {
                 root.traceEnd(token);
             }

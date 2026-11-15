@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 import QtQuick
-import QtQuick.Dialogs as Dialogs
 import QtQuick.Layouts
 import QtQuick.Templates as T
 import QtTest
@@ -110,7 +109,7 @@ Item {
             switchToggledSpy.target = null;
             scene.editorRtl = false;
             for (const role of ["accent", "amber", "danger"]) {
-                const colorDialog = findChild(editor, role + "ColorDialog") as Dialogs.ColorDialog;
+                const colorDialog = findChild(editor, role + "ColorDialog") as IAColorDialog;
                 if (colorDialog !== null && colorDialog.visible) {
                     colorDialog.close();
                     tryCompare(colorDialog, "visible", false);
@@ -173,7 +172,7 @@ Item {
             compare(custom.objectName, "accentPaletteCustom");
             verify(TestProbe.click(custom, custom.width / 2, custom.height / 2));
             tryCompare(menu, "visible", false);
-            tryCompare(findChild(editor, "accentColorDialog") as Dialogs.ColorDialog, "visible", true);
+            tryCompare(findChild(editor, "accentColorDialog") as IAColorDialog, "visible", true);
         }
 
         function test_toolbarGeometry_data(): var {
@@ -351,7 +350,7 @@ Item {
             compare(close.mirrored, rtl);
             compare(footer.mirrored, rtl);
             const closePoint = close.mapToItem(dialog.header, 0, 0);
-            fuzzyCompare(closePoint.x, rtl ? dialog.leftPadding : dialog.header.width - dialog.rightPadding - close.width, 0.5);
+            fuzzyCompare(closePoint.x, rtl ? 0 : dialog.header.width - close.width, 0.5);
             const titlePoint = title.mapToItem(dialog.header, 0, 0);
             if (rtl)
                 fuzzyCompare(titlePoint.x + title.width, dialog.header.width - dialog.rightPadding, 0.5);
@@ -628,7 +627,7 @@ Item {
                 const custom = revealMenuItem(menu, 12);
                 verify(TestProbe.click(custom, custom.width / 2, custom.height / 2));
                 tryCompare(menu, "visible", false);
-                const picker = findChild(owner, "accentColorDialog") as Dialogs.ColorDialog;
+                const picker = findChild(owner, "accentColorDialog") as IAColorDialog;
                 assertPickerColor(picker, IA.Appearance.colors.accent);
                 compare(dialog.visible, false, "Toolbar Custom does not require opening Appearance");
                 picker.close();
@@ -838,9 +837,9 @@ Item {
             verify(TestProbe.click(scene, scene.width - 2, scene.height - 2));
             tryCompare(menu, "visible", false);
             openCustomAccent();
-            const dialog = findChild(editor, "accentColorDialog") as Dialogs.ColorDialog;
+            const dialog = findChild(editor, "accentColorDialog") as IAColorDialog;
             assertPickerColor(dialog, IA.Appearance.colors.accent);
-            const hue = TestProbe.pickerItem(dialog, "hueSlider");
+            const hue = findChild(dialog, "hueSlider");
             verify(hue !== null);
             tryVerify(function() { return TestProbe.hostWindow(hue).active; });
             compare(TestProbe.paletteSampleBytes(), before);
@@ -1363,21 +1362,26 @@ Item {
             compare(caption.text, "No color selected");
         }
 
-        function assertPickerColor(dialog: Dialogs.ColorDialog, expected: color): void {
+        function sameRgba(actual: color, expected: color): bool {
+            // QColor HSL/HSV retains editing coordinates; RGB normalization can
+            // change derived coordinates without changing any effective channel.
+            return actual.r === expected.r && actual.g === expected.g
+                && actual.b === expected.b && actual.a === expected.a;
+        }
+        function assertRgba(actual: color, expected: color): void {
+            verify(sameRgba(actual,expected), "Exact RGBA mismatch: " + JSON.stringify({
+                actual:[actual.r,actual.g,actual.b,actual.a],expected:[expected.r,expected.g,expected.b,expected.a]}));
+        }
+        function assertPickerColor(dialog: IAColorDialog, expected: color): void {
             tryCompare(dialog, "visible", true);
-            // Qt's picker seeds and compares colors via rgba(), with an HSL
-            // round trip. Its displayed RGB8 color must match; input below
-            // remains checked independently without serializing the writer.
-            tryVerify(function() { return String(dialog.selectedColor) === String(expected); });
-            // Qt reparents the fallback implementation to the host window. Only
-            // tests inspect its items; production uses the public dialog API.
-            const picker = TestProbe.pickerItem(dialog, "colorPicker");
+            assertRgba(dialog.currentColor, expected);
+            const picker = findChild(dialog, "iaColorEditor") as IAColorEditor;
             verify(picker !== null);
             tryCompare(picker, "visible", true);
             tryVerify(function() { return TestProbe.exposed(picker); });
             verify(TestProbe.render(picker));
-            tryVerify(function() { return String(picker.color) === String(expected); }, 5000,
-                      "The rendered picker, not just the wrapper, must adopt external input");
+            assertRgba(picker.currentColor, expected);
+            assertRgba((findChild(picker, "iaColorPreviewSample") as Rectangle).color, expected);
         }
 
         function semanticWell(owner: Item, role: string): IAColorWell {
@@ -1450,7 +1454,7 @@ Item {
 
         function assertAccentConsumers(expected: color): void {
             verify(TestProbe.render(page));
-            compare(IA.Appearance.colors.accent, expected);
+            assertRgba(IA.Appearance.colors.accent, expected);
             const swatch = findChild(editor, "accentSwatch") as Rectangle;
             const readout = findChild(editor, "accentReadout") as IALabel;
             const sample = findChild(page, "opencode-blue") as IAButton;
@@ -1458,7 +1462,7 @@ Item {
             const progress = findChild(page, "progressPreview") as IAProgressBar;
             verify(swatch !== null && readout !== null && sample !== null
                    && slider !== null && progress !== null);
-            compare(swatch.color, expected);
+            assertRgba(swatch.color, expected);
             compare(readout.text.toLowerCase(), editor.accentDisplayName.toLowerCase() + " " + String(expected).toLowerCase());
             compare(readout.color, readout.foregroundColor);
             const background = sample.background as Rectangle;
@@ -1470,8 +1474,8 @@ Item {
             compare(background.color, IA.Appearance.colors.primarySurface);
             compare(label.color, sample.foregroundColor);
             compare(background.border.color, sample.borderColor);
-            compare(sliderFill.color, expected);
-            compare(progressFill.color, expected);
+            assertRgba(sliderFill.color, expected);
+            assertRgba(progressFill.color, expected);
             assertSemanticConsumers();
         }
 
@@ -1503,15 +1507,15 @@ Item {
             verify(TestProbe.render(editor));
             const opener = findChild(editor, "accentPickerButton") as IAButton;
             const reset = findChild(editor, "resetAccentButton") as IAToolButton;
-            const dialog = findChild(editor, "accentColorDialog") as Dialogs.ColorDialog;
+            const dialog = findChild(editor, "accentColorDialog") as IAColorDialog;
             verify(opener !== null && reset !== null && dialog !== null);
             const defaultAccent = IA.Appearance.colors.accent;
             compare(PlaygroundState.hasAccentOverride, false);
             compare(reset.visible, false);
             openCustomAccent();
-            compare(dialog.modality, Qt.NonModal);
-            compare(dialog.options, Dialogs.ColorDialog.NoButtons | Dialogs.ColorDialog.ShowAlphaChannel
-                    | Dialogs.ColorDialog.NoEyeDropperButton | Dialogs.ColorDialog.DontUseNativeDialog);
+            compare(dialog.modal, false);
+            compare(dialog.popupType, T.Popup.Window);
+            compare(dialog.footer.standardButtons, T.DialogButtonBox.Close);
             assertPickerColor(dialog, defaultAccent);
             compare(JSON.stringify(PlaygroundState.appearanceInput), "{}");
             compare(PlaygroundState.hasAccentOverride, false);
@@ -1576,9 +1580,9 @@ Item {
             verify(TestProbe.render(editor));
             const role = data.role;
             const key = role === "amber" ? "warning" : "error";
-            const dialog = findChild(editor, role + "ColorDialog") as Dialogs.ColorDialog;
+            const dialog = findChild(editor, role + "ColorDialog") as IAColorDialog;
             const otherRole = role === "amber" ? "danger" : "amber";
-            const other = findChild(editor, otherRole + "ColorDialog") as Dialogs.ColorDialog;
+            const other = findChild(editor, otherRole + "ColorDialog") as IAColorDialog;
             const opener = semanticAction(editor, role, true);
             const otherOpener = semanticAction(editor, otherRole, true);
             verify(dialog !== null && other !== null && opener !== null && otherOpener !== null);
@@ -1589,16 +1593,17 @@ Item {
             const input = JSON.stringify(PlaygroundState.appearanceInput);
             click(otherOpener);
             assertPickerColor(other, IA.Appearance.colors[otherRole === "amber" ? "warning" : "error"]);
-            const otherPicker = TestProbe.pickerItem(other, "colorPicker");
+            const otherPicker = findChild(other, "iaColorEditor");
             verify(otherPicker !== null);
             click(opener);
             assertPickerColor(dialog, IA.Appearance.colors[key]);
             compare(JSON.stringify(PlaygroundState.appearanceInput), input, "Opening two dialogs is not an edit");
-            const otherSelected = String(other.selectedColor);
+            const otherColor = other.currentColor;
+            const otherSelected = Qt.rgba(otherColor.r,otherColor.g,otherColor.b,otherColor.a);
             for (const name of ["hueSlider", "alphaSlider"]) {
-                const control = TestProbe.pickerItem(dialog, name) as T.Slider;
+                const control = findChild(dialog, name) as T.Slider;
                 verify(control !== null && control.handle !== null);
-                verify(control !== TestProbe.pickerItem(other, name), "Input targets this role's host");
+                verify(control !== findChild(other, name), "Input targets this role's host");
                 verify(TestProbe.activate(control));
                 verify(TestProbe.render(control));
                 const start = control.handle.mapToItem(control, control.handle.width / 2, control.handle.height / 2);
@@ -1614,8 +1619,8 @@ Item {
                     verify(TestProbe.move(control, x, start.y));
                     tryVerify(function() { return !Qt.colorEqual(before, IA.Appearance.colors[key]); });
                     compare(control.pressed, true);
-                    compare(IA.Appearance.colors[key], dialog.selectedColor);
-                    compare((findChild(semanticWell(editor, role), "iaColorWellSample") as Rectangle).color, dialog.selectedColor);
+                    assertRgba(IA.Appearance.colors[key], dialog.currentColor);
+                    assertRgba((findChild(semanticWell(editor, role), "iaColorWellSample") as Rectangle).color, dialog.currentColor);
                     assertSemanticConsumers();
                     const invalidEmail = findChild(page, "emailField") as IATextField;
                     verify(invalidEmail !== null);
@@ -1626,20 +1631,20 @@ Item {
                         verify(findChild(page, item.objectName) === item);
                     compare(purple.backgroundColor, purpleColor);
                     compare(other.visible, true);
-                    compare(String(other.selectedColor), otherSelected);
-                    verify(TestProbe.pickerItem(other, "colorPicker") === otherPicker,
+                    assertRgba(other.currentColor, otherSelected);
+                    verify(findChild(other, "iaColorEditor") === otherPicker,
                         "An unaffected dialog was not closed/reopened");
                     verify(!TestProbe.paletteSampleExists());
                 } finally {
                     verify(TestProbe.release(control, x, start.y));
                 }
             }
-            const plane = TestProbe.pickerItem(dialog, "colorPicker");
+            const plane = findChild(dialog, "iaColorPlane");
             verify(plane !== null);
             verify(TestProbe.press(plane, plane.width * 0.8, plane.height * 0.2));
             try {
                 verify(TestProbe.move(plane, plane.width * 0.6, plane.height * 0.35));
-                tryCompare(IA.Appearance.colors, key, dialog.selectedColor);
+                tryVerify(function(){return sameRgba(IA.Appearance.colors[key],dialog.currentColor);});
                 assertSemanticConsumers();
             } finally {
                 verify(TestProbe.release(plane, plane.width * 0.6, plane.height * 0.35));
@@ -1678,9 +1683,9 @@ Item {
             editorScroll.visible = true;
             verify(PlaygroundState.applyInitialPaletteSuggestions());
             verify(TestProbe.render(editor));
-            const amber = findChild(editor, "amberColorDialog") as Dialogs.ColorDialog;
-            const danger = findChild(editor, "dangerColorDialog") as Dialogs.ColorDialog;
-            const accent = findChild(editor, "accentColorDialog") as Dialogs.ColorDialog;
+            const amber = findChild(editor, "amberColorDialog") as IAColorDialog;
+            const danger = findChild(editor, "dangerColorDialog") as IAColorDialog;
+            const accent = findChild(editor, "accentColorDialog") as IAColorDialog;
             editor.openAmberPicker();
             editor.openDangerPicker();
             editor.openAccentPicker();
@@ -1866,7 +1871,7 @@ Item {
             editor.jsonDraft = '{"fontScale":1.2}';
             verify(TestProbe.render(editor));
             const opener = findChild(editor, "accentPickerButton") as IAButton;
-            const dialog = findChild(editor, "accentColorDialog") as Dialogs.ColorDialog;
+            const dialog = findChild(editor, "accentColorDialog") as IAColorDialog;
             const reset = findChild(editor, "resetAccentButton") as IAToolButton;
             verify(opener !== null && dialog !== null && reset !== null);
             const sample = findChild(page, "opencode-blue") as IAButton;
@@ -1900,7 +1905,7 @@ Item {
 
             const controls = data.tag === "normal-light" ? ["hueSlider", "alphaSlider"] : ["hueSlider"];
             for (const name of controls) {
-                const control = TestProbe.pickerItem(dialog, name) as T.Slider;
+                const control = findChild(dialog, name) as T.Slider;
                 verify(control !== null && control.handle !== null);
                 tryCompare(control, "visible", true);
                 verify(TestProbe.activate(control));
@@ -1921,8 +1926,7 @@ Item {
                         compare(control.pressed, true, "Live input must arrive before mouse release");
                         compare(dialog.visible, true);
                         compare(PlaygroundState.hasAccentOverride, true);
-                        compare(IA.Appearance.colors.accent, dialog.selectedColor,
-                                "Live input preserves the color emitted by the picker");
+                        assertRgba(IA.Appearance.colors.accent, dialog.currentColor);
                         compare(String(PlaygroundState.appearanceInput.tokens.colors.accent).toLowerCase(),
                                 String(IA.Appearance.colors.accent).toLowerCase());
                         assertPickerColor(dialog, IA.Appearance.colors.accent);
@@ -1956,7 +1960,7 @@ Item {
                 }
             }
             // Exercise actual saturation/lightness input as well as hue and alpha.
-            const picker = TestProbe.pickerItem(dialog, "colorPicker");
+            const picker = findChild(dialog, "iaColorPlane");
             verify(picker !== null && picker.width > 0 && picker.height > 0);
             verify(TestProbe.activate(picker));
             verify(TestProbe.render(picker));
@@ -1969,8 +1973,8 @@ Item {
                     px = picker.width * position.x;
                     py = picker.height * position.y;
                     verify(TestProbe.move(picker, px, py));
-                    tryCompare(IA.Appearance.colors, "accent", dialog.selectedColor);
-                    assertAccentConsumers(dialog.selectedColor);
+                    tryVerify(function(){return sameRgba(IA.Appearance.colors.accent,dialog.currentColor);});
+                    assertAccentConsumers(dialog.currentColor);
                     compare(dialog.visible, true, "Intensity observations precede pointer release");
                     semanticColors.push([String(IA.Appearance.colors.error), String(IA.Appearance.colors.warning),
                         String(IA.Appearance.colors.success)]);
@@ -2020,7 +2024,7 @@ Item {
             const apply = findChild(editor, "applyAccentHex") as IAButton;
             const json = findChild(editor, "appearanceJson") as IATextField;
             const reset = findChild(editor, "resetAccentButton") as IAToolButton;
-            const dialog = findChild(editor, "accentColorDialog") as Dialogs.ColorDialog;
+            const dialog = findChild(editor, "accentColorDialog") as IAColorDialog;
             verify(hex !== null && apply !== null && json !== null && reset !== null && dialog !== null);
             const pendingHex = "#234567";
             const pendingJson = '{"tokens":';
