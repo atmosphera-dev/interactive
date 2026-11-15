@@ -2,8 +2,12 @@
 
 This document describes the approved architectural direction, not a claim of
 implemented control coverage, stable API spellings, or completed verification.
-InterActive (IA) targets Qt 6.8 or newer and provides explicitly imported,
+InterActive (IA) targets Qt 6.12.0 or newer and provides explicitly imported,
 IA-owned Qt Quick controls and reusable compositions.
+
+This supported minimum includes Qt's native explicit popup sizing fix on both
+axes ([QTBUG-147847](https://bugreports.qt.io/browse/QTBUG-147847)); IA does not
+replace that ownership with a sizing workaround.
 
 ## Module Layers
 
@@ -100,6 +104,70 @@ local overrides explicitly rather than rely on visual-parent palette inheritance
 Item- and Window-hosted QML popups belong to the design; native platform-rendered
 popups do not establish IA styling coverage. Alignment belongs in shared layout
 lanes, grids, or anchors, not unrelated pixel offsets.
+
+The color picker has one narrow specialized interaction: `IAColorPlane` uses a
+public template Control, pointer handler and Keys for its two physical HSL axes.
+There is no public Qt color-plane template. Its Grouping accessibility role
+describes both axes; native fields provide equivalent channel editing. Native
+sliders, fields, segments, popup and dialog buttons keep their Qt semantics.
+Foundation's stateless `ColorPlaneSurface` caches an opaque QColor HSL image on
+the GUI thread; only hue, physical size and DPR invalidate it. The marker and
+opacity are separate consumers, never renderer-owned state. The plane's shared
+ControlBackground owns its complete inside-bounds focus frame. Constant resolved
+maximum normal/focused border padding keeps data geometry stable on focus. A live
+ShaderEffectSource combines the existing surface and separate QML marker into
+one offscreen texture; QtQuick.Shapes ShapePath.fillItem/PathRectangle clips that
+texture to the resolved inner radius. The component-local CurveRenderer supplies
+antialiased path edges without global MSAA. Marker movement updates the offscreen
+composition, not the cached CPU color image. Endpoint centers retain physical
+coordinates and the plane owns their clipping, never its containing viewport.
+
+Components' internal `ColorEditState` is the sole full-precision color/draft/hue
+owner for each persistent `IAColorEditor`. `colorValue` synchronizes external
+authority without emitting an edit; `currentColor` is installed before user-only
+`colorEdited`. Display formatting, mode changes and same-color feedback do not
+roundtrip through RGB8 text. Drafts and mode objects persist across reflow/hiding.
+After the synchronous edit callback, currentColor reconciles to authoritative
+colorValue without an edit echo, including ignored or application-corrected
+requests. A clean field's native focus loss is not a text edit.
+`IAColorDialog` composes this editor under the shared IADialog header and a direct
+native Close button box. Its measured caption uses public background/padding
+slots, with natural width independent of narrow reflow. The explicit source
+`parentWindow` accepts any compatible QQuickWindow, including QQuickView; no
+application-window subtype or parent theme lookup is needed. Playground's thin
+adapter alone owns role writing, synchronization trace scopes and persistence.
+The dialog explicitly closes only through Escape, its shared header or native
+Close button, not on main-window/peer clicks. Hue/opacity artwork mirrors with
+native slider visualPosition; the plane's physical HSL axes do not.
+
+Qt reparents Window-hosted popup content outside the owner's visual tree. The
+four popup roots share Foundation's internal nonvisual `PopupDirection` adapter.
+Its explicit inputs are Qt's public source overlay and the public content item.
+It reads the exact implicit-child inheritance metadata along that supplied
+overlay's Item parent chain and binds only the popup-exclusive native Window.
+Native target classification occurs on content-window change, content replacement
+and completion, not on the earlier logical-source change during host migration.
+The adapter records source-host provenance separately and excludes every observed
+application host from native targets, including an old Item host retained during
+enter when replacement content arrives after logical migration.
+Each popup root supplies its content input only after its own QML completion,
+after Qt finishes parser-status callbacks and deferred content. The binding stays
+live for later replacement; the adapter cannot eagerly execute deferred content.
+At a Window's content root it reads both public mirroring aliases: they share
+values, but Qt can notify either attachment. Other source Items are unchanged.
+All four popup roots own nonvisual appearance metadata through explicit readonly
+properties, never public default contentData. A helper cannot begin deferred
+visual-content construction before a consumer's custom content is recorded.
+No visual witness is added to Overlay, no host is written, and no theme provider,
+locale/global direction, private popup item or application direction API is added.
+
+The dialog button box owns one native model-backed ListView. A small internal
+QQuickItem adapter snapshots only its new horizontal geometry during public
+polish; native vertical measurement, sizing and interaction remain Qt's. The
+view reports the committed actual button extent as its natural implicit width,
+separately from the allocated lane and inline spacer widths. This preserves
+Qt's natural-size invalidation without entering layout during a partial model
+mutation. Consumers neither install the adapter nor force its polish phase.
 
 ## Scope Boundaries
 

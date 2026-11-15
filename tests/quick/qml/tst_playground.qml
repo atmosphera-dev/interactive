@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 import QtQuick
-import QtQuick.Dialogs as Dialogs
 import QtQuick.Layouts
 import QtQuick.Templates as T
 import QtTest
@@ -12,16 +11,26 @@ import InterActive.Tests
 
 Item {
     id: scene
+    property bool editorRtl: false
     width: Window.window ? Window.window.width : 1200
     height: Window.window ? Window.window.height : 820
     ColumnLayout {
         id: layout
         anchors.fill: parent
         spacing: 0
-        AppearanceEditor {
-            id: editor
+        IAScrollView {
+            id: editorScroll
             Layout.fillWidth: true
+            Layout.preferredHeight: Math.min(editor.implicitHeight, 450)
             visible: false
+            padding: 0
+            contentWidth: availableWidth
+            AppearanceEditor {
+                id: editor
+                width: parent.width
+                LayoutMirroring.enabled: scene.editorRtl
+                LayoutMirroring.childrenInherit: true
+            }
         }
     }
     Component {
@@ -29,7 +38,11 @@ Item {
         FoundationsPage { Layout.fillWidth: true; Layout.fillHeight: true }
     }
     component NarrowMenuWindow: Window {
+        id: narrowHost
         required property int viewportWidth
+        property bool rightToLeft: false
+        LayoutMirroring.enabled: narrowHost.rightToLeft
+        LayoutMirroring.childrenInherit: true
         flags: Qt.Dialog
         visible: false
         width: viewportWidth
@@ -38,14 +51,32 @@ Item {
         maximumWidth: viewportWidth
         minimumHeight: 820
         maximumHeight: 820
-        AppearanceEditor { objectName: "narrowEditor"; width: parent.width; height: implicitHeight }
+        IAScrollView {
+            objectName: "narrowAppearanceScroll"
+            anchors.fill: parent
+            padding: 0
+            contentWidth: availableWidth
+            AppearanceEditor { objectName: "narrowEditor"; width: parent.width }
+        }
     }
     NarrowMenuWindow { id: narrow320Window; viewportWidth: 320 }
     NarrowMenuWindow { id: narrow360Window; viewportWidth: 360 }
     Main { id: consumerWindow; visible: false }
+    Main { id: directionWindow; visible: false }
+
+    Window {
+        id: inputHostWindow
+        visible: false
+        width: 320
+        height: 180
+        flags: Qt.Dialog
+        IATextField { objectName: "inputHostField"; x: 20; y: 40; width: 260 }
+    }
 
     SignalSpy { id: inputSpy; target: PlaygroundState; signalName: "appearanceInputChanged" }
     SignalSpy { id: menuOpenedSpy; signalName: "opened" }
+    SignalSpy { id: choiceActivatedSpy; signalName: "activated" }
+    SignalSpy { id: switchToggledSpy; signalName: "toggled" }
 
     TestCase {
         name: "PlaygroundConsumers"
@@ -74,8 +105,11 @@ Item {
             accentMenu.close();
             tryCompare(accentMenu, "visible", false);
             menuOpenedSpy.target = null;
+            choiceActivatedSpy.target = null;
+            switchToggledSpy.target = null;
+            scene.editorRtl = false;
             for (const role of ["accent", "amber", "danger"]) {
-                const colorDialog = findChild(editor, role + "ColorDialog") as Dialogs.ColorDialog;
+                const colorDialog = findChild(editor, role + "ColorDialog") as IAColorDialog;
                 if (colorDialog !== null && colorDialog.visible) {
                     colorDialog.close();
                     tryCompare(colorDialog, "visible", false);
@@ -84,10 +118,10 @@ Item {
             verify(TestProbe.paletteSampleLock(false));
             editor.accentDraft = undefined;
             editor.jsonDraft = "{}";
-            const inputToggle = findChild(editor, "appearanceEditorToggle") as IAToolButton;
+            const inputToggle = findChild(editor, "appearanceEditorToggle") as IASwitch;
             if (inputToggle !== null)
                 inputToggle.checked = false;
-            editor.visible = false;
+            editorScroll.visible = false;
             for (const name of ["deliverySubmenu", "mixedMenu", "editDialog"]) {
                 const popup = findChild(page, name) as T.Popup;
                 verify(popup !== null);
@@ -138,7 +172,7 @@ Item {
             compare(custom.objectName, "accentPaletteCustom");
             verify(TestProbe.click(custom, custom.width / 2, custom.height / 2));
             tryCompare(menu, "visible", false);
-            tryCompare(findChild(editor, "accentColorDialog") as Dialogs.ColorDialog, "visible", true);
+            tryCompare(findChild(editor, "accentColorDialog") as IAColorDialog, "visible", true);
         }
 
         function test_toolbarGeometry_data(): var {
@@ -147,6 +181,363 @@ Item {
                 for (const touch of [false, true])
                     rows.push({tag: width + "-" + touch, width: width, touch: touch});
             return rows;
+        }
+
+        function test_appearanceSchemeChoice_data(): var {
+            return [{tag: "ltr", rtl: false}, {tag: "rtl", rtl: true}];
+        }
+
+        function test_appearanceSchemeChoice(data: var): void {
+            editorScroll.visible = true;
+            scene.editorRtl = data.rtl;
+            const choice = findChild(editor, "appearanceSchemeChoice") as IASegmentedControl;
+            const light = findChild(editor, "appearanceLight") as IASegmentedButton;
+            const dark = findChild(editor, "appearanceDark") as IASegmentedButton;
+            const field = findChild(page, "nameField") as IATextField;
+            verify(choice !== null && light !== null && dark !== null && field !== null);
+            choiceActivatedSpy.target = choice;
+            choiceActivatedSpy.clear();
+            inputSpy.clear();
+            click(dark);
+            compare(choice.currentIndex, 1);
+            verify(dark.checked && !light.checked);
+            compare(IA.Appearance.scheme, "dark");
+            compare(PlaygroundState.appearanceInput.scheme, "dark");
+            compare(choiceActivatedSpy.count, 1);
+            compare(inputSpy.count, 1);
+            verify(TestProbe.render(page));
+            compare((field.background as Rectangle).color, IA.Appearance.colors.content);
+            const darkSurface = String((field.background as Rectangle).color);
+            verify(TestProbe.activateForInput(dark));
+            verify(TestProbe.keyClick(dark, data.rtl ? Qt.Key_Right : Qt.Key_Left));
+            compare(choice.currentIndex, 0);
+            compare(IA.Appearance.scheme, "light");
+            verify(light.checked && !dark.checked);
+            compare(choiceActivatedSpy.count, 2);
+            verify(TestProbe.render(page));
+            verify(String((field.background as Rectangle).color) !== darkSurface);
+            verify(TestProbe.keyClick(light, data.rtl ? Qt.Key_Left : Qt.Key_Right));
+            compare(IA.Appearance.scheme, "dark");
+            compare(choiceActivatedSpy.count, 3);
+            // Space on the selected native radio button cannot clear selection.
+            verify(TestProbe.keyClick(dark, Qt.Key_Space));
+            verify(dark.checked && !light.checked);
+            compare(choiceActivatedSpy.count, 3);
+            verify(TestProbe.keyClick(dark, Qt.Key_Backtab, Qt.ShiftModifier));
+            tryCompare(light, "activeFocus", true);
+            verify(TestProbe.keyClick(light, Qt.Key_Space));
+            compare(IA.Appearance.scheme, "light");
+            compare(choice.currentIndex, 0);
+            compare(choiceActivatedSpy.count, 4, "Space selects the keyboard-reached native segment");
+            for (const scheme of ["dark", "light", "dark"]) {
+                inputSpy.clear();
+                verify(PlaygroundState.setAppearanceJson(JSON.stringify({scheme: scheme})));
+                verify(TestProbe.render(editor));
+                compare(choice.currentIndex, scheme === "dark" ? 1 : 0);
+                compare(light.checked, scheme === "light");
+                compare(dark.checked, scheme === "dark");
+                compare(inputSpy.count, 1, "External replacement is not echoed by selection synchronization");
+                compare(choiceActivatedSpy.count, 4);
+                compare(findChild(editor, "appearanceLight"), light);
+                compare(findChild(editor, "appearanceDark"), dark);
+            }
+        }
+
+        function test_appearanceIndependentSwitches(): void {
+            editorScroll.visible = true;
+            const names = ["appearanceTouch", "appearanceContrast", "appearanceEditorToggle", "appearanceReducedMotion"];
+            const rows = names.map(function(name) { return findChild(editor, name) as IASwitch; });
+            for (const row of rows) {
+                verify(row !== null);
+                compare(row.indicatorPosition, IA.Presentation.Trailing);
+                compare(row.checked, false);
+            }
+            const json = findChild(editor, "appearanceJson") as IATextField;
+            const hex = findChild(editor, "accentHexField") as IATextField;
+            editor.jsonDraft = '{"tokens":';
+            editor.accentDraft = "#123abc";
+            for (let index = 0; index < rows.length; ++index) {
+                click(rows[index]);
+                for (let peer = 0; peer < rows.length; ++peer)
+                    compare(rows[peer].checked, peer <= index, "Only the activated independent row changes");
+            }
+            compare(IA.Appearance.density, "touch");
+            compare(IA.Appearance.contrast, "high");
+            compare(IA.Appearance.reducedMotion, true);
+            compare((findChild(editor, "appearanceInputScroll") as IAScrollView).visible, true);
+            // The existing resolved setting is the consumer contract; native
+            // switch visuals must also show its on endpoint.
+            compare(rows[3].position, 1);
+            for (const index of [0, 1, 2, 3]) {
+                const row = rows[index];
+                const peers = rows.map(function(peer) { return peer.checked; });
+                revealEditor(row);
+                switchToggledSpy.target = row;
+                switchToggledSpy.clear();
+                const indicator = row.indicator;
+                verify(TestProbe.press(indicator, indicator.width * 0.8, indicator.height / 2));
+                verify(TestProbe.move(indicator, indicator.width * 0.05, indicator.height / 2));
+                verify(TestProbe.release(indicator, indicator.width * 0.05, indicator.height / 2));
+                compare(row.checked, false, "Native switch drag reaches the off endpoint");
+                compare(switchToggledSpy.count, 1);
+                for (let peer = 0; peer < rows.length; ++peer)
+                    if (peer !== index) compare(rows[peer].checked, peers[peer], "Dragging never changes peers");
+            }
+            compare(IA.Appearance.density, "compact");
+            compare(IA.Appearance.contrast, "normal");
+            compare(IA.Appearance.reducedMotion, false);
+            click(rows[2]);
+            compare(rows[2].checked, true);
+            for (const row of [rows[0], rows[1], rows[3]]) {
+                switchToggledSpy.target = row;
+                switchToggledSpy.clear();
+                inputSpy.clear();
+                verify(PlaygroundState.setAppearance({density: "touch", contrast: "high", reducedMotion: true}));
+                verify(TestProbe.render(editor));
+                compare(row.checked, true);
+                compare(switchToggledSpy.count, 0, "Resolved checked changes are not user toggles");
+                compare(inputSpy.count, 1);
+                verify(PlaygroundState.setAppearance({}));
+            }
+            click(rows[2]);
+            compare(rows[2].checked, false);
+            compare((findChild(editor, "appearanceInputScroll") as IAScrollView).visible, false);
+            click(rows[2]);
+            compare(findChild(editor, "appearanceJson"), json);
+            compare(findChild(editor, "accentHexField"), hex);
+            compare(json.text, '{"tokens":');
+            compare(hex.text, "#123abc");
+            click(findChild(editor, "appearanceDark") as IASegmentedButton);
+            click(findChild(editor, "appearanceReset") as IAButton);
+            compare(PlaygroundState.appearanceInput, {});
+            compare(rows[2].checked, true);
+            compare(json.text, '{"tokens":');
+            compare(hex.text, "#123abc");
+        }
+
+        function test_actualMainDirectionAndLive_data(): var {
+            return [{tag: "initial-ltr", rtl: false}, {tag: "initial-rtl", rtl: true}];
+        }
+
+        function assertMainDirection(owner: AppearanceEditor, dialog: IADialog, rtl: bool): void {
+            // opened is a Qt logical-state signal; a recreated native surface
+            // must be exposed before the existing frame-observation assertion.
+            tryVerify(function() { return TestProbe.exposed(owner); });
+            verify(TestProbe.render(owner));
+            const host = TestProbe.hostWindow(owner);
+            verify(host !== null && host !== TestProbe.hostWindow(findChild(directionWindow, "appearanceOpen") as Item));
+            compare(dialog.popupType, T.Popup.Window);
+            compare(dialog.mirrored, rtl);
+            const choice = findChild(owner, "appearanceSchemeChoice") as IASegmentedControl;
+            const lane = findChild(owner, "appearanceSwitchRows") as ColumnLayout;
+            compare(choice.mirrored, rtl);
+            fuzzyCompare(lane.mapToItem(owner, 0, 0).x, rtl ? owner.width - lane.width : 0, 0.5);
+            for (const name of ["appearanceTouch", "appearanceContrast", "appearanceEditorToggle", "appearanceReducedMotion"]) {
+                const row = findChild(owner, name) as IASwitch;
+                compare(row.mirrored, rtl);
+                const point = row.indicator.mapToItem(row, 0, 0);
+                fuzzyCompare(row.indicator.width, row.indicator.implicitWidth, 0.5,
+                    "Live direction preserves the native indicator's natural width");
+                fuzzyCompare(row.indicator.height, row.indicator.implicitHeight, 0.5);
+                fuzzyCompare(point.x, rtl ? row.leftPadding : row.width - row.rightPadding - row.indicator.width, 0.5);
+                const nativePoint = row.mapToItem(host.contentItem, 0, 0);
+                verify(nativePoint.x >= 0 && nativePoint.x + row.width <= host.width + 0.5);
+            }
+            const close = findChild(dialog, "iaDialogClose") as IAToolButton;
+            const title = findChild(dialog, "iaTitle") as IALabel;
+            const footer = dialog.footer as IADialogButtonBox;
+            const dismiss = dialog.standardButton(T.Dialog.Close);
+            compare(close.mirrored, rtl);
+            compare(footer.mirrored, rtl);
+            const closePoint = close.mapToItem(dialog.header, 0, 0);
+            fuzzyCompare(closePoint.x, rtl ? 0 : dialog.header.width - close.width, 0.5);
+            const titlePoint = title.mapToItem(dialog.header, 0, 0);
+            if (rtl)
+                fuzzyCompare(titlePoint.x + title.width, dialog.header.width - dialog.rightPadding, 0.5);
+            else
+                fuzzyCompare(titlePoint.x, dialog.leftPadding, 0.5);
+            const footerPoint = dismiss.mapToItem(footer, 0, 0);
+            fuzzyCompare(footerPoint.x, rtl ? footer.leftPadding : footer.width - footer.rightPadding - dismiss.width, 0.5);
+            const choicePoint = choice.mapToItem(owner, 0, 0);
+            fuzzyCompare(choicePoint.x, rtl ? owner.width - choice.width : 0, 0.5);
+            console.info("IA_MAIN_DIRECTION " + JSON.stringify({rtl: rtl, dialog: dialog.mirrored,
+                choice: choice.mirrored, laneX: lane.mapToItem(owner, 0, 0).x,
+                editorWidth: owner.width, laneWidth: lane.width, headerCloseX: closePoint.x,
+                footerCloseX: footerPoint.x, hostWidth: host.width, hostHeight: host.height}));
+        }
+
+        function test_actualMainDirectionAndLive(data: var): void {
+            directionWindow.rightToLeft = data.rtl;
+            directionWindow.show();
+            const opener = findChild(directionWindow, "appearanceOpen") as IAToolButton;
+            const dialog = findChild(directionWindow, "appearanceWindow") as IADialog;
+            const owner = findChild(dialog, "appearanceEditor") as AppearanceEditor;
+            try {
+                tryVerify(function() { return TestProbe.exposed(opener); });
+                verify(TestProbe.activateForInput(opener));
+                verify(TestProbe.click(opener, opener.width / 2, opener.height / 2));
+                tryCompare(dialog, "opened", true);
+                tryVerify(function() { return TestProbe.exposed(owner); });
+                assertMainDirection(owner, dialog, data.rtl);
+                const toggle = findChild(owner, "appearanceEditorToggle") as IASwitch;
+                if (!toggle.checked)
+                    verify(TestProbe.click(toggle, toggle.width / 2, toggle.height / 2));
+                compare(toggle.checked, true);
+                verify(TestProbe.render(owner));
+                const dark = findChild(owner, "appearanceDark") as IASegmentedButton;
+                verify(TestProbe.click(dark, dark.width / 2, dark.height / 2));
+                compare(IA.Appearance.scheme, "dark");
+                const hex = findChild(owner, "accentHexField") as IATextField;
+                const json = findChild(owner, "appearanceJson") as IATextField;
+                edit(hex, "#123abc");
+                edit(json, '{"tokens":');
+                verify(TestProbe.keyClick(json, Qt.Key_A, Qt.ControlModifier));
+                const selection = json.selectedText;
+                const input = JSON.stringify(PlaygroundState.appearanceInput);
+                const nativeHost = TestProbe.hostWindow(owner);
+                const names = ["appearanceSchemeChoice", "appearanceLight", "appearanceDark", "appearanceSwitchRows",
+                    "appearanceTouch", "appearanceContrast", "appearanceEditorToggle", "appearanceReducedMotion", "accentHexField", "appearanceJson"];
+                const identities = names.map(function(name) { return findChild(owner, name); });
+                for (const rtl of [data.rtl, !data.rtl, data.rtl]) {
+                    directionWindow.rightToLeft = rtl;
+                    assertMainDirection(owner, dialog, rtl);
+                    compare(TestProbe.hostWindow(owner), nativeHost, "Live direction does not replace the native host");
+                    for (let index = 0; index < names.length; ++index)
+                        compare(findChild(owner, names[index]), identities[index]);
+                    compare(owner.jsonDraft, '{"tokens":');
+                    compare(owner.accentDraft, "#123abc");
+                    compare(json.text, '{"tokens":');
+                    compare(hex.text, "#123abc");
+                    compare(json.selectedText, selection);
+                    compare(json.activeFocus, true, "Live mirroring retains the actually edited field's focus");
+                    compare(toggle.checked, true);
+                    compare((findChild(owner, "appearanceSchemeChoice") as IASegmentedControl).currentIndex, 1);
+                    compare(JSON.stringify(PlaygroundState.appearanceInput), input, "Direction is not an appearance write");
+                }
+                const dismiss = dialog.standardButton(T.Dialog.Close);
+                verify(TestProbe.click(dismiss, dismiss.width / 2, dismiss.height / 2));
+                tryCompare(dialog, "visible", false);
+                verify(TestProbe.activateForInput(opener));
+                verify(TestProbe.click(opener, opener.width / 2, opener.height / 2));
+                tryCompare(dialog, "opened", true);
+                assertMainDirection(owner, dialog, data.rtl);
+                compare(owner.jsonDraft, '{"tokens":');
+                compare(owner.accentDraft, "#123abc");
+                compare(toggle.checked, true);
+                for (let index = 0; index < names.length; ++index)
+                    compare(findChild(owner, names[index]), identities[index]);
+            } finally {
+                dialog.close();
+                tryCompare(dialog, "visible", false);
+                directionWindow.close();
+                verify(TestProbe.activate(page));
+            }
+        }
+
+        function test_appearanceRowsGeometry_data(): var {
+            const rows = [];
+            for (const width of [320, 360, 1200])
+                for (const touch of [false, true])
+                    for (const rtl of [false, true])
+                        rows.push({tag: width + "-" + touch + "-" + rtl, width: width, touch: touch, rtl: rtl});
+            return rows;
+        }
+
+        function test_appearanceRowsGeometry(data: var): void {
+            verify(PlaygroundState.setAppearance({density: data.touch ? "touch" : "compact", fontScale: data.touch ? 1.5 : 1}));
+            const host = data.width === 320 ? narrow320Window : data.width === 360 ? narrow360Window : consumerWindow;
+            host.rightToLeft = data.rtl;
+            host.show();
+            const dialog = data.width === 1200 ? findChild(host, "appearanceWindow") as IADialog : null;
+            try {
+                let owner = findChild(host, data.width === 1200 ? "appearanceEditor" : "narrowEditor") as AppearanceEditor;
+                if (dialog !== null) {
+                    const opener = findChild(host, "appearanceOpen") as IAToolButton;
+                    tryVerify(function() { return TestProbe.exposed(opener); });
+                    verify(TestProbe.activateForInput(opener));
+                    verify(TestProbe.click(opener, opener.width / 2, opener.height / 2));
+                    tryCompare(dialog, "opened", true);
+                }
+                verify(owner !== null);
+                tryVerify(function() { return TestProbe.exposed(owner); });
+                verify(TestProbe.render(owner));
+                const lane = findChild(owner, "appearanceSwitchRows") as ColumnLayout;
+                verify(lane !== null);
+                fuzzyCompare(lane.width, Math.min(360, owner.width), 0.5);
+                let previousBottom = -1;
+                for (const name of ["appearanceTouch", "appearanceContrast", "appearanceEditorToggle", "appearanceReducedMotion"]) {
+                    const row = findChild(owner, name) as IASwitch;
+                    verify(row !== null);
+                    const label = row.contentItem as Text;
+                    const indicator = row.indicator;
+                    compare(label.wrapMode, Text.NoWrap);
+                    compare(label.elide, Text.ElideRight);
+                    compare(row.mirrored, data.rtl);
+                    fuzzyCompare(row.width, lane.width, 0.5);
+                    const edge = indicator.mapToItem(row, 0, 0).x;
+                    fuzzyCompare(edge, data.rtl ? row.leftPadding : row.width - row.rightPadding - indicator.width, 0.5);
+                    fuzzyCompare(indicator.mapToItem(row, 0, indicator.height / 2).y,
+                        label.mapToItem(row, 0, label.height / 2).y, 0.5);
+                    const position = row.mapToItem(owner, 0, 0);
+                    verify(position.x >= -0.5 && position.x + row.width <= owner.width + 0.5);
+                    verify(position.y >= previousBottom);
+                    previousBottom = position.y + row.height;
+                    if (data.touch) verify(row.height >= 44);
+                    // Scroll the actual owning viewport, then require native
+                    // input ownership and click/Tab reachability without focus repair.
+                    const scroll = findChild(dialog !== null ? dialog : host,
+                        dialog !== null ? "iaDialogScroll" : "narrowAppearanceScroll") as IAScrollView;
+                    verify(scroll !== null);
+                    const flick = scroll.contentItem as Flickable;
+                    verify(flick !== null);
+                    const center = row.mapToItem(flick.contentItem, 0, row.height / 2).y;
+                    flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height, center - flick.height / 2));
+                    verify(TestProbe.render(owner));
+                    const point = row.mapToItem(TestProbe.hostWindow(owner).contentItem, 0, 0);
+                    verify(point.x >= -0.5 && point.x + row.width <= host.width + 0.5);
+                    verify(point.y >= -0.5 && point.y + row.height <= TestProbe.hostWindow(owner).height + 0.5);
+                    verify(TestProbe.activateForInput(row));
+                    verify(TestProbe.click(row, row.width / 2, row.height / 2));
+                    tryCompare(row, "activeFocus", true);
+                    verify(TestProbe.keyClick(row, Qt.Key_Tab));
+                    verify(!row.activeFocus, "Tab leaves the current visible row");
+                    // Restore the requested density without changing the next row's peers.
+                    verify(PlaygroundState.setAppearance({density: data.touch ? "touch" : "compact", fontScale: data.touch ? 1.5 : 1}));
+                    verify(TestProbe.render(owner));
+                }
+                const choice = findChild(owner, "appearanceSchemeChoice") as IASegmentedControl;
+                const reset = findChild(owner, "appearanceReset") as IAButton;
+                const choicePoint = choice.mapToItem(owner, 0, 0);
+                const resetPoint = reset.mapToItem(owner, 0, 0);
+                verify(choicePoint.x >= -0.5 && choicePoint.x + choice.width <= owner.width + 0.5);
+                verify(resetPoint.x >= -0.5 && resetPoint.x + reset.width <= owner.width + 0.5);
+                verify(choicePoint.x + choice.width <= resetPoint.x + 0.5 || resetPoint.x + reset.width <= choicePoint.x + 0.5);
+                fuzzyCompare(choicePoint.y + choice.height / 2, resetPoint.y + reset.height / 2, 0.5);
+                const outer = findChild(dialog !== null ? dialog : host,
+                    dialog !== null ? "iaDialogScroll" : "narrowAppearanceScroll") as IAScrollView;
+                const viewport = outer.contentItem as Flickable;
+                viewport.contentY = 0;
+                verify(TestProbe.render(owner));
+                const light = findChild(owner, "appearanceLight") as IASegmentedButton;
+                verify(TestProbe.activateForInput(light));
+                verify(TestProbe.click(light, light.width / 2, light.height / 2));
+                tryCompare(light, "activeFocus", true);
+                verify(TestProbe.keyClick(light, data.rtl ? Qt.Key_Left : Qt.Key_Right));
+                compare(choice.currentIndex, 1);
+                compare(IA.Appearance.scheme, "dark");
+                verify(TestProbe.render(owner));
+                const selected = choice.currentItem;
+                const selectedPoint = selected.mapToItem(choice.contentItem, 0, 0);
+                verify(selectedPoint.x >= -0.5 && selectedPoint.x + selected.width <= choice.contentItem.width + 0.5,
+                    "Native segmented viewport reveals its keyboard-selected choice at narrow widths");
+                console.info("IA_APPEARANCE_ROWS " + JSON.stringify({width: data.width, touch: data.touch,
+                    rtl: data.rtl, editorWidth: owner.width, laneWidth: lane.width, choiceWidth: choice.width}));
+            } finally {
+                if (dialog !== null) dialog.close();
+                host.close();
+                host.rightToLeft = false;
+                verify(TestProbe.activate(page));
+            }
         }
 
         function test_toolbarGeometry(data: var): void {
@@ -183,7 +574,7 @@ Item {
             consumerWindow.show();
             const toolbar = findChild(consumerWindow, "appearanceToolbar") as AppearanceToolbar;
             const dialog = findChild(consumerWindow, "appearanceWindow") as IADialog;
-            const owner = dialog.contentItem as AppearanceEditor;
+            const owner = findChild(dialog, "appearanceEditor") as AppearanceEditor;
             verify(toolbar !== null && dialog !== null && owner !== null);
             tryVerify(function() { return TestProbe.exposed(toolbar); });
             verify(TestProbe.activate(toolbar));
@@ -236,7 +627,7 @@ Item {
                 const custom = revealMenuItem(menu, 12);
                 verify(TestProbe.click(custom, custom.width / 2, custom.height / 2));
                 tryCompare(menu, "visible", false);
-                const picker = findChild(owner, "accentColorDialog") as Dialogs.ColorDialog;
+                const picker = findChild(owner, "accentColorDialog") as IAColorDialog;
                 assertPickerColor(picker, IA.Appearance.colors.accent);
                 compare(dialog.visible, false, "Toolbar Custom does not require opening Appearance");
                 picker.close();
@@ -249,13 +640,13 @@ Item {
                 verify(TestProbe.hostWindow(owner) !== TestProbe.hostWindow(toolbar), "Appearance is a real separate IA dialog window");
                 verify(TestProbe.render(owner));
                 for (const name of ["appearanceLight", "appearanceDark", "appearanceReset", "accentPickerButton", "resetAccentButton",
-                    "amberPickerButton", "resetAmberButton", "dangerPickerButton", "resetDangerButton", "savePaletteButton",
-                    "appearanceTouch", "appearanceContrast", "appearanceEditorToggle", "paletteSamplePath", "paletteHistoryStatus",
+                    "amberColorWell", "dangerColorWell", "savePaletteButton",
+                    "appearanceTouch", "appearanceContrast", "appearanceEditorToggle", "appearanceReducedMotion", "paletteSamplePath", "paletteHistoryStatus",
                     "paletteRootExplanation", "paletteSaveStatus", "accentHexField", "applyAccentHex", "appearanceJson", "appearanceInspector"])
                     verify(findChild(owner, name) !== null, name + " retained in Appearance window");
-                const touch = findChild(owner, "appearanceTouch") as IAToolButton;
-                const preview = findChild(owner, "appearanceContrast") as IAToolButton;
-                const toggle = findChild(owner, "appearanceEditorToggle") as IAToolButton;
+                const touch = findChild(owner, "appearanceTouch") as IASwitch;
+                const preview = findChild(owner, "appearanceContrast") as IASwitch;
+                const toggle = findChild(owner, "appearanceEditorToggle") as IASwitch;
                 const save = findChild(owner, "savePaletteButton") as IAButton;
                 verify(TestProbe.click(save, save.width / 2, save.height / 2));
                 compare(TestProbe.paletteSamples().length, 1);
@@ -273,7 +664,7 @@ Item {
                 const identity = json;
                 verify(TestProbe.render(owner));
                 const inputScroll = findChild(owner, "appearanceInputScroll") as IAScrollView;
-                const outerScroll = findChild(owner, "paletteToolbarScroll") as IAScrollView;
+                const outerScroll = findChild(dialog, "iaDialogScroll") as IAScrollView;
                 verify(inputScroll !== null && outerScroll !== null);
                 for (const entry of [{scroll: inputScroll, item: json}, {scroll: outerScroll, item: inputScroll}]) {
                     const flick = entry.scroll.contentItem as Flickable;
@@ -303,7 +694,9 @@ Item {
                     for (const child of item.children)
                         queue.push(child);
                 }
+                verify(TestProbe.activateForInput(json));
                 verify(TestProbe.click(json, json.width / 2, json.height / 2));
+                tryCompare(json, "activeFocus", true);
                 verify(TestProbe.keyClick(json, Qt.Key_A, Qt.ControlModifier));
                 verify(TestProbe.typeAscii(json, '{"tokens":'));
                 compare(owner.jsonDraft, '{"tokens":');
@@ -330,7 +723,7 @@ Item {
         }
 
         function test_accentPresetSelectionAndPreservation(): void {
-            editor.visible = true;
+            editorScroll.visible = true;
             verify(TestProbe.writePaletteHistory(["#49335f", "#5c9cf5", "#49335f"]));
             const bytes = TestProbe.paletteSampleBytes();
             const expected = [
@@ -401,7 +794,7 @@ Item {
         }
 
         function test_accentMenuKeyboard(data: var): void {
-            editor.visible = true;
+            editorScroll.visible = true;
             verify(TestProbe.writePaletteHistory(["#245bdb"]));
             const before = TestProbe.paletteSampleBytes();
             const opener = findChild(editor, "accentPickerButton") as IAButton;
@@ -444,16 +837,16 @@ Item {
             verify(TestProbe.click(scene, scene.width - 2, scene.height - 2));
             tryCompare(menu, "visible", false);
             openCustomAccent();
-            const dialog = findChild(editor, "accentColorDialog") as Dialogs.ColorDialog;
+            const dialog = findChild(editor, "accentColorDialog") as IAColorDialog;
             assertPickerColor(dialog, IA.Appearance.colors.accent);
-            const hue = TestProbe.pickerItem(dialog, "hueSlider");
+            const hue = findChild(dialog, "hueSlider");
             verify(hue !== null);
             tryVerify(function() { return TestProbe.hostWindow(hue).active; });
             compare(TestProbe.paletteSampleBytes(), before);
         }
 
         function test_accentHistoryRefreshAndSave(): void {
-            editor.visible = true;
+            editorScroll.visible = true;
             verify(TestProbe.render(editor));
             const menu = accentMenuFor(editor);
             const opener = findChild(editor, "accentPickerButton") as IAButton;
@@ -537,7 +930,7 @@ Item {
 
         function test_accentSavedGreyStates(data: var): void {
             verify(PlaygroundState.setAppearance({scheme: data.scheme, contrast: data.contrast}));
-            editor.visible = true;
+            editorScroll.visible = true;
             verify(TestProbe.writePaletteHistory(["#5c9cf5", "#49335f"]));
             const menu = accentMenuFor(editor);
             const opener = findChild(editor, "accentPickerButton") as IAButton;
@@ -680,12 +1073,13 @@ Item {
         }
 
         function revealEditor(item: Item): void {
-            const scroll = findChild(editor, "paletteToolbarScroll") as IAScrollView;
-            verify(scroll !== null);
-            const flick = scroll.contentItem as Flickable;
-            verify(flick !== null);
-            const center = item.mapToItem(flick.contentItem, item.width / 2, item.height / 2);
-            flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height, center.y - flick.height / 2));
+            const input = findChild(editor, "appearanceInputScroll") as IAScrollView;
+            for (const scroll of [input, editorScroll]) {
+                const flick = scroll.contentItem as Flickable;
+                verify(flick !== null);
+                const center = item.mapToItem(flick.contentItem, item.width / 2, item.height / 2);
+                flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height, center.y - flick.height / 2));
+            }
             verify(TestProbe.render(editor));
         }
 
@@ -715,11 +1109,58 @@ Item {
         }
 
         function edit(field: IATextField, text: string): void {
+            const started = Date.now();
+            const ready = TestProbe.activateForInput(field);
+            const elapsedMs = Date.now() - started;
+            const host = TestProbe.hostWindow(field);
+            const mainHost = TestProbe.hostWindow(page);
+            const diagnostic = {text: text,
+                phase: field.objectName === "dialogNameField" ? text.split(" ")[0] : field.objectName,
+                elapsedMs: elapsedMs, ready: ready, exposed: TestProbe.exposed(field),
+                active: host !== null && host.active,
+                exactOwner: TestProbe.inputHostReady(field),
+                mainReady: TestProbe.inputHostReady(page),
+                mainActive: mainHost !== null && mainHost.active,
+                sameHost: host !== null && host === mainHost};
+            if (field.objectName === "dialogNameField") {
+                console.info("IA_DIALOG_INPUT_PHASE " + JSON.stringify(diagnostic));
+            }
+            verify(ready, "Native input owner ready for " + field.objectName + " " + JSON.stringify(diagnostic));
             click(field);
             tryCompare(field, "activeFocus", true);
             verify(TestProbe.keyClick(field, Qt.Key_A, Qt.ControlModifier));
             verify(TestProbe.typeAscii(field, text));
             compare(field.text, text);
+        }
+
+        function test_inputHostActivationCompletesAcrossReopen(): void {
+            const mainField = findChild(page, "nameField") as IATextField;
+            const window = inputHostWindow;
+            window.transientParent = TestProbe.hostWindow(page);
+            verify(mainField !== null && window !== null);
+            const field = findChild(window, "inputHostField") as IATextField;
+            verify(field !== null);
+            try {
+                for (let opening = 0; opening < 2; ++opening) {
+                    window.show();
+                    tryVerify(function() { return TestProbe.exposed(field); });
+                    verify(TestProbe.activateForInput(field));
+                    verify(TestProbe.inputHostReady(field), "activation completes at the intended native owner");
+                    verify(!TestProbe.inputHostReady(mainField), "transient ancestor is not the global input owner");
+                    verify(TestProbe.hostWindow(mainField).active, "active transient ancestor is insufficient");
+                    verify(TestProbe.click(field, field.width / 2, field.height / 2));
+                    tryCompare(field, "activeFocus", true);
+                    // Match consumer lifecycle: return to the owner after the
+                    // dialog closes, not by stealing focus from an open dialog.
+                    window.close();
+                    tryCompare(window, "visible", false);
+                    verify(TestProbe.activateForInput(mainField));
+                    verify(TestProbe.inputHostReady(mainField), "return to ancestor waits for global ownership");
+                    verify(!TestProbe.inputHostReady(field));
+                    verify(TestProbe.click(mainField, mainField.width / 2, mainField.height / 2));
+                    tryCompare(mainField, "activeFocus", true);
+                }
+            } finally { window.close(); }
         }
 
         function renderedSummary(): string {
@@ -921,26 +1362,99 @@ Item {
             compare(caption.text, "No color selected");
         }
 
-        function assertPickerColor(dialog: Dialogs.ColorDialog, expected: color): void {
+        function sameRgba(actual: color, expected: color): bool {
+            // QColor HSL/HSV retains editing coordinates; RGB normalization can
+            // change derived coordinates without changing any effective channel.
+            return actual.r === expected.r && actual.g === expected.g
+                && actual.b === expected.b && actual.a === expected.a;
+        }
+        function assertRgba(actual: color, expected: color): void {
+            verify(sameRgba(actual,expected), "Exact RGBA mismatch: " + JSON.stringify({
+                actual:[actual.r,actual.g,actual.b,actual.a],expected:[expected.r,expected.g,expected.b,expected.a]}));
+        }
+        function assertPickerColor(dialog: IAColorDialog, expected: color): void {
             tryCompare(dialog, "visible", true);
-            // Qt's picker seeds and compares colors via rgba(), with an HSL
-            // round trip. Its displayed RGB8 color must match; input below
-            // remains checked independently without serializing the writer.
-            tryVerify(function() { return String(dialog.selectedColor) === String(expected); });
-            // Qt reparents the fallback implementation to the host window. Only
-            // tests inspect its items; production uses the public dialog API.
-            const picker = TestProbe.pickerItem(dialog, "colorPicker");
+            assertRgba(dialog.currentColor, expected);
+            const picker = findChild(dialog, "iaColorEditor") as IAColorEditor;
             verify(picker !== null);
             tryCompare(picker, "visible", true);
             tryVerify(function() { return TestProbe.exposed(picker); });
             verify(TestProbe.render(picker));
-            tryVerify(function() { return String(picker.color) === String(expected); }, 5000,
-                      "The rendered picker, not just the wrapper, must adopt external input");
+            assertRgba(picker.currentColor, expected);
+            assertRgba((findChild(picker, "iaColorPreviewSample") as Rectangle).color, expected);
+        }
+
+        function semanticWell(owner: Item, role: string): IAColorWell {
+            const well = findChild(owner, role + "ColorWell") as IAColorWell;
+            verify(well !== null && well.visible);
+            return well;
+        }
+
+        function semanticAction(owner: Item, role: string, custom: bool): T.AbstractButton {
+            return findChild(semanticWell(owner, role), custom ? "iaColorWellCustomButton" : "iaColorWellSampleButton") as T.AbstractButton;
+        }
+
+        function semanticDefault(owner: Item, role: string): void {
+            const well = semanticWell(owner, role);
+            const opener = semanticAction(owner, role, false);
+            revealEditor(opener);
+            verify(TestProbe.click(opener, 8, opener.height / 2));
+            const menu = findChild(well, "iaColorWellMenu") as IAMenu;
+            tryCompare(menu, "opened", true);
+            const action = menu.itemAt(menu.count - 1);
+            (menu.contentItem as ListView).positionViewAtIndex(menu.count - 1, ListView.Contain);
+            verify(TestProbe.render(action));
+            click(action);
+            tryCompare(menu, "visible", false);
+        }
+
+        function test_semanticWellPresetsAndDefaults_data(): var {
+            return [{tag:"amber-generated",role:"amber",prior:false},{tag:"danger-generated",role:"danger",prior:false},
+                {tag:"amber-input",role:"amber",prior:true},{tag:"danger-input",role:"danger",prior:true}];
+        }
+
+        function test_semanticWellPresetsAndDefaults(data): void {
+            editorScroll.visible = true;
+            const key = data.role === "amber" ? "warning" : "error";
+            const peer = data.role === "amber" ? "error" : "warning";
+            // Hold the peer's raw input explicitly, as the live-dialog isolation
+            // fixture does. A generated peer may legitimately be re-derived.
+            const input = {tokens:{colors:{[peer]:"#cf3456"}}};
+            if (data.prior) input.tokens.colors[key] = "#cd951a";
+            verify(PlaygroundState.setAppearance(input));
+            const underlying = String(IA.Appearance.colors[key]), peerColor = String(IA.Appearance.colors[peer]);
+            const well = semanticWell(editor, data.role);
+            compare(well.presets, editor.accentPresets);
+            const legacy = findChild(editor, data.role + "PickerButton") as IAButton;
+            compare(legacy.visible, false);
+            compare(legacy.parent.parent.implicitWidth, 0);
+            compare(legacy.parent.parent.implicitHeight, 0);
+            const opener = semanticAction(editor, data.role, false);
+            revealEditor(opener);
+            verify(TestProbe.click(opener, 8, opener.height / 2));
+            const menu = findChild(well, "iaColorWellMenu") as IAMenu;
+            tryCompare(menu, "opened", true);
+            click(menu.itemAt(1));
+            tryCompare(menu, "visible", false);
+            compare(String(IA.Appearance.colors[key]), editor.accentPresets[0].hex.toLowerCase());
+            compare(well.colorValue, IA.Appearance.colors[key]);
+            compare((findChild(well,"iaColorWellSample") as Rectangle).color, IA.Appearance.colors[key]);
+            compare(String(IA.Appearance.colors[peer]), peerColor);
+            semanticDefault(editor, data.role);
+            compare(String(IA.Appearance.colors[key]), underlying);
+            compare(well.colorValue, IA.Appearance.colors[key]);
+            compare(String(IA.Appearance.colors[peer]), peerColor);
+            compare(data.role === "amber" ? PlaygroundState.hasAmberCorrection : PlaygroundState.hasDangerCorrection, false);
+            const rawColors = PlaygroundState.appearanceInput.tokens.colors;
+            if (data.prior) compare(String(rawColors[key]), "#cd951a");
+            else verify(rawColors[key] === undefined, "Default resumes generation, not a captured color override");
+            compare(String(rawColors[peer]), "#cf3456");
+            verify(!TestProbe.paletteSampleExists());
         }
 
         function assertAccentConsumers(expected: color): void {
             verify(TestProbe.render(page));
-            compare(IA.Appearance.colors.accent, expected);
+            assertRgba(IA.Appearance.colors.accent, expected);
             const swatch = findChild(editor, "accentSwatch") as Rectangle;
             const readout = findChild(editor, "accentReadout") as IALabel;
             const sample = findChild(page, "opencode-blue") as IAButton;
@@ -948,7 +1462,7 @@ Item {
             const progress = findChild(page, "progressPreview") as IAProgressBar;
             verify(swatch !== null && readout !== null && sample !== null
                    && slider !== null && progress !== null);
-            compare(swatch.color, expected);
+            assertRgba(swatch.color, expected);
             compare(readout.text.toLowerCase(), editor.accentDisplayName.toLowerCase() + " " + String(expected).toLowerCase());
             compare(readout.color, readout.foregroundColor);
             const background = sample.background as Rectangle;
@@ -960,8 +1474,8 @@ Item {
             compare(background.color, IA.Appearance.colors.primarySurface);
             compare(label.color, sample.foregroundColor);
             compare(background.border.color, sample.borderColor);
-            compare(sliderFill.color, expected);
-            compare(progressFill.color, expected);
+            assertRgba(sliderFill.color, expected);
+            assertRgba(progressFill.color, expected);
             assertSemanticConsumers();
         }
 
@@ -989,19 +1503,19 @@ Item {
         }
 
         function test_accentOpeningAndExplicitDefaultReset(): void {
-            editor.visible = true;
+            editorScroll.visible = true;
             verify(TestProbe.render(editor));
             const opener = findChild(editor, "accentPickerButton") as IAButton;
             const reset = findChild(editor, "resetAccentButton") as IAToolButton;
-            const dialog = findChild(editor, "accentColorDialog") as Dialogs.ColorDialog;
+            const dialog = findChild(editor, "accentColorDialog") as IAColorDialog;
             verify(opener !== null && reset !== null && dialog !== null);
             const defaultAccent = IA.Appearance.colors.accent;
             compare(PlaygroundState.hasAccentOverride, false);
             compare(reset.visible, false);
             openCustomAccent();
-            compare(dialog.modality, Qt.NonModal);
-            compare(dialog.options, Dialogs.ColorDialog.NoButtons | Dialogs.ColorDialog.ShowAlphaChannel
-                    | Dialogs.ColorDialog.NoEyeDropperButton | Dialogs.ColorDialog.DontUseNativeDialog);
+            compare(dialog.modal, false);
+            compare(dialog.popupType, T.Popup.Window);
+            compare(dialog.footer.standardButtons, T.DialogButtonBox.Close);
             assertPickerColor(dialog, defaultAccent);
             compare(JSON.stringify(PlaygroundState.appearanceInput), "{}");
             compare(PlaygroundState.hasAccentOverride, false);
@@ -1057,7 +1571,7 @@ Item {
         function test_liveCalibrationPickers(data: var): void {
             verify(PlaygroundState.setAppearance({scheme: data.scheme, contrast: data.contrast}));
             verify(PlaygroundState.applyInitialPaletteSuggestions());
-            editor.visible = true;
+            editorScroll.visible = true;
             editor.accentDraft = "#234567";
             editor.jsonDraft = '{"tokens":';
             PlaygroundState.draftName = "Calibration form draft";
@@ -1066,11 +1580,11 @@ Item {
             verify(TestProbe.render(editor));
             const role = data.role;
             const key = role === "amber" ? "warning" : "error";
-            const dialog = findChild(editor, role + "ColorDialog") as Dialogs.ColorDialog;
+            const dialog = findChild(editor, role + "ColorDialog") as IAColorDialog;
             const otherRole = role === "amber" ? "danger" : "amber";
-            const other = findChild(editor, otherRole + "ColorDialog") as Dialogs.ColorDialog;
-            const opener = findChild(editor, role + "PickerButton") as IAButton;
-            const otherOpener = findChild(editor, otherRole + "PickerButton") as IAButton;
+            const other = findChild(editor, otherRole + "ColorDialog") as IAColorDialog;
+            const opener = semanticAction(editor, role, true);
+            const otherOpener = semanticAction(editor, otherRole, true);
             verify(dialog !== null && other !== null && opener !== null && otherOpener !== null);
             const identities = [findChild(page, "opencode-amber"), findChild(page, "opencode-rose"),
                 findChild(page, "customPurpleButton"), findChild(page, "nameField")];
@@ -1079,16 +1593,17 @@ Item {
             const input = JSON.stringify(PlaygroundState.appearanceInput);
             click(otherOpener);
             assertPickerColor(other, IA.Appearance.colors[otherRole === "amber" ? "warning" : "error"]);
-            const otherPicker = TestProbe.pickerItem(other, "colorPicker");
+            const otherPicker = findChild(other, "iaColorEditor");
             verify(otherPicker !== null);
             click(opener);
             assertPickerColor(dialog, IA.Appearance.colors[key]);
             compare(JSON.stringify(PlaygroundState.appearanceInput), input, "Opening two dialogs is not an edit");
-            const otherSelected = String(other.selectedColor);
+            const otherColor = other.currentColor;
+            const otherSelected = Qt.rgba(otherColor.r,otherColor.g,otherColor.b,otherColor.a);
             for (const name of ["hueSlider", "alphaSlider"]) {
-                const control = TestProbe.pickerItem(dialog, name) as T.Slider;
+                const control = findChild(dialog, name) as T.Slider;
                 verify(control !== null && control.handle !== null);
-                verify(control !== TestProbe.pickerItem(other, name), "Input targets this role's host");
+                verify(control !== findChild(other, name), "Input targets this role's host");
                 verify(TestProbe.activate(control));
                 verify(TestProbe.render(control));
                 const start = control.handle.mapToItem(control, control.handle.width / 2, control.handle.height / 2);
@@ -1104,8 +1619,8 @@ Item {
                     verify(TestProbe.move(control, x, start.y));
                     tryVerify(function() { return !Qt.colorEqual(before, IA.Appearance.colors[key]); });
                     compare(control.pressed, true);
-                    compare(IA.Appearance.colors[key], dialog.selectedColor);
-                    compare((findChild(editor, role + "Swatch") as Rectangle).color, dialog.selectedColor);
+                    assertRgba(IA.Appearance.colors[key], dialog.currentColor);
+                    assertRgba((findChild(semanticWell(editor, role), "iaColorWellSample") as Rectangle).color, dialog.currentColor);
                     assertSemanticConsumers();
                     const invalidEmail = findChild(page, "emailField") as IATextField;
                     verify(invalidEmail !== null);
@@ -1116,20 +1631,23 @@ Item {
                         verify(findChild(page, item.objectName) === item);
                     compare(purple.backgroundColor, purpleColor);
                     compare(other.visible, true);
-                    compare(String(other.selectedColor), otherSelected);
-                    verify(TestProbe.pickerItem(other, "colorPicker") === otherPicker,
+                    assertRgba(other.currentColor, otherSelected);
+                    verify(findChild(other, "iaColorEditor") === otherPicker,
                         "An unaffected dialog was not closed/reopened");
                     verify(!TestProbe.paletteSampleExists());
                 } finally {
                     verify(TestProbe.release(control, x, start.y));
                 }
             }
-            const plane = TestProbe.pickerItem(dialog, "colorPicker");
+            const plane = findChild(dialog, "iaColorPlane");
             verify(plane !== null);
+            const planeColor = dialog.currentColor;
+            const beforePlane = Qt.rgba(planeColor.r, planeColor.g, planeColor.b, planeColor.a);
             verify(TestProbe.press(plane, plane.width * 0.8, plane.height * 0.2));
             try {
                 verify(TestProbe.move(plane, plane.width * 0.6, plane.height * 0.35));
-                tryCompare(IA.Appearance.colors, key, dialog.selectedColor);
+                tryVerify(function() { return !sameRgba(dialog.currentColor, beforePlane); });
+                tryVerify(function(){return sameRgba(IA.Appearance.colors[key],dialog.currentColor);});
                 assertSemanticConsumers();
             } finally {
                 verify(TestProbe.release(plane, plane.width * 0.6, plane.height * 0.35));
@@ -1157,7 +1675,7 @@ Item {
             assertSample(TestProbe.paletteSamples()[1]);
             verify(TestProbe.paletteSampleBytes().startsWith(first));
             const bytes = TestProbe.paletteSampleBytes();
-            click(findChild(editor, "reset" + (role === "amber" ? "Amber" : "Danger") + "Button") as IAToolButton);
+            semanticDefault(editor, role);
             compare(TestProbe.paletteSampleBytes(), bytes);
             click(findChild(editor, "appearanceReset") as IAButton);
             compare(JSON.stringify(PlaygroundState.appearanceInput), "{}");
@@ -1165,12 +1683,12 @@ Item {
         }
 
         function test_visibleSemanticDialogsSurviveAccentReset(): void {
-            editor.visible = true;
+            editorScroll.visible = true;
             verify(PlaygroundState.applyInitialPaletteSuggestions());
             verify(TestProbe.render(editor));
-            const amber = findChild(editor, "amberColorDialog") as Dialogs.ColorDialog;
-            const danger = findChild(editor, "dangerColorDialog") as Dialogs.ColorDialog;
-            const accent = findChild(editor, "accentColorDialog") as Dialogs.ColorDialog;
+            const amber = findChild(editor, "amberColorDialog") as IAColorDialog;
+            const danger = findChild(editor, "dangerColorDialog") as IAColorDialog;
+            const accent = findChild(editor, "accentColorDialog") as IAColorDialog;
             editor.openAmberPicker();
             editor.openDangerPicker();
             editor.openAccentPicker();
@@ -1214,7 +1732,7 @@ Item {
             const specimen = createTemporaryObject(component, scene, {width: 1000, height: 450,
                 accentDraft: "#123abc", jsonDraft: '{"tokens":'}) as AppearanceEditor;
             verify(specimen !== null);
-            const toggle = findChild(specimen, "appearanceEditorToggle") as IAToolButton;
+            const toggle = findChild(specimen, "appearanceEditorToggle") as IASwitch;
             verify(toggle !== null);
             toggle.checked = true;
             verify(TestProbe.render(specimen));
@@ -1242,7 +1760,7 @@ Item {
             verify(PlaygroundState.setAppearance({scheme: data.scheme, contrast: data.contrast,
                 density: data.touch ? "touch" : "compact", fontScale: data.touch ? 1.5 : 1,
                 tokens: {colors: {primarySurface: "#234567", warning: "#ff7a18", error: "#ff3434"}}}));
-            editor.visible = true;
+            editorScroll.visible = true;
             const host = TestProbe.hostWindow(scene);
             verify(host !== null);
             const minimumWidth = host.minimumWidth;
@@ -1251,18 +1769,26 @@ Item {
             tryVerify(function() { return host.width >= data.width; });
             // Use a same-component specimen with the requested lane width instead
             // of pretending a compositor-ignored window resize is a narrow test.
+            const scrollComponent = Qt.createComponent("qrc:/qt/qml/InterActive/IAScrollView.qml");
+            tryCompare(scrollComponent, "status", Component.Ready);
+            const scroll = createTemporaryObject(scrollComponent, scene, {width: data.width, height: 420, padding: 0}) as IAScrollView;
+            verify(scroll !== null);
+            scroll.contentWidth = Qt.binding(function() { return scroll.availableWidth; });
             const component = Qt.createComponent("qrc:/qt/qml/InterActive/Playground/AppearanceEditor.qml");
             tryCompare(component, "status", Component.Ready);
-            const specimen = createTemporaryObject(component, scene, {width: data.width, height: 420}) as AppearanceEditor;
+            const viewport = scroll.contentItem as Flickable;
+            verify(viewport !== null);
+            const specimen = createTemporaryObject(component, viewport.contentItem) as AppearanceEditor;
+            specimen.width = Qt.binding(function() { return scroll.availableWidth; });
+            scroll.contentHeight = Qt.binding(function() { return specimen.implicitHeight; });
             verify(specimen !== null);
-            editor.visible = false;
+            editorScroll.visible = false;
             verify(TestProbe.render(specimen));
-            const scroll = findChild(specimen, "paletteToolbarScroll") as IAScrollView;
             const flick = scroll.contentItem as Flickable;
             verify(flick !== null);
             const controls = [];
-            for (const name of ["accentPickerButton", "resetAccentButton", "amberPickerButton", "resetAmberButton",
-                                "dangerPickerButton", "resetDangerButton", "savePaletteButton"]) {
+            for (const name of ["accentPickerButton", "resetAccentButton", "amberColorWellRow",
+                                "dangerColorWellRow", "savePaletteButton"]) {
                 const item = findChild(specimen, name) as Item;
                 verify(item !== null);
                 if (!item.visible) continue;
@@ -1290,13 +1816,26 @@ Item {
                         || a.y + a.h <= b.y + 0.5 || b.y + b.h <= a.y + 0.5,
                         a.name + " and " + b.name + " do not overlap");
                 }
-            for (const role of ["accent", "amber", "danger"]) {
+            for (const role of ["accent"]) {
                 const button = findChild(specimen, role + "PickerButton") as IAButton;
                 const swatch = findChild(specimen, role + "Swatch") as Rectangle;
                 const readout = findChild(specimen, role + "Readout") as IALabel;
                 const centers = [swatch.mapToItem(button, 0, swatch.height / 2).y,
                     readout.mapToItem(button, 0, readout.height / 2).y];
                 fuzzyCompare(centers[0], centers[1], 0.5, "Swatch/readout shared centerline");
+            }
+            for (const role of ["amber", "danger"]) {
+                const well = semanticWell(specimen, role);
+                const label = well.parent.children[0] as IALabel;
+                fuzzyCompare(label.mapToItem(well, 0, label.height / 2).y, well.height / 2, 0.5, "Label/well centerline");
+                if (data.touch) verify(well.height >= 44);
+                const circle = semanticAction(specimen, role, true);
+                compare(circle.height, well.height - 2 * IA.Appearance.metrics.spacingXS);
+                const point = circle.mapToItem(flick.contentItem, 0, 0);
+                flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height, point.y));
+                verify(TestProbe.render(specimen));
+                const visiblePoint = circle.mapToItem(flick, 0, 0);
+                verify(visiblePoint.y >= -0.5 && visiblePoint.y + circle.height <= flick.height + 0.5);
             }
             console.info("IA_CALIBRATION_GEOMETRY " + JSON.stringify({width: data.width,
                 scheme: data.scheme, contrast: data.contrast, touch: data.touch, controls: controls}));
@@ -1330,12 +1869,12 @@ Item {
             const input = {scheme: data.scheme, contrast: data.contrast};
             verify(PlaygroundState.setAppearance(input));
             const defaultAccent = IA.Appearance.colors.accent;
-            editor.visible = true;
+            editorScroll.visible = true;
             editor.accentDraft = "#234567";
             editor.jsonDraft = '{"fontScale":1.2}';
             verify(TestProbe.render(editor));
             const opener = findChild(editor, "accentPickerButton") as IAButton;
-            const dialog = findChild(editor, "accentColorDialog") as Dialogs.ColorDialog;
+            const dialog = findChild(editor, "accentColorDialog") as IAColorDialog;
             const reset = findChild(editor, "resetAccentButton") as IAToolButton;
             verify(opener !== null && dialog !== null && reset !== null);
             const sample = findChild(page, "opencode-blue") as IAButton;
@@ -1369,7 +1908,7 @@ Item {
 
             const controls = data.tag === "normal-light" ? ["hueSlider", "alphaSlider"] : ["hueSlider"];
             for (const name of controls) {
-                const control = TestProbe.pickerItem(dialog, name) as T.Slider;
+                const control = findChild(dialog, name) as T.Slider;
                 verify(control !== null && control.handle !== null);
                 tryCompare(control, "visible", true);
                 verify(TestProbe.activate(control));
@@ -1390,8 +1929,7 @@ Item {
                         compare(control.pressed, true, "Live input must arrive before mouse release");
                         compare(dialog.visible, true);
                         compare(PlaygroundState.hasAccentOverride, true);
-                        compare(IA.Appearance.colors.accent, dialog.selectedColor,
-                                "Live input preserves the color emitted by the picker");
+                        assertRgba(IA.Appearance.colors.accent, dialog.currentColor);
                         compare(String(PlaygroundState.appearanceInput.tokens.colors.accent).toLowerCase(),
                                 String(IA.Appearance.colors.accent).toLowerCase());
                         assertPickerColor(dialog, IA.Appearance.colors.accent);
@@ -1425,7 +1963,7 @@ Item {
                 }
             }
             // Exercise actual saturation/lightness input as well as hue and alpha.
-            const picker = TestProbe.pickerItem(dialog, "colorPicker");
+            const picker = findChild(dialog, "iaColorPlane");
             verify(picker !== null && picker.width > 0 && picker.height > 0);
             verify(TestProbe.activate(picker));
             verify(TestProbe.render(picker));
@@ -1438,8 +1976,8 @@ Item {
                     px = picker.width * position.x;
                     py = picker.height * position.y;
                     verify(TestProbe.move(picker, px, py));
-                    tryCompare(IA.Appearance.colors, "accent", dialog.selectedColor);
-                    assertAccentConsumers(dialog.selectedColor);
+                    tryVerify(function(){return sameRgba(IA.Appearance.colors.accent,dialog.currentColor);});
+                    assertAccentConsumers(dialog.currentColor);
                     compare(dialog.visible, true, "Intensity observations precede pointer release");
                     semanticColors.push([String(IA.Appearance.colors.error), String(IA.Appearance.colors.warning),
                         String(IA.Appearance.colors.success)]);
@@ -1480,16 +2018,16 @@ Item {
             reveal(field);
             edit(field, "Uncommitted accent draft");
             const committed = renderedSummary();
-            editor.visible = true;
+            editorScroll.visible = true;
             verify(TestProbe.render(editor));
-            const toggle = findChild(editor, "appearanceEditorToggle") as IAToolButton;
+            const toggle = findChild(editor, "appearanceEditorToggle") as IASwitch;
             click(toggle);
             verify(TestProbe.render(editor));
             const hex = findChild(editor, "accentHexField") as IATextField;
             const apply = findChild(editor, "applyAccentHex") as IAButton;
             const json = findChild(editor, "appearanceJson") as IATextField;
             const reset = findChild(editor, "resetAccentButton") as IAToolButton;
-            const dialog = findChild(editor, "accentColorDialog") as Dialogs.ColorDialog;
+            const dialog = findChild(editor, "accentColorDialog") as IAColorDialog;
             verify(hex !== null && apply !== null && json !== null && reset !== null && dialog !== null);
             const pendingHex = "#234567";
             const pendingJson = '{"tokens":';
@@ -1663,11 +2201,11 @@ Item {
         }
 
         function test_previewTogglePreservesConsumersAndDefaults(): void {
-            editor.visible = true;
+            editorScroll.visible = true;
             verify(TestProbe.render(page));
-            const preview = findChild(editor, "appearanceContrast") as IAToolButton;
-            const light = findChild(editor, "appearanceLight") as IAButton;
-            const dark = findChild(editor, "appearanceDark") as IAButton;
+            const preview = findChild(editor, "appearanceContrast") as IASwitch;
+            const light = findChild(editor, "appearanceLight") as IASegmentedButton;
+            const dark = findChild(editor, "appearanceDark") as IASegmentedButton;
             const defaults = findChild(editor, "appearanceReset") as IAButton;
             verify(preview !== null && light !== null && dark !== null && defaults !== null);
             compare(IA.Appearance.contrast, "normal");
@@ -1902,7 +2440,15 @@ Item {
             const inspect = findChild(page, "menuInspectCollection") as IAMenuItem;
             const inspector = findChild(page, "selectionInspector") as IALabel;
             verify(opener !== null && inspect !== null && inspector !== null);
-            clickPage(opener);
+            if (data.windowPopups && TestProbe.isWayland()) {
+                reveal(opener);
+                opener.forceActiveFocus(Qt.TabFocusReason);
+                tryCompare(opener, "activeFocus", true);
+                tryVerify(function() { return TestProbe.nativeKeyHostReady(opener); });
+                verify(TestProbe.nativeKeyClick(opener, Qt.Key_Space));
+            } else {
+                clickPage(opener);
+            }
             assertHost(menu, data.windowPopups);
             click(inspect);
             tryCompare(menu, "visible", false);

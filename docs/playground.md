@@ -6,10 +6,8 @@ shelf, menus, and an editable dialog. Five further pages (Actions, Forms, Values
 
 ## Build And Test
 
-Use CMake 3.21+, a C++17 compiler, and Qt 6.8+ with Core, Gui, Qml, Quick,
+Use CMake 3.21+, a C++17 compiler, and Qt 6.12.0+ with Core, Gui, Qml, Quick,
 QuickControls2, Svg, and ShaderTools. Test builds also need Test and QuickTest.
-The playground additionally needs QuickDialogs2 and the QtQuick.Dialogs QML
-module; these are playground dependencies, not new library requirements.
 The commands below use a POSIX shell and Ninja, from the source directory:
 
 ```sh
@@ -23,7 +21,7 @@ QML_IMPORT_PATH="$PWD/build/qml${QML_IMPORT_PATH:+:$QML_IMPORT_PATH}" \
 
 Configure with `-DCMAKE_PREFIX_PATH="$QT_PREFIX"` to select a non-default SDK.
 For minimum-version verification, also pass
-`-DINTERACTIVE_VERIFY_QT_VERSION=6.8.0`. CMake checks the requested exact version;
+`-DINTERACTIVE_VERIFY_QT_VERSION=6.12.0`. CMake checks the requested exact version;
 the identity test compares compiled and runtime Qt versions. Use independent
 build directories and matching runtime libraries/plugins for different SDKs.
 
@@ -61,6 +59,29 @@ skipped, blacklisted, or expected-failure cases do not satisfy a required check.
 | 11 | `interactive.long-document` | A test-only editable TextEdit with 10,000 deterministic paragraphs and at least one million characters preserves document/editing/scroll/undo state across accent edits; foreground and font-size changes are positive controls. |
 | 12 | `interactive.playground-calibration` | Actual launcher startup, transactional correction ownership/rejection/reentrancy, full-precision append/readback, preserved fragments, contention/dead-owner recovery and injected I/O failures against the real playground writer. |
 | 13 | `interactive.trace` | Appearance trace recorder: nesting, outcomes, reentrancy, threads, overflow, stop semantics, export refusal and parseable output. |
+| 14 | `interactive.segmented` | Native exclusive checked/index selection, user-only activation, binding preservation, mutation/reentrancy, RTL arrows/endpoints, equal-share/natural sizing and overflow, stable track/local appearance, and trailing-switch geometry/native pointer/Space/drag. Public Qt accessible interfaces/actions are inspected; this is not AT-SPI or Orca coverage. |
+| 15 | `interactive.color-well` | Native sibling targets, circle/corner routing, titled preset/Default menu, input-binding preservation, accessible names/native Space/Tab, RTL/touch and stable sample/art geometry, reversible rainbow hover and immediate reduced-motion cancellation. |
+| 16 | `interactive.color-edit-state` | Same production state source: full-precision channels, user-only notifications, feedback, domains/drafts, ARGB and HSL/HSV hue memory. |
+| 17 | `interactive.color-picker` | Real shared editor/dialog, live plane/rails, four formats, persistent drafts/modes, native dismissal, public accessible interfaces and square/responsive geometry. AT-SPI/Orca is not exercised. |
+| 18 | `interactive.segment-marker` | Native tab/segmented consumer pixels, persistent leading cap across hover/press/focus, unchanged finished fills and complete native focus frame, LTR/RTL, light/dark normal/high, live accent/contrast/direction, touch density, resize and local radius. Run at actual DPR 1, 1.25 and 2; source coverage alone is not rendered proof. |
+
+Amber and Danger in Appearance use label-plus-`IAColorWell` rows bound to the
+resolved warning/error colors. Both reuse the existing twelve Accent preset
+records. Preset and live full-dialog edits enter `setSemanticCorrection`; Default
+uses `resetSemanticCorrection`, restoring prior raw input or current generation.
+The persistent `PaletteColorPicker` adapters keep dialog/window identity,
+synchronization and tracing; `openerVisible: false` hides only their legacy Flow
+and removes its implicit footprint. Accent's existing saved-palette flow is
+unchanged. Consumer tests retain simultaneous dialogs, live hue/alpha/plane
+updates, reset ownership, peer isolation, validation, drafts and Save outcomes.
+
+`interactive.color-well-capture` is a separate non-overview capture suite. With
+an existing absolute `IA_CAPTURE_DIR`, it captures full native frames in all four
+scheme/contrast modes and seven real states: rest, sample hover/focus/press and
+circle hover/focus/press. `interactive.appearance-capture` retains the ten actual
+Appearance frames, including RTL. These fixtures do not alter the fixed 72-image
+gallery capture driver and do not claim AT-SPI/Orca or compositor-native pointer
+coverage. Native Space is observed through the existing keyboard backend.
 
 The long-document suite observes real QQuickTextDocument state and QML font binding
 evaluations. Equal document dimensions or absent size signals alone do not prove
@@ -70,7 +91,7 @@ integration. A pre-existing native TextEdit font-add/remove dimensions issue is
 documented in the appearance API's typography boundary, not suppressed in tests.
 
 The playground accent-picker cases add a four-row light/dark, normal/high matrix
-using real pointer drags on Qt's Quick hue slider. Assertions inspect application
+using real pointer drags on the shared IA hue slider. Assertions inspect application
 input and the rendered primary sample's fill, label and border, plus slider and
 progress fills, while the pointer is still pressed and the dialog is open. One
 row also drags the alpha slider. Other checks cover opening without an override,
@@ -81,8 +102,14 @@ follow the current shared palette; explicit semantic siblings and the caller-own
 purple specimen remain independent. Real saturation/lightness edits complement
 hue and alpha drags. Success tests inspect its rendered swatch/message surface
 and shared layout centerline at desktop, 360px and 320px widths in both modes and
-schemes, retaining consumer identities. Only tests inspect Qt's fallback
-control tree; these checks do not claim IA styling or geometry for that dialog.
+schemes, retaining consumer identities. Tests inspect the real owned IA controls
+and applied preview, without locating private Qt fallback children.
+
+`interactive.color-picker-capture` is a separate capture suite, not part of the
+fixed 72-image driver. It captures full native picker windows across light/dark,
+normal/high, all formats, focus/error/alpha/drag, touch/font/narrow/RTL and role
+titles. Provide an existing absolute `IA_CAPTURE_DIR`. Geometry and actual
+rendered frames must be reviewed together; compilation is not interaction proof.
 
 The main outputs are `build/bin/interactive-playground`,
 `build/bin/interactive-appearance-tests`, `build/bin/interactive-appearance-trace-tests`, `build/bin/interactive-playground-calibration-tests`, and `build/bin/interactive-quick-tests`.
@@ -194,7 +221,13 @@ appearance editor. Closing and reopening it retains manual hex/JSON drafts and
 the Input editor disclosure, without replacing gallery consumers. Defaults,
 expanded palette readouts/reset actions, Amber/Danger live pickers, Save and its
 destination/status, Touch targets, 7:1 preview, and the JSON/input tooling live
-there. Light and Dark remain available there as explicit scheme actions too.
+there. A Light/Dark segmented choice shares its first row with Defaults; the
+palette pickers, resets and Save wrap in a separate group below. Four independent
+trailing switch rows control Touch targets, 7:1 preview, Input editor and Reduced
+motion. Native user toggles, including dragging, write through the existing
+appearance writer; external input updates checked/selected state without echo.
+Input editor is local disclosure state, not appearance input. Hiding it, changing
+scheme and Defaults preserve its objects, disclosure and pending hex/JSON drafts.
 
 Use `--contrast high` or the Appearance window's **7:1 preview** toggle for the text-contrast
 visual trial. `--contrast normal` explicitly selects the normal 5:1 design target;
@@ -215,7 +248,8 @@ Saved presets have grey name/hex text and a saved accessibility description, but
 remain selectable by pointer or keyboard. The closed button names the matching
 preset and uses the same saved grey; unmatched or translucent accents say Custom
 with the actual color readout. Amber and Danger still open their live pickers.
-All use one playground-local picker composition. Opening or synchronizing does not create an override. Color
+All use thin playground adapters over the shared `IAColorEditor`/`IAColorDialog`.
+Opening or synchronizing does not create an override. Color
 and alpha changes apply immediately through the same appearance-input writer as the JSON
 editor and external input, so the real library consumers update while the picker
 is open. There is no Apply/Cancel transaction: closing keeps the current live
@@ -245,15 +279,31 @@ The input editor retains its manual Accent hex field and **Set** action. Pending
 hex text survives picker edits and external appearance changes until applied or
 explicitly cleared with **Reset accent**; an untouched field follows the applied
 accent. Reset accent clears only that hex draft, not the pending replacement JSON
-draft. JSON and external changes also synchronize an already-visible picker. On
-Qt 6.8 this uses a guarded public close/set/open cycle because setting the dialog
-wrapper's `selectedColor` alone does not update the underlying visible picker.
+draft. JSON and external changes synchronize the already-visible persistent
+editor without closing/reopening its native Window or emitting a role write.
 
-The picker is Qt's standard, non-native Quick color dialog, opened nonmodally with
-alpha controls, no confirmation buttons and no eyedropper. It is playground
-authoring tooling, not an IA color-picker component or additional IA control
-coverage. Shared appearance resolution and explicit local overrides remain
-authoritative; selecting an arbitrary accent does not promise a contrast target.
+The shared picker is a nonmodal IA dialog with Hex/RGB/HSV/HSL fields, alpha,
+physical HSL plane and native hue/opacity sliders. Hex uses Qt #RRGGBB or
+#AARRGGBB (ARGB) notation. Valid native field editingFinished commits live;
+invalid text stays unapplied and visibly identified. Modes and drafts persist.
+Normal native focus loss can finish a field before a Close click; dismissal
+handlers themselves never apply pending drafts, save or undo. Close, header and
+Escape use native dialog behavior. Shared appearance resolution and explicit
+local overrides remain authoritative; arbitrary accents promise no contrast target.
+
+For generic consumers, `IAColorEditor` and `IAColorDialog` take `colorValue`, expose
+readonly `currentColor` and emit user-only `colorEdited(color)`. Install an accepted
+value synchronously in that callback; ignored or transformed requests reconcile
+the preview to the actual input without an edit echo. `IAColorDialog.parentWindow`
+is the explicit compatible QQuickWindow source (QQuickView is supported), with
+native Window hosting and CloseOnEscape. Main-window and peer clicks do not
+dismiss it. `IAColorPlane` is the narrow public-handler two-axis control beneath
+the editor, not an application palette writer.
+The plane uses QtQuick.Shapes with a component-local CurveRenderer and a live
+offscreen texture for its existing cached surface plus separate marker. This
+preserves rounded clipping and antialiased inner edges without global MSAA;
+marker moves update that texture, not the CPU color image. QtQuick.Shapes must
+be available at runtime alongside the other Qt6.12 QML modules.
 
 ### Save Calibration Samples
 
@@ -320,7 +370,8 @@ Quick tests inject fresh `QTemporaryDir` destinations before loading any fixture
 `QStandardPaths` test mode does not sandbox Documents. Real hue/intensity/alpha
 drags, simultaneous role dialogs, resets, applied disk tuples, preserved drafts/
 identities and 1200/360/320px geometry with enlarged text/touch settings are checked
-by `interactive.playground`. Only test probes inspect Qt's fallback dialog tree.
+by `interactive.playground`, using the actual owned IA controls and generic
+currentColor contract rather than private Qt fallback probes.
 
 ### Gallery Consumers
 
@@ -398,7 +449,7 @@ Rendered observations have this shape:
   "resolvedScheme": "light",
   "viewport": {"width": 1200, "height": 820},
   "dpr": 1,
-  "qtVersion": "6.8.0",
+  "qtVersion": "6.12.0",
   "renderer": "opengl",
   "popupWindow": true
 }
@@ -494,6 +545,38 @@ not final screenshot delivery to the user. No image processing runs on the lapto
 
 ## Visual Review
 
+`interactive.appearance-capture` has its own `interactive-appearance-capture`
+label, separate from overview and the fixed 72-frame capture run. In the same
+graphical guest environment, set `IA_CAPTURE_DIR` to an existing directory outside
+that run and execute `interactive-quick-tests -input
+tests/quick/qml/tst_appearance_capture.qml`. The fixture imports real `Main`, opens
+Appearance through its toolbar action, proves distinct native hosting and bounded
+height, then grabs the entire host content extent. Ten full frames cover
+light/dark, normal/high and closed/expanded Input editor, plus two light-normal
+RTL frames driven only through Main's application direction. Its manifest records
+actual window bounds, region boxes and the unmodified sample destination text.
+That destination includes the test's temporary-directory suffix and is not a
+deterministic image region; it is not hidden or replaced for comparison.
+
+The consumer suite also checks scheme pointer/RTL arrows/Space endpoints, resolved
+consumer colors, external synchronization without user activation, switch peer
+independence/drag/reduced-motion endpoints, and 320/360/desktop row geometry with
+RTL and enlarged touch text. Existing picker, saving, draft, focus and reopen
+checks remain in the same suite.
+
+Main's Window is the single application mirroring owner, including its overlay
+and, through the shared native-popup adapter, separate Appearance popup.
+Actual-Main tests set only `rightToLeft` for
+initial LTR/RTL and live changes while Appearance stays open; they check native
+header/footer and row edges, scheme selection, object/draft/focus preservation
+and close/reopen without injecting mirroring into the dialog or editor.
+
+`interactive.popup-direction` exercises all four real popup roots in Item/native
+hosting, public overlay inheritance flags, first native-frame state, live changes,
+reopen, content/type/modal changes, destruction, opposite-direction host migration
+and a nested native menu. Both hosts' public mirror notifications are checked
+throughout, including preserved input bindings and idle-overlay pass-through.
+
 Capture the whole composited scene when inspecting Window popups; grabbing only
 the main QQuickWindow omits separate surfaces. Check for obstructions, native
 focus, effective dimensions and actual DPR before interpreting an image. Qt
@@ -505,8 +588,9 @@ distinctions, and popup anchoring. Images demonstrate only their depicted state;
 pair them with interaction and geometry assertions. A rendered acknowledgement
 does not itself establish that a screenshot is unobstructed or visually correct.
 Also inspect the accent toolbar and open picker at desktop and narrow widths,
-including live updates and reset. Review Qt's picker as external authoring tooling,
-not against IA control styling or fixed IA geometry.
+including live updates and reset. Review the shared IA picker against its native
+controls, square plane, measured lane centerlines and responsive layout; default
+reference dimensions are not fixed universal geometry.
 
 Desktop orchestration, image collection and environment-specific execution
 records are external to the project. The repository provides the playground and

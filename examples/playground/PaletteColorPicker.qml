@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Dialogs
 import InterActive
+import InterActive.Components
 import InterActive.Foundation as IA
 
 Item {
@@ -16,6 +16,7 @@ Item {
     property string displayName: label
     property color readoutForeground: pickerButton.foregroundColor
     property bool dropdownIndicator: false
+    property bool openerVisible: true
     property bool openerEnterEnabled: false
     property var activation: function(anchor) { root.open(); }
     property bool resetEnabled: false
@@ -28,24 +29,17 @@ Item {
     property bool synchronizing: false
     signal colorSelected(color value)
     signal resetRequested()
-    implicitWidth: pickerButton.implicitWidth + (resetButton.visible ? resetButton.implicitWidth + itemSpacing : 0)
-    implicitHeight: pair.implicitHeight
+    implicitWidth: openerVisible ? pickerButton.implicitWidth + (resetButton.visible ? resetButton.implicitWidth + itemSpacing : 0) : 0
+    implicitHeight: openerVisible ? pair.implicitHeight : 0
     width: Math.min(implicitWidth, maximumWidth)
     height: implicitHeight
 
     function synchronize(): void {
         const token = traceBegin("sync");
         try {
-            if (Qt.colorEqual(dialog.selectedColor, resolvedColor))
-                return;
-            const reopen = dialog.visible;
             synchronizing = true;
-            // Public Qt 6.8 workaround: the fallback picker is seeded on open.
-            if (reopen)
-                dialog.close();
-            dialog.selectedColor = resolvedColor;
-            if (reopen)
-                dialog.open();
+            // The generic persistent editor synchronizes without reopening its host.
+            dialog.colorValue = resolvedColor;
         } finally {
             synchronizing = false;
             traceEnd(token);
@@ -67,19 +61,16 @@ Item {
     function focusOpener(): void { pickerButton.forceActiveFocus(Qt.PopupFocusReason); }
     onResolvedColorChanged: synchronize()
 
-    ColorDialog {
+    readonly property IAColorDialog _dialog: IAColorDialog {
         id: dialog
         objectName: root.namePrefix + "ColorDialog"
         title: root.dialogTitle
         parentWindow: root.pickerParentWindow
-        modality: Qt.NonModal
-        options: ColorDialog.NoButtons | ColorDialog.ShowAlphaChannel
-            | ColorDialog.NoEyeDropperButton | ColorDialog.DontUseNativeDialog
-        onSelectedColorChanged: {
+        onColorEdited: value => {
             const token = root.traceBegin("color");
             try {
                 if (visible && !root.synchronizing)
-                    root.colorSelected(selectedColor);
+                    root.colorSelected(value);
             } finally {
                 root.traceEnd(token);
             }
@@ -90,6 +81,7 @@ Item {
     // makes a single row wider than the available toolbar lane.
     Flow {
         id: pair
+        visible: root.openerVisible
         width: root.width
         spacing: root.itemSpacing
         IAButton {

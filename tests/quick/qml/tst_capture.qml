@@ -39,6 +39,16 @@ Item {
         }
     }
     Component {
+        id: segmentedComponent
+        IASegmentedControl {
+            width: 280
+            property alias target: second
+            Accessible.name: "Appearance"
+            IASegmentedButton { text: "Light" }
+            IASegmentedButton { id: second; text: "Dark" }
+        }
+    }
+    Component {
         id: listComponent
         ListView {
             id: list
@@ -75,32 +85,24 @@ Item {
         IADialog {
             id: dialog
             x: 24; y: 24
-            width: 360; height: 280
+            width: 360
             title: "Scrollable preferences"
             popupType: T.Popup.Item
             focus: true
             property alias first: first
             property alias target: last
-            property alias viewport: viewport
-            contentItem: IAScrollView {
-                Flickable {
-                    id: viewport
-                    clip: true
-                    contentWidth: width
-                    contentHeight: fields.height
-                    boundsBehavior: Flickable.StopAtBounds
-                    Column {
-                        id: fields
-                        width: viewport.width
-                        spacing: IA.Appearance.metrics.spacingS
-                        IATextField { id: first; width: parent.width; text: "First field" }
-                        Repeater {
-                            model: 8
-                            IATextField { width: fields.width; text: "Scrollable field" }
-                        }
-                        IATextField { id: last; width: parent.width; text: "Last field — keyboard focus" }
-                    }
+            property int rows: 8
+            standardButtons: T.Dialog.Cancel
+            Column {
+                id: fields
+                width: parent.width
+                spacing: IA.Appearance.metrics.spacingS
+                IATextField { id: first; width: parent.width; text: "First field" }
+                Repeater {
+                    model: dialog.rows
+                    IATextField { width: fields.width; text: "Scrollable field" }
                 }
+                IATextField { id: last; width: parent.width; text: "Last field - keyboard focus" }
             }
         }
     }
@@ -170,6 +172,7 @@ Item {
         property int pngCount: 0
 
         function initTestCase(): void {
+            failOnWarning(/.*(TypeError|ReferenceError|Binding loop|polish loop).*/);
             destination = TestProbe.captureDirectory();
             verify(destination.length > 0,
                    "IA_CAPTURE_DIR must name an absolute, existing, writable directory");
@@ -179,6 +182,10 @@ Item {
             TestProbe.move(scene, scene.width - 2, scene.height - 2);
             TestProbe.release(scene, scene.width - 2, scene.height - 2);
             IA.Appearance.input = {};
+        }
+
+        function init(): void {
+            failOnWarning(/.*(TypeError|ReferenceError|Binding loop|polish loop).*/);
         }
 
         function cleanupTestCase(): void {
@@ -199,14 +206,14 @@ Item {
                 {name: "IAToolButton", kind: "tool", component: toolComponent,
                     states: ["rest", "hover", "pressed", "focus", "checked", "checked+hover"], columns: ["Text", "Icon only"]},
                 {name: "IATabButton", kind: "tab", states: ["rest", "hover", "pressed", "selected", "selected+focus", "selected+hover"],
-                    columns: ["In IATabBar"]},
+                    columns: ["In IATabBar", "IASegmentedControl"]},
                 {name: "IAItemDelegate", kind: "delegate",
                     states: ["rest", "hover", "pressed", "selected", "selected+hover", "focus"], columns: ["In list"]},
                 {name: "IAMenuItem", kind: "menu", states: ["rest", "highlighted", "checked", "disabled"],
                     columns: ["Default blue", "Yellow", "Near background", "Dark red"]},
                 {name: "IACheckBox", kind: "choice", component: checkComponent, states: choiceStates, columns: ["Check"]},
                 {name: "IARadioButton", kind: "choice", component: radioComponent, states: choiceStates, columns: ["Radio"]},
-                {name: "IASwitch", kind: "choice", component: switchComponent, states: choiceStates, columns: ["Switch"]},
+                {name: "IASwitch", kind: "choice", component: switchComponent, states: choiceStates, columns: ["Switch", "Trailing switch row"]},
                 {name: "IASlider", kind: "slider", component: sliderComponent,
                     states: ["rest", "hover", "pressed", "focus"], columns: ["50%"]},
                 {name: "IATextField", kind: "field", component: fieldComponent,
@@ -264,8 +271,8 @@ Item {
             let held = false;
             try {
                 if (spec.kind === "tab") {
-                    host = createTemporaryObject(tabsComponent, stage, {x: 24, y: 24});
-                    control = host.target;
+                    host = createTemporaryObject(column === 1 ? segmentedComponent : tabsComponent, stage, {x: 24, y: 24});
+                    control = host.target as T.AbstractButton;
                 } else if (spec.kind === "delegate") {
                     host = createTemporaryObject(listComponent, stage, {x: 24, y: 24});
                     host.forceLayout();
@@ -277,6 +284,8 @@ Item {
                     control = createTemporaryObject(spec.component, stage, {x: 24, y: 24, width: 208});
                 }
                 verify(control !== null);
+                if (spec.name === "IASwitch" && column === 1)
+                    control.indicatorPosition = IA.Presentation.Trailing;
                 stage.target = control;
                 if (spec.kind === "button")
                     control.tone = spec.tones[column];
@@ -345,7 +354,8 @@ Item {
                 }
                 if (spec.kind === "menu")
                     tryCompare(control, "highlighted", state === "highlighted");
-                return snapshot(control, 2 * IA.Appearance.metrics.focusWidth);
+                return snapshot(spec.kind === "tab" && column === 1 ? host : control,
+                    2 * IA.Appearance.metrics.focusWidth);
             } finally {
                 if (held)
                     TestProbe.release(scene, scene.width - 2, scene.height - 2);
@@ -418,24 +428,17 @@ Item {
         }
 
         function captureEdge(kind: string, scheme: string, contrast: string): void {
+            if (kind === "dialog-last-field") {
+                captureDialogEdges(scheme, contrast);
+                return;
+            }
             console.info("Capturing edge", kind, scheme, contrast);
             const stage = createTemporaryObject(stageComponent, scene);
             verify(stage !== null);
-            let popup = null;
             let capture = null;
             try {
                 activate(stage);
-                if (kind === "dialog-last-field") {
-                    popup = createTemporaryObject(dialogComponent, stage, {parent: stage});
-                    verify(popup !== null);
-                    popup.open();
-                    tryCompare(popup, "opened", true);
-                    tabInto(popup.first, popup.target);
-                    popup.viewport.contentY = Math.max(0, popup.viewport.contentHeight - popup.viewport.height);
-                    verify(popup.viewport.contentHeight > popup.viewport.height, "Dialog content really scrolls");
-                    verify(TestProbe.render(popup.target));
-                    capture = snapshot(stage, 0);
-                } else if (kind === "tab-bar") {
+                if (kind === "tab-bar") {
                     const bar = createTemporaryObject(tabsComponent, stage, {x: 24, y: 24});
                     verify(bar !== null);
                     verify(TestProbe.render(bar));
@@ -452,8 +455,6 @@ Item {
                     capture = snapshot(list, 2 * IA.Appearance.metrics.focusWidth);
                 }
             } finally {
-                if (popup !== null)
-                    popup.close();
                 stage.destroy();
             }
             const sheet = createTemporaryObject(sheetComponent, scene, {
@@ -469,6 +470,72 @@ Item {
                     + " | states=keyboard focus | columns=real clipped container\n";
             } finally {
                 sheet.destroy();
+            }
+        }
+
+        function captureDialogEdges(scheme: string, contrast: string): void {
+            const captures = [];
+            const specs = [
+                {name: "Short / Cancel", rows: 0, state: "short", buttons: T.Dialog.Cancel},
+                {name: "Long / top", rows: 8, state: "top", buttons: T.Dialog.Cancel},
+                {name: "Long / middle", rows: 8, state: "middle", buttons: T.Dialog.Cancel},
+                {name: "Long / bottom", rows: 8, state: "bottom", buttons: T.Dialog.Cancel},
+                {name: "Reduced / middle", rows: 8, state: "middle", reduced: true, buttons: T.Dialog.Cancel},
+                {name: "Window RTL / Close", rows: 8, state: "top", window: true, rtl: true, buttons: T.Dialog.Close},
+                {name: "Window / Ok only", rows: 0, state: "short", window: true, buttons: T.Dialog.Ok},
+                {name: "RTL / Apply only", rows: 0, state: "short", rtl: true, buttons: T.Dialog.Apply},
+                {name: "Window RTL / short", rows: 0, state: "short", window: true, rtl: true, buttons: T.Dialog.Cancel}
+            ];
+            for (const spec of specs) {
+                IA.Appearance.input = {scheme: scheme, contrast: contrast, reducedMotion: spec.reduced === true};
+                const stage = createTemporaryObject(stageComponent, scene);
+                verify(stage !== null);
+                const properties = {parent: stage, width: 340, rows: spec.rows,
+                    standardButtons: spec.buttons, popupType: spec.window ? T.Popup.Window : T.Popup.Item};
+                if (spec.state !== "short")
+                    properties.height = 260;
+                const dialog = createTemporaryObject(dialogComponent, stage, properties);
+                verify(dialog !== null);
+                try {
+                    activate(stage);
+                    dialog.contentItem.parent.LayoutMirroring.enabled = spec.rtl === true;
+                    dialog.contentItem.parent.LayoutMirroring.childrenInherit = true;
+                    dialog.open();
+                    tryCompare(dialog, "opened", true);
+                    const view = findChild(dialog, "iaDialogViewport") as Flickable;
+                    verify(view !== null);
+                    tryVerify(function() { return TestProbe.exposed(view); });
+                    verify(TestProbe.render(view));
+                    if (spec.state === "middle")
+                        view.contentY = view.originY + (view.contentHeight - view.height) / 2;
+                    else if (spec.state === "bottom") {
+                        tabInto(dialog.first, dialog.target);
+                        view.contentY = view.originY + view.contentHeight - view.height;
+                    }
+                    verify(TestProbe.render(view));
+                    captures.push(snapshot(dialog.contentItem.parent, 0));
+                } finally {
+                    dialog.close();
+                    stage.destroy();
+                }
+            }
+            const sheet = createTemporaryObject(sheetComponent, scene, {
+                heading: "Dialog-owned body / " + scheme + " / " + contrast, columnCount: 3
+            });
+            verify(sheet !== null);
+            try {
+                for (let row = 0; row < 3; ++row) {
+                    for (let column = 0; column < 3; ++column)
+                        verify(createTemporaryObject(labelComponent, sheet.grid, {
+                            text: specs[row * 3 + column].name, width: 350, height: 24}) !== null);
+                    for (let column = 0; column < 3; ++column)
+                        addImage(sheet.grid, captures[row * 3 + column], 350, 260);
+                }
+                saveSheet(sheet, destination + "/" + scheme + "-" + contrast + "/edge-dialog-last-field.png");
+                manifest += scheme + "-" + contrast + "/edge-dialog-last-field.png | family=dialog | states=short,top,middle,bottom,reduced,Close,Ok,Apply | hosting=item,window | direction=LTR,RTL\n";
+            } finally {
+                sheet.destroy();
+                IA.Appearance.input = {scheme: scheme, contrast: contrast, reducedMotion: true};
             }
         }
 

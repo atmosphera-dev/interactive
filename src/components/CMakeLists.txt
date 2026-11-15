@@ -3,7 +3,10 @@ qt_add_qml_module(interactive_components SHARED
     URI InterActive.Components
     VERSION 1.0
     DEPENDENCIES TARGET interactive_foundation TARGET interactive_controls
+    SOURCES ColorEditState.h ColorEditState.cpp
     QML_FILES
+        IAColorEditor.qml
+        IAColorDialog.qml
         IAFieldRow.qml
         IASettingsRow.qml
         IAStatusBanner.qml

@@ -6,6 +6,12 @@ import InterActive.Foundation as IA
 
 T.Menu {
     id: control
+    property bool _popupDirectionReady: false
+    Component.onCompleted: control._popupDirectionReady = true
+    readonly property IA.PopupDirection _popupDirection: IA.PopupDirection {
+        source: control.T.Overlay.overlay
+        contentItem: control._popupDirectionReady ? control.contentItem : null
+    }
     property alias backgroundColor: appearance.backgroundColor
     property alias foregroundColor: appearance.foregroundColor
     property alias borderColor: appearance.borderColor
@@ -16,7 +22,7 @@ T.Menu {
     property alias fontWeight: appearance.fontWeight
     readonly property alias appearanceDiagnostics: appearance.diagnostics
     function resetAppearance(): void { appearance.resetOverrides(); }
-    IA.ControlAppearance { id: appearance; source: IA.Appearance; family: "popup" }
+    readonly property IA.ControlAppearance _appearance: IA.ControlAppearance { id: appearance; source: IA.Appearance; family: "popup" }
     implicitWidth: Math.max(implicitContentWidth + leftPadding + rightPadding, IA.Appearance.metrics.menuMinWidth)
     implicitHeight: implicitContentHeight + topPadding + bottomPadding
     horizontalPadding: appearance.horizontalPadding

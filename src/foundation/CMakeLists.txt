@@ -24,11 +24,13 @@ qt_add_qml_module(interactive_foundation
         StateTable.h StateTable.cpp
         Presentation.h Presentation.cpp
         ThemeIconItem.h ThemeIconItem.cpp
+        ColorPlaneSurface.h ColorPlaneSurface.cpp
         IconSource.h
-    QML_FILES Icon.qml IconLabel.qml Separator.qml ControlState.qml ControlBackground.qml ChoiceIndicator.qml ChoiceRow.qml ValueTrack.qml SegmentGroup.qml
+        ScreenGeometry.h ScreenGeometry.cpp
+    QML_FILES Icon.qml IconLabel.qml Separator.qml ControlState.qml ControlBackground.qml SegmentBackground.qml ChoiceIndicator.qml ChoiceRow.qml ValueTrack.qml SegmentGroup.qml PopupDirection.qml
     RESOURCES
         icons/check.svg icons/minus.svg icons/chevron-down.svg
-        icons/chevron-right.svg icons/close.svg icons/search.svg
+        icons/chevron-right.svg icons/close.svg icons/search.svg icons/color-wheel.svg
 )
 
 set(material_color_utilities_dir "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/material-color-utilities")

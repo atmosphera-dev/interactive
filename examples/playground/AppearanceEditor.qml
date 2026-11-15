@@ -11,7 +11,6 @@ Item {
     // Accept every compatible QQuickWindow host, including QQuickView.
     property var pickerParentWindow: root.Window.window
     property Item accentMenuOpener: null
-    property real maximumHeight: 450
     property string jsonDraft: "{}"
     property var accentDraft: undefined
     readonly property var accentPresets: [
@@ -35,9 +34,7 @@ Item {
     }
     readonly property bool currentAccentSaved: accentDisplayKey.length > 0
         && accentDisplayName !== "Custom" && state.savedAccentKeys.indexOf(accentDisplayKey) >= 0
-    // The consumer supplies the viewport budget. Reading our hosting window's
-    // height here creates a size feedback loop in a Window-hosted dialog.
-    implicitHeight: Math.min(layout.implicitHeight, maximumHeight)
+    implicitHeight: layout.implicitHeight
     implicitWidth: 600
 
     function openAccentPicker(): void { accentPicker.open(); }
@@ -83,39 +80,43 @@ Item {
         root.accentDraft = undefined;
     }
 
-    IAScrollView {
-        id: toolbarScroll
-        objectName: "paletteToolbarScroll"
-        anchors.fill: parent
-        clip: true
-        // Reserve the scrollbar's actual lane, including mirrored layouts.
-        // The editor's fields must not extend underneath either scroll bar.
-        leftPadding: mirrored ? effectiveScrollBarWidth : 0
-        rightPadding: mirrored ? 0 : effectiveScrollBarWidth
-        contentWidth: availableWidth
     ColumnLayout {
         id: layout
-        width: toolbarScroll.availableWidth
+        width: root.width
         spacing: IA.Appearance.metrics.spacingM
-        Flow {
+        RowLayout {
+            objectName: "appearanceSchemeRow"
             Layout.fillWidth: true
             spacing: IA.Appearance.metrics.spacingS
-            IAButton {
-                id: lightButton
-                objectName: "appearanceLight"
-                text: "Light"
-                onClicked: root.state.setAppearanceOption("scheme", "light")
-            }
-            IAButton {
-                objectName: "appearanceDark"
-                text: "Dark"
-                onClicked: root.state.setAppearanceOption("scheme", "dark")
+            IASegmentedControl {
+                objectName: "appearanceSchemeChoice"
+                Layout.fillWidth: true
+                Layout.preferredWidth: 240
+                Layout.maximumWidth: 240
+                Layout.minimumWidth: 0
+                Accessible.name: "Appearance"
+                currentIndex: IA.Appearance.scheme === "dark" ? 1 : 0
+                onActivated: index => root.state.setAppearanceOption("scheme", index === 1 ? "dark" : "light")
+                IASegmentedButton {
+                    objectName: "appearanceLight"
+                    text: "Light"
+                }
+                IASegmentedButton {
+                    objectName: "appearanceDark"
+                    text: "Dark"
+                }
             }
             IAButton {
                 objectName: "appearanceReset"
                 text: "Defaults"
                 onClicked: root.state.setAppearance({})
             }
+            Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
+        }
+        Flow {
+            objectName: "appearancePaletteFlow"
+            Layout.fillWidth: true
+            spacing: IA.Appearance.metrics.spacingS
             PaletteColorPicker {
                 id: accentPicker
                 namePrefix: "accent"
@@ -147,6 +148,7 @@ Item {
             }
             PaletteColorPicker {
                 id: amberPicker
+                openerVisible: false
                 namePrefix: "amber"
                 label: "Amber"
                 dialogTitle: "Amber warning/caution color (live)"
@@ -165,6 +167,7 @@ Item {
             }
             PaletteColorPicker {
                 id: dangerPicker
+                openerVisible: false
                 namePrefix: "danger"
                 label: "Danger"
                 dialogTitle: "Danger error color (live)"
@@ -180,31 +183,85 @@ Item {
                 onColorSelected: value => root.state.setSemanticCorrection("error", value)
                 onResetRequested: root.state.resetSemanticCorrection("error")
             }
+            RowLayout {
+                objectName: "amberColorWellRow"
+                spacing: IA.Appearance.metrics.spacingS
+                IALabel { text: "Amber"; Layout.alignment: Qt.AlignVCenter }
+                IAColorWell {
+                    objectName: "amberColorWell"
+                    label: "Amber"
+                    Layout.alignment: Qt.AlignVCenter
+                    colorValue: IA.Appearance.colors.warning
+                    presets: root.accentPresets
+                    onColorSelected: value => root.state.setSemanticCorrection("warning", value)
+                    onDefaultRequested: root.state.resetSemanticCorrection("warning")
+                    onCustomColorRequested: amberPicker.open()
+                }
+            }
+            RowLayout {
+                objectName: "dangerColorWellRow"
+                spacing: IA.Appearance.metrics.spacingS
+                IALabel { text: "Danger"; Layout.alignment: Qt.AlignVCenter }
+                IAColorWell {
+                    objectName: "dangerColorWell"
+                    label: "Danger"
+                    Layout.alignment: Qt.AlignVCenter
+                    colorValue: IA.Appearance.colors.error
+                    presets: root.accentPresets
+                    onColorSelected: value => root.state.setSemanticCorrection("error", value)
+                    onDefaultRequested: root.state.resetSemanticCorrection("error")
+                    onCustomColorRequested: dangerPicker.open()
+                }
+            }
             IAButton {
                 objectName: "savePaletteButton"
                 text: "Save"
                 Accessible.description: "Append the three applied root colors to the calibration text file."
                 onClicked: root.state.savePaletteSample()
             }
-            IAToolButton {
+        }
+        ColumnLayout {
+            objectName: "appearanceSwitchRows"
+            Layout.fillWidth: true
+            Layout.preferredWidth: 360
+            Layout.maximumWidth: 360
+            Layout.minimumWidth: 0
+            Layout.alignment: Qt.AlignLeading
+            spacing: IA.Appearance.metrics.spacingS
+            IASwitch {
                 objectName: "appearanceTouch"
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
                 text: "Touch targets"
-                checkable: true
+                indicatorPosition: IA.Presentation.Trailing
                 checked: IA.Appearance.density === "touch"
-                onClicked: root.state.setAppearanceOption("density", checked ? "touch" : "compact")
+                onToggled: root.state.setAppearanceOption("density", checked ? "touch" : "compact")
             }
-            IAToolButton {
+            IASwitch {
                 objectName: "appearanceContrast"
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
                 text: "7:1 preview"
-                checkable: true
+                indicatorPosition: IA.Presentation.Trailing
                 checked: IA.Appearance.contrast === "high"
-                onClicked: root.state.setAppearanceOption("contrast", checked ? "high" : "normal")
+                onToggled: root.state.setAppearanceOption("contrast", checked ? "high" : "normal")
             }
-            IAToolButton {
+            IASwitch {
                 id: inputButton
                 objectName: "appearanceEditorToggle"
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
                 text: "Input editor"
-                checkable: true
+                indicatorPosition: IA.Presentation.Trailing
+            }
+            IASwitch {
+                objectName: "appearanceReducedMotion"
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                text: "Reduced motion"
+                indicatorPosition: IA.Presentation.Trailing
+                checked: IA.Appearance.reducedMotion
+                onToggled: root.state.setAppearanceOption("reducedMotion", checked)
             }
         }
         IALabel {
@@ -340,11 +397,6 @@ Item {
                         text: "Serif"
                         onClicked: root.state.setAppearanceToken("typography", "family", "Serif")
                     }
-                    IACheckBox {
-                        text: "Reduced motion"
-                        checked: IA.Appearance.reducedMotion
-                        onClicked: root.state.setAppearanceOption("reducedMotion", checked)
-                    }
                     IAButton {
                         text: "Partial profile"
                         onClicked: root.state.setAppearance({tokens: {colors: {accent: "#8657b8"}}})
@@ -401,6 +453,5 @@ Item {
             message: root.state.appearanceError
             validation: IA.Presentation.Invalid
         }
-    }
     }
 }

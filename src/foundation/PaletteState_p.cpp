@@ -353,6 +353,8 @@ std::shared_ptr<const StateTableData> PaletteState::stateTable(ControlFamily fam
                     recipe.owned.set(i);
         }
         StateTableSharedColors sharedColors;
+        if (family == ControlFamily::TabBar)
+            sharedColors[size_t(StateTableColor::TabCanvas)] = color(ColorRole::canvas);
         if (family == ControlFamily::MenuItem) {
             sharedColors[size_t(StateTableColor::MenuPopup)] = ColorMath::composite(color(ColorRole::popup), backdrop);
             values.set(ControlColor::borderColor,

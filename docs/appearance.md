@@ -10,6 +10,33 @@ appearance data. No special window or parent appearance provider is required.
 This document describes the initial Foundation source API, not a stable theme
 ABI or a claim that the library has passed runtime or visual verification.
 
+## Color Well Ownership
+
+`InterActive.IAColorWell` accepts `colorValue` (default current accent), `label`
+(default "Color"), `presets` (default empty list of `{name, hex}` records), and
+`customColors` (default true). The sample opens a titled quick palette; Default
+is available even with no presets. The optional trailing circle requests the
+consumer's full picker, closing the quick palette before the callback.
+
+`colorSelected(color)`, `defaultRequested()` and `customColorRequested()` are
+requests only: the control never assigns `colorValue`. The consumer applies the
+selection, resolves Default and owns the full picker. Appearance forwarding,
+`resetAppearance()` and diagnostics use the ordinary shared ControlAppearance
+path; no parent provider or color solver is involved.
+
+Its natural capsule height follows the resolved button height, width is twice
+that height, and the selected sample has a fixed `spacingXS` inset. The wheel
+matches the sample height and logical trailing edge. Focus borders never resize
+the sample or artwork. The six-color SVG keeps its original colors and circular
+alpha; a stationary foreground-role rim touches it directly. Only the rainbow
+rotates 0/180 on native circle hover, reversing from its current angle with
+`motion.feedbackDuration`. Reduced motion cancels the owned animation and
+immediately restores zero, including during a return. Plain and custom variants
+have identical outer dimensions. In touch density the outer height is at least
+44; the inner circle retains the approved inset rather than claiming a 44px hit
+region. Native sample/custom buttons have separate focus, accessible names and
+hit regions; square circle corners remain sample territory.
+
 ## Application Input
 
 Import `InterActive.Foundation` for the engine-local `Appearance` singleton.
@@ -616,6 +643,15 @@ proposal; caller-owned labels and surfaces are never rewritten. Exhaustion
 retains deterministic best effort and reports `low-feedback` with measured
 `distance` and `target`. These are IA trial distinction measurements, not WCAG
 criteria. Passive families, including tooltips, do not acquire hover behavior.
+After the original 1x-3x search exhausts, a finite fallback examines weaker
+strengths on the same two rays, strongest first. It enumerates the union of
+actual Qt RGB8 channel transitions (at most 765 boundaries / 766 intervals per
+ray), measures each distinct color once, and checks full/RGB8 readability at
+both interval ends. The joint-label headroom probe retains only the original
+stronger search, so weaker feedback cannot suppress its label repair. Old
+successful results stay exact; if weaker proposals also fail, the original
+best effort and warning stay exact. Interval-end checks are bounded best effort
+for unusual full-precision colored inputs, not a continuous-space optimizer.
 
 Button, tool, delegate, tab and choice tables reserve pairwise distance 4 among
 Rest, Hover, Selected and SelectedHover. An already-distinct selected seed is
@@ -702,11 +738,79 @@ selection, hover or size changes. Qt retains content ownership, implicit sizing,
 mirroring and overflow scrolling; Foundation imports no Controls.
 The `tab` family selects a raised
 `content` segment in light mode and `controlHover` in dark mode. The track is
-finalized once by the same bounded feedback recipe if its seed is too close to
-the segment. Hover reserves the raised segment before deriving its own fill, so
+finalized once by the same bounded feedback recipe, reserving both the raised
+segment and effective canvas at distance 4. Only this track search evaluates on
+canvas; ordinary text diagnostics retain their content/canvas backdrop. Explicit
+application and local backgrounds remain exact, including equal-valued and
+translucent assignments. Sparse local branches carry the same surround input,
+so live canvas changes rederive unowned tracks. Hover reserves the raised segment before deriving its own fill, so
 feedback cannot consume the current segment's color. Tab feedback and focus are evaluated against that finished track,
 not the content surface behind the group. Explicit local colors remain exact;
 Qt still owns current index, keyboard navigation and scrolling.
+The existing 3:1 focused-border rule can therefore choose the label color for
+an unselected light-high tab, or a hovered light tab, rather than the accent.
+The selected segment's focus frame and leading marker are unchanged.
+
+Current enabled tabs and segmented choices share Foundation's `SegmentBackground`,
+a shared owner of two full-size native rounded `ControlBackground` frames. A
+complementary hard clip assigns each pixel to exactly one frame; the leading
+frame uses the exact effective accent (left LTR, right RTL). Both frames keep
+identical geometry and the original native border, including antialiasing.
+The cap extent is the finished focused border width plus two logical
+pixels: four normally, five in high contrast. Focus paints the unchanged native
+inward frame over the cap, leaving two pixels inside; focus never resizes it.
+Hover, press and inactive selection retain the cap and existing finished state
+fills. Unselected and disabled members have no cap. Live accent/direction/contrast
+changes preserve the native control and background. Local fill, focus and radius
+overrides keep their existing ownership; a consumer's custom background replaces
+this artwork. The group track and spacing are unchanged.
+
+### Segmented choices and switch rows
+
+`IASegmentedControl` selects a value, rather than a page. Its entries are
+`IASegmentedButton` children. It shares the tab track, spacingXS gap, tab state
+palette and appearance aliases; no separate tab-versus-segmented visual treatment
+is defined yet. The container manages equal member widths/heights through public
+bindings. Its natural size comes from member implicit dimensions, and a narrow
+allocation scrolls rather than overlapping labels. Taking a member out restores
+its previous width/height values or bindings.
+
+```qml
+IASegmentedControl {
+    width: 300
+    Accessible.name: "Appearance"
+    onActivated: index => application.setDarkMode(index === 1)
+    IASegmentedButton { text: "Light" }
+    IASegmentedButton { text: "Dark" }
+}
+IASwitch {
+    width: 300
+    text: "Touch targets"
+    indicatorPosition: IA.Presentation.Trailing
+}
+```
+
+`currentIndex`/`currentItem` and add/insert/move/take/remove remain native Container
+APIs. Use `setCurrentIndex(index)` to retain an existing index binding; `-1` clears
+selection and an out-of-range index has no current item. First nonempty construction
+selects the native first index. Checking another member programmatically updates
+the index without `activated`. Clear through the container, not by unchecking an
+individual member. Pointer, Space and accessible activation use native button
+semantics. `activated(index)` reports a changed interactive selection only, not
+programmatic updates, structural changes or activating an already checked member.
+Native `click()`/`animateClick()` also simulate interaction; the group does not call
+them internally. Left/Right selects and focuses the next enabled, visible member,
+mirrored in RTL, without wrapping. Disabling/hiding the selected member preserves
+selection. Group and member accessibility roles are Grouping and RadioButton.
+
+`IASwitch.indicatorPosition` defaults to `IA.Presentation.Leading`, preserving
+existing rows. `Trailing` puts the label in the leading content lane and the switch
+in the trailing lane, mirrored once in RTL. Labels stay single-line and elide;
+outer control padding, native drag/Space behavior and focus geometry are unchanged.
+The shared choice lane keeps one logical horizontal anchor and mirrors its edge.
+Live direction and Leading/Trailing changes never transiently set opposing anchors,
+so check, radio and switch indicators retain natural dimensions. Switch thumb
+direction remains Qt's `visualPosition`, without a second mirror.
 
 `IAMenuSeparator` and `IAToolSeparator` retain `foregroundColor`,
 `appearanceDiagnostics` and `resetAppearance()`, but use the sparse Foundation
@@ -846,6 +950,27 @@ equal-valued assignments/replacements with no specific value notification.
 without changing source, family, tone, validation, global input or interaction data.
 IA controls expose this as `resetAppearance()`.
 
+## Popup Direction
+
+Direction is Qt layout inheritance, not appearance input. `IAPopup`, `IADialog`,
+`IAMenu` and `IAToolTip` share an internal nonvisual Foundation adapter for Qt's
+separate popup-window boundary. It receives the public overlay/content objects;
+the inherited value is the first source ancestor with
+`LayoutMirroring.childrenInherit`, using its effective `enabled` value. Thus an
+overlay's own enabled bit without child inheritance does not override its
+ancestor's child value. No helper Item is inserted into the overlay.
+Each root gates the adapter's content input until its own component completion,
+so reading that input cannot prematurely execute Qt's deferred custom content.
+Later content replacement remains declaratively observed.
+Nonvisual appearance helpers belong to explicit root properties, not the public
+content/model route, so they do not prematurely begin deferred custom content.
+
+Only the popup-exclusive native Window receives enabled/childrenInherit bindings.
+Item hosting and host migration never write the owner's Window properties. The
+target is reclassified on content-window changes, replacement and completion,
+not on the earlier source-overlay notification. This is an implementation detail,
+not a new popup option, locale mutation or application direction provider.
+
 ## Dialog Composition
 
 `IADialogButtonBox.principalAction` controls visual prominence of its standard
@@ -856,6 +981,17 @@ standard-button enum to choose another completion, or `NoButton` for none.
 Missing or non-completion choices produce no Primary button; Cancel/Close stay
 neutral and Discard stays Destructive. Custom buttons retain their own tones.
 
+Horizontal footer layout publishes a component-local snapshot during Qt Quick's
+normal polish phase. `contentWidth` is the allocated lane (at least the available
+width or actual button extent), not the natural button extent; the ListView's
+content width includes its inline alignment spacers. `implicitContentWidth`
+retains Qt's native implicit minimum. Horizontal alignment uses actual button
+widths, including explicit custom widths; fill-mode `implicitWidth` remains a
+natural minimum instead of referring back to stretched allocation. Native
+vertical sizing and model/index/focus/input behavior remain owned by Qt.
+The Controls-local layout helper and underscored bindings are implementation
+details, not an application API or a way to synchronously force polishing.
+
 `IADialog` uses `dialogMinWidth`, not the menu width floor. Its popup padding
 defines the header, content and footer edges; the owned footer takes those same
 four insets explicitly, without offsets. `ControlAppearance.headingPixelSize`
@@ -865,6 +1001,61 @@ assignments, win for both ordinary text and the heading; reset resumes the live
 roles. The dialog forwards ordinary typography to its standard buttons and
 heading typography to its title. Surface/radius overrides remain on the dialog
 surface, not its buttons; application content remains application-owned.
+
+Put an ordinary body layout among the dialog's children, not in `contentItem`:
+
+```qml
+import QtQuick.Layouts
+import QtQuick.Templates as T
+import InterActive
+
+IADialog {
+    width: 420
+    title: "Preferences"
+    standardButtons: T.Dialog.Ok | T.Dialog.Cancel
+    ColumnLayout {
+        width: parent.width
+        IATextField { Layout.fillWidth: true }
+    }
+}
+```
+
+The default `bodyData` list forwards visual and nonvisual objects to the owned
+natural-size host. A single body's implicit size supplies the natural size;
+multiple visual children need an application-owned layout. Bind that layout's
+width to `parent.width`, and expose its natural `implicitHeight` independently
+of viewport height. The body host always receives the actual viewport width.
+Do not anchor natural body height to the viewport or add a redundant outer
+ScrollView. A deliberately bounded nested editor may still own its own scroll.
+
+The dialog's implicit height includes body, header, footer, padding, spacing and
+constant edge gaps. Its default actual height grows to fit, capped by the item
+host window's height or the Window popup's host-screen available height, less margins.
+Explicit width and height remain consumer-owned overrides; `dialogMinWidth` is
+an implicit-width floor. Window sizing never uses the popup's own window height.
+`ScreenGeometry` is a public-Qt data adapter with an explicit `QQuickWindow`
+input and read-only per-screen `availableGeometry`; it observes screen changes,
+available-geometry updates and lifetime. It never substitutes virtual-desktop
+geometry. Without a pre-show host, the dialog falls back to its independent
+natural height until the real host is available.
+
+Only the body scrolls vertically. A stable trailing lane, mirrored in RTL,
+reserves the actual vertical scrollbar width plus `spacingXS`, even when the
+bar is hidden. This dialog-local composition does not change general scrolling
+controls or add a global scrollbar setting. Hidden edges alone show a 1px
+separator and a 16px inward surface fade; `spacingS` gaps remain when hidden.
+Reduced motion removes fades, not lines or spacing.
+
+The structural title row elides its title and provides a square, accessible
+Close icon when its `IADialogButtonBox.hasRejectAction` query is true. That live
+query observes standard and custom RejectRole buttons, insertion/removal and
+role changes. The icon calls the native dialog `reject()` path. Qt continues
+to own standard-button actions, modality, keyboard behavior and popup focus.
+
+Migration: replace `contentItem: MyBody { ... }` with `MyBody { width:
+parent.width; ... }`, remove the former body's outer scrolling and height cap,
+and retain any distinct bounded editor inside it. Replacing `contentItem`
+deliberately replaces the owned viewport and is not the ordinary-body API.
 
 ## Verification Boundary
 

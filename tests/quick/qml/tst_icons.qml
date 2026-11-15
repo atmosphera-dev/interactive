@@ -12,9 +12,85 @@ Rectangle {
     height: 200
     color: "white"
     Component { id: consumerComponent; Consumer.IconConsumer {} }
+    Component { id: surfaceComponent; IA.ColorPlaneSurface { width: 64; height: 64; hue: 0.67 } }
+    Component { id: themeComponent; IA.ThemeIconItem {
+        width: 64; height: 64
+        name: Qt.resolvedUrl("iconconsumer/icons/consumer-mark.svg").toString().replace("file://", "")
+        color: "#c04020"
+    } }
+    Loader { id: rendererLoader; active: false }
+    Window { id: migrationWindow; width: 160; height: 160; visible: false; color: "white" }
     TestCase {
         name: "IconSources"
         when: windowShown
+
+        function test_rendererDestruction_data(): var {
+            return [{tag:"plane-destroy",plane:true,loader:false},{tag:"icon-destroy",plane:false,loader:false},
+                    {tag:"plane-loader",plane:true,loader:true},{tag:"icon-loader",plane:false,loader:true}];
+        }
+        function test_rendererDestruction(data): void {
+            const component=data.plane?surfaceComponent:themeComponent;
+            if(data.loader) {
+                rendererLoader.sourceComponent=component;
+                rendererLoader.active=true;
+                tryCompare(rendererLoader,"status",Loader.Ready);
+                verify(TestProbe.render(rendererLoader.item));
+                rendererLoader.active=false;
+                compare(rendererLoader.item,null);
+            } else {
+                const renderer=component.createObject(scene);
+                verify(renderer!==null);
+                verify(TestProbe.render(renderer));
+                renderer.destroy();
+                wait(0); // Deliver deferred deletion while the host window stays alive.
+            }
+            verify(TestProbe.render(scene));
+            console.info("IA_RENDERER_DESTROYED "+data.tag);
+        }
+        function test_rendererMigration_data(): var {
+            return [{tag:"plane",plane:true},{tag:"icon",plane:false}];
+        }
+        function test_rendererMigration(data): void {
+            const renderer=(data.plane?surfaceComponent:themeComponent).createObject(null);
+            verify(renderer!==null);
+            function checkRaster(dpr) {
+                if(data.plane) {
+                    const cache=TestProbe.colorPlaneCache(renderer);
+                    compare(cache.dpr,dpr);
+                    compare(cache.pixelWidth,Math.ceil(renderer.width*dpr));
+                    compare(TestProbe.paintedRasterPixel(renderer,cache.pixelWidth-1,Math.floor(cache.pixelHeight/2),dpr),"#ffffff");
+                } else {
+                    compare(renderer.available,true);
+                    compare(TestProbe.paintedRasterPixel(renderer,Math.floor(32*dpr),Math.floor(32*dpr),dpr),"#c04020");
+                }
+            }
+            checkRaster(1);
+            renderer.parent=scene;
+            verify(TestProbe.render(renderer));
+            checkRaster(TestProbe.effectiveDpr(renderer));
+            renderer.parent=null;
+            checkRaster(1);
+            migrationWindow.visible=true;
+            renderer.parent=migrationWindow.contentItem;
+            tryVerify(()=>TestProbe.exposed(renderer));
+            verify(TestProbe.render(renderer));
+            const dpr=TestProbe.effectiveDpr(renderer);
+            checkRaster(dpr);
+            renderer.parent=scene;
+            verify(TestProbe.render(renderer));
+            checkRaster(dpr);
+            if(!data.plane) {
+                renderer.color="#2040c0";
+                verify(TestProbe.render(renderer));
+                compare(TestProbe.paintedRasterPixel(renderer,Math.floor(32*dpr),Math.floor(32*dpr),dpr),"#2040c0");
+                renderer.name="__ia_missing_lifetime_icon__";
+                compare(renderer.available,false);
+                compare(TestProbe.paintedRasterPixel(renderer,0,0,dpr).a,0);
+            }
+            renderer.destroy();wait(0);
+            migrationWindow.visible=false;
+            verify(TestProbe.render(scene));
+        }
 
         function iconIn(item: Item): IA.Icon {
             for (const child of item.children) {
@@ -63,7 +139,10 @@ Rectangle {
             const pixels = grabImage(scene);
             verify(pixels.width > 0 && pixels.height > 0);
             const point = icon.mapToItem(scene, icon.width / 2, icon.height / 2);
-            const background = (control.background as Rectangle).color;
+            const frame = data.index === 2 ? findChild(control.background, "iaSegmentFrame") as Rectangle
+                : control.background as Rectangle;
+            verify(frame !== null);
+            const background = frame.color;
             const alpha = 128 / 255;
             const expected = data.mode === "tinted"
                 ? Qt.rgba(192 / 255 * alpha + (background.r * background.a + 1 - background.a) * (1 - alpha),

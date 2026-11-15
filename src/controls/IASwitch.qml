@@ -5,6 +5,7 @@ import InterActive.Foundation as IA
 
 T.Switch {
     id: control
+    property int indicatorPosition: IA.Presentation.Leading
     property alias backgroundColor: appearance.backgroundColor
     property alias foregroundColor: appearance.foregroundColor
     property alias hoverBackgroundColor: appearance.hoverBackgroundColor
@@ -46,6 +47,7 @@ T.Switch {
         active: control.Window.active
         focused: control.visualFocus
         mirrored: control.mirrored
+        indicatorPosition: control.indicatorPosition
         spacing: control.spacing
         text: control.text
         font: control.font

@@ -11,7 +11,6 @@ namespace InterActive {
 ThemeIconItem::ThemeIconItem(QQuickItem *parent) : QQuickPaintedItem(parent)
 {
     setAntialiasing(true);
-    connect(this, &QQuickItem::windowChanged, this, &ThemeIconItem::refresh);
 }
 
 void ThemeIconItem::setName(const QString &name)
@@ -42,7 +41,7 @@ void ThemeIconItem::geometryChange(const QRectF &geometry, const QRectF &oldGeom
 void ThemeIconItem::itemChange(ItemChange change, const ItemChangeData &data)
 {
     QQuickPaintedItem::itemChange(change, data);
-    if (change == ItemDevicePixelRatioHasChanged)
+    if (change == ItemSceneChange || change == ItemDevicePixelRatioHasChanged)
         refresh();
 }
 

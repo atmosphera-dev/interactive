@@ -10,9 +10,68 @@ Item {
     id: scene
     width: 800
     height: 640
+    property bool hostRtl: false
+    Binding {
+        target: scene.Window.window ? scene.Window.window.LayoutMirroring : null
+        property: "enabled"
+        value: scene.hostRtl
+        restoreMode: Binding.RestoreBindingOrValue
+    }
+    Binding {
+        target: scene.Window.window ? scene.Window.window.LayoutMirroring : null
+        property: "childrenInherit"
+        value: true
+        restoreMode: Binding.RestoreBindingOrValue
+    }
     Component { id: popupComponent; PopupFixture {} }
     Component { id: buttonBoxComponent; IADialogButtonBox {} }
     Component { id: emptyDialogComponent; IADialog {} }
+    Component {
+        id: customWidthDialogComponent
+        IADialog {
+            contentItem: Item { implicitWidth: 700; implicitHeight: 80 }
+        }
+    }
+    Component { id: customButtonComponent; IAButton { text: "Leave unchanged"; T.DialogButtonBox.buttonRole: T.DialogButtonBox.RejectRole } }
+    Component {
+        id: scrollingDialogComponent
+        IADialog {
+            id: dialog
+            width: 380
+            title: "Preferences with a title that must elide at a narrow width"
+            property int rows: 1
+            standardButtons: T.Dialog.Apply | T.Dialog.Cancel
+            focus: true
+            modal: true
+            Column {
+                width: parent.width
+                spacing: IA.Appearance.metrics.spacingS
+                IATextField { objectName: "firstDraft"; width: parent.width; text: "Retained draft" }
+                Repeater {
+                    model: dialog.rows
+                    Rectangle { width: parent ? parent.width : 0; height: 44; color: IA.Appearance.colors.accent }
+                }
+                IATextField { objectName: "lastDraft"; width: parent.width; text: "Final field" }
+            }
+            QtObject { objectName: "nonvisualBodyChild" }
+        }
+    }
+    SignalSpy { id: rejectedSpy; signalName: "rejected" }
+    // Like the existing playground host fixtures, a static Window is owned by
+    // the fixture, not by QtTest's temporary-object destroy() queue.
+    Window {
+        id: budgetWindow
+        transientParent: scene.Window.window
+        property int budgetHeight: 640
+        flags: Qt.Dialog
+        width: 800
+        minimumWidth: 800
+        maximumWidth: 800
+        height: budgetHeight
+        minimumHeight: budgetHeight
+        maximumHeight: budgetHeight
+        Item { objectName: "budgetParent"; width: 180; height: 140 }
+    }
     Component { id: primaryAppearanceComponent; IA.ControlAppearance { source: IA.Appearance; tone: IA.Presentation.Primary } }
 
     TestCase {
@@ -38,6 +97,7 @@ Item {
             fixture.menu.close();
             fixture.dialog.close();
             fixture.popup.close();
+            scene.hostRtl = false;
             IA.Appearance.input = {};
         }
 
@@ -45,11 +105,36 @@ Item {
             verify(TestProbe.click(item, item.width / 2, item.height / 2));
         }
 
+        function test_replacementContentNaturalWidth(): void {
+            const dialog = createTemporaryObject(customWidthDialogComponent, scene, {parent: scene}) as IADialog;
+            verify(dialog !== null);
+            compare(dialog.implicitWidth, 700 + dialog.leftPadding + dialog.rightPadding);
+            dialog.contentItem.implicitWidth = 720;
+            compare(dialog.implicitWidth, 720 + dialog.leftPadding + dialog.rightPadding);
+        }
+
+        function iconIn(item: Item): IA.Icon {
+            for (const child of item.children) {
+                const icon = child as IA.Icon;
+                if (icon !== null && icon.visible)
+                    return icon;
+                const nested = iconIn(child);
+                if (nested !== null)
+                    return nested;
+            }
+            return null;
+        }
+
         function openWithKeyboard(opener: Item, popup: T.Popup, mode: int): void {
             fixture.popupMode = mode;
             opener.forceActiveFocus(Qt.TabFocusReason);
             tryCompare(opener, "activeFocus", true);
-            verify(TestProbe.keyClick(opener, Qt.Key_Space));
+            if (mode === T.Popup.Window && TestProbe.isWayland()) {
+                tryVerify(function() { return TestProbe.nativeKeyHostReady(opener); });
+                verify(TestProbe.nativeKeyClick(opener, Qt.Key_Space));
+            } else {
+                verify(TestProbe.keyClick(opener, Qt.Key_Space));
+            }
             assertHost(popup, mode);
         }
 
@@ -309,7 +394,7 @@ Item {
                 buttonRight = Math.max(buttonRight, button.mapToItem(background, button.width, 0).x);
             }
             fuzzyCompare(buttonRight, contentRight, 1, "The actual trailing button ends at the content edge");
-            const title = dialog.header as IALabel;
+            const title = findChild(dialog, "iaTitle") as IALabel;
             verify(title !== null);
             fuzzyCompare(title.mapToItem(background, title.leftPadding, 0).x, contentLeft, 1,
                          "Title and content share the leading inset");
@@ -360,6 +445,236 @@ Item {
             compare(dialog.implicitWidth, 260);
             IA.Appearance.input = {tokens: {metrics: {dialogMinWidth: 300, menuMinWidth: 20}}};
             compare(dialog.implicitWidth, 300);
+        }
+
+        function test_dialogOwnedViewport_data(): var {
+            const rows = [];
+            for (const host of modes())
+                for (const scheme of ["light", "dark"])
+                    for (const contrast of ["normal", "high"])
+                        for (const rtl of [false, true])
+                            for (const touch of [false, true])
+                                rows.push({tag: host.tag + "-" + scheme + "-" + contrast + "-" + rtl + (touch ? "-touch" : ""),
+                                    mode: host.mode, scheme: scheme, contrast: contrast, rtl: rtl, touch: touch});
+            return rows;
+        }
+
+        function test_dialogOwnedViewport(data: var): void {
+            IA.Appearance.input = {scheme: data.scheme, contrast: data.contrast,
+                density: data.touch ? "touch" : "compact", fontScale: data.touch ? 1.5 : 1};
+            const dialog = createTemporaryObject(scrollingDialogComponent, fixture, {parent: fixture, popupType: data.mode}) as IADialog;
+            verify(dialog !== null);
+            scene.hostRtl = data.rtl;
+            dialog.open();
+            assertHost(dialog, data.mode);
+            const scroll = findChild(dialog, "iaDialogScroll") as IAScrollView;
+            const view = findChild(dialog, "iaDialogViewport") as Flickable;
+            const body = findChild(dialog, "iaDialogBody") as T.Pane;
+            const top = findChild(dialog, "iaDialogTopEdge") as Rectangle;
+            const bottom = findChild(dialog, "iaDialogBottomEdge") as Rectangle;
+            const topFade = findChild(dialog, "iaDialogTopFade") as Rectangle;
+            const bottomFade = findChild(dialog, "iaDialogBottomFade") as Rectangle;
+            const close = findChild(dialog, "iaDialogClose") as IAToolButton;
+            const draft = findChild(dialog, "firstDraft") as IATextField;
+            const last = findChild(dialog, "lastDraft") as IATextField;
+            verify(scroll !== null && view !== null && body !== null && top !== null && bottom !== null
+                && topFade !== null && bottomFade !== null && close !== null && draft !== null && last !== null);
+            verify(findChild(dialog, "nonvisualBodyChild") !== null);
+            verify(view.contentHeight <= view.height + 0.5, "A fitting body is fully visible without scrolling");
+            fuzzyCompare(dialog.height, dialog.implicitHeight, 0.5);
+            compare(top.visible, false);
+            compare(bottom.visible, false);
+            compare(scroll.T.ScrollBar.vertical.visible, false);
+            const width = view.width;
+            const lane = scroll.T.ScrollBar.vertical.width + IA.Appearance.metrics.spacingXS;
+            fuzzyCompare(scroll.width - view.width, lane, 0.5);
+            fuzzyCompare(view.x, data.rtl ? lane : 0, 0.5);
+            const gap = view.mapToItem(dialog.contentItem, 0, 0).y - top.y - top.height;
+            fuzzyCompare(gap, IA.Appearance.metrics.spacingS, 0.5);
+            fuzzyCompare(bottom.y - view.mapToItem(dialog.contentItem, 0, view.height).y, gap, 0.5);
+            fuzzyCompare(top.width, dialog.width, 0.5);
+            fuzzyCompare(topFade.mapToItem(view, 0, 0).x, 0, 0.5);
+            fuzzyCompare(topFade.width, view.width, 0.5);
+            fuzzyCompare(bottomFade.mapToItem(view, 0, 0).x, 0, 0.5);
+            fuzzyCompare(bottomFade.width, view.width, 0.5);
+            compare(close.Accessible.name, "Close");
+            verify(String(close.icon.source).indexOf("close.svg") >= 0);
+            fuzzyCompare(close.width, close.height, 0.5);
+            const closePoint = close.mapToItem(dialog.header, 0, 0);
+            fuzzyCompare(closePoint.x, data.rtl ? 0 : dialog.width - close.width, 0.5,
+                "Close occupies the structural trailing header slot");
+            const icon = iconIn(close.contentItem);
+            verify(icon !== null);
+            tryCompare(icon, "available", true, 5000, "The real close asset renders");
+            const iconPoint = icon.mapToItem(close, 0, 0);
+            fuzzyCompare(iconPoint.x, (close.width - icon.width) / 2, 1);
+            fuzzyCompare(iconPoint.y, (close.height - icon.height) / 2, 1);
+            fuzzyCompare(iconPoint.x, iconPoint.y, 1);
+
+            dialog.rows = 40;
+            tryVerify(function() { return view.contentHeight > view.height; });
+            verify(TestProbe.render(view));
+            verify(dialog.height <= dialog._heightBudget + 0.5);
+            compare(dialog._hostGeometry.availableGeometry, TestProbe.screenAvailableGeometry(fixture));
+            console.info("IA_DIALOG_GROWTH " + JSON.stringify({mode: data.mode,
+                natural: dialog.implicitHeight, actual: dialog.height, budget: dialog._heightBudget,
+                body: view.contentHeight, viewport: view.height}));
+            fuzzyCompare(view.width, width, 0.5, "Lane width does not change when overflowing");
+            compare(top.visible, false);
+            compare(bottom.visible, true);
+            compare(bottomFade.visible, true);
+            mouseWheel(view, view.width / 2, view.height / 2, 0, -120);
+            tryVerify(function() { return view.contentY > view.originY; });
+            scroll.forceActiveFocus(Qt.TabFocusReason);
+            const beforeKey = view.contentY;
+            verify(TestProbe.keyClick(scroll, Qt.Key_Down));
+            tryVerify(function() { return view.contentY > beforeKey; });
+            compare(top.visible, true);
+            compare(bottom.visible, true);
+            compare(topFade.visible, true);
+            fuzzyCompare(view.mapToItem(dialog.contentItem, 0, 0).y - top.y - top.height, gap, 0.5);
+            verify(TestProbe.render(view));
+            const root = TestProbe.hostWindow(view).contentItem;
+            const pixels = grabImage(root);
+            const point = top.mapToItem(root, top.width / 2, 0.5);
+            fuzzyCompare(pixels.pixel(Math.floor(point.x * pixels.width / root.width),
+                Math.floor(point.y * pixels.height / root.height)), IA.Appearance.colors.separator, 2,
+                "The hidden edge paints the real separator-role pixel");
+            const fadePoint = view.mapToItem(root, view.width / 2, 0.5);
+            fuzzyCompare(pixels.pixel(Math.floor(fadePoint.x * pixels.width / root.width),
+                Math.floor(fadePoint.y * pixels.height / root.height)), dialog.backgroundColor, 10,
+                "The inward fade paints the resolved surface over real contrasting body pixels");
+            view.contentY = view.originY + view.contentHeight - view.height;
+            verify(TestProbe.render(view));
+            compare(top.visible, true);
+            compare(bottom.visible, false);
+            compare(bottomFade.visible, false);
+            const lastPoint = last.mapToItem(view, 0, 0);
+            verify(lastPoint.y >= -0.5 && lastPoint.y + last.height <= view.height + 0.5, "Final field reachable");
+            click(last);
+            tryCompare(last, "activeFocus", true);
+            verify(TestProbe.keyClick(last, Qt.Key_A, Qt.ControlModifier));
+            const selected = last.selectedText;
+            IA.Appearance.input = {scheme: data.scheme, contrast: data.contrast, reducedMotion: true,
+                density: data.touch ? "touch" : "compact", fontScale: data.touch ? 1.5 : 1};
+            verify(TestProbe.render(view));
+            compare(top.visible, true);
+            compare(topFade.visible, false);
+            compare(last.text, "Final field");
+            compare(last.selectedText, selected);
+            verify(last.activeFocus);
+            compare(draft.text, "Retained draft");
+            dialog.width = 340;
+            verify(TestProbe.render(view));
+            fuzzyCompare(body.width, view.width, 0.5);
+            fuzzyCompare(scroll.width - view.width, lane, 0.5);
+            const heading = findChild(dialog, "iaTitle") as IALabel;
+            verify(heading !== null && heading.truncated, "Title elides rather than wrapping");
+            dialog.width = 380;
+            dialog.rows = 1;
+            tryVerify(function() { return view.contentHeight <= view.height + 0.5; });
+            verify(TestProbe.render(view));
+            compare(top.visible, false);
+            compare(bottom.visible, false);
+            fuzzyCompare(view.width, width, 0.5);
+            const fittingHeight = dialog.height;
+            fixture.height = 210;
+            verify(TestProbe.render(view));
+            fuzzyCompare(dialog.height, fittingHeight, 0.5, "Local parent size is not the containing window budget");
+            fixture.height = 640;
+            dialog.height = 220;
+            dialog.width = 340;
+            verify(TestProbe.render(view));
+            fuzzyCompare(dialog.height, 220, 0.5, "Explicit consumer height remains authoritative");
+            const naturalWidth = dialog.implicitWidth;
+            dialog.title += " with substantially more natural title width";
+            dialog.rows = 80;
+            tryVerify(function() { return view.contentHeight > view.height && dialog.implicitWidth > naturalWidth; });
+            verify(TestProbe.render(view));
+            fuzzyCompare(dialog.height, 220, 0.5, "Live content growth preserves explicit height");
+            fuzzyCompare(dialog.width, 340, 0.5, "Live implicit width change preserves explicit width");
+            rejectedSpy.target = dialog;
+            rejectedSpy.clear();
+            click(close);
+            tryCompare(dialog, "visible", false);
+            compare(rejectedSpy.count, 1);
+            rejectedSpy.target = null;
+        }
+
+        function test_dialogHostWindowBudget_data(): var { return modes(); }
+        function test_dialogHostWindowBudget(data: var): void {
+            const host = budgetWindow;
+            host.budgetHeight = 640;
+            host.show();
+            const parentItem = findChild(host, "budgetParent") as Item;
+            verify(parentItem !== null);
+            tryVerify(function() { return TestProbe.exposed(parentItem); });
+            tryCompare(host, "height", 640);
+            const dialog = createTemporaryObject(scrollingDialogComponent, parentItem,
+                {parent: parentItem, popupType: data.mode, rows: 40}) as IADialog;
+            verify(dialog !== null);
+            dialog.open();
+            tryCompare(dialog, "opened", true);
+            const view = findChild(dialog, "iaDialogViewport") as Flickable;
+            verify(view !== null);
+            tryVerify(function() { return TestProbe.exposed(view); });
+            verify(TestProbe.render(view));
+            const screen = TestProbe.screenAvailableGeometry(parentItem);
+            const budget = data.mode === T.Popup.Item ? host.height : screen.height;
+            fuzzyCompare(dialog.height, budget - dialog.topMargin - dialog.bottomMargin, 0.5);
+            verify(view.contentHeight > view.height);
+            host.budgetHeight = 480;
+            tryCompare(host, "height", 480);
+            const resizedBudget = data.mode === T.Popup.Item ? host.height : screen.height;
+            tryVerify(function() { return Math.abs(dialog.height - resizedBudget + dialog.topMargin + dialog.bottomMargin) <= 0.5; });
+            verify(TestProbe.render(view));
+            verify(view.contentHeight > view.height);
+            console.info("IA_DIALOG_HOST_BUDGET " + JSON.stringify({mode: data.mode, hostHeight: host.height,
+                localParentHeight: parentItem.height, actual: dialog.height, screen: screen}));
+            dialog.close();
+            host.close();
+        }
+
+        function test_dialogRejectQueryUpdates_data(): var { return test_dialogOwnedViewport_data(); }
+        function test_dialogRejectQueryUpdates(data: var): void {
+            IA.Appearance.input = {scheme: data.scheme, contrast: data.contrast};
+            const dialog = createTemporaryObject(emptyDialogComponent, fixture, {parent: fixture, title: "Actions", width: 340, popupType: data.mode}) as IADialog;
+            verify(dialog !== null);
+            scene.hostRtl = data.rtl;
+            dialog.open();
+            tryCompare(dialog, "opened", true);
+            const box = dialog.footer as IADialogButtonBox;
+            const close = findChild(dialog, "iaDialogClose") as IAToolButton;
+            verify(box !== null && close !== null);
+            tryVerify(function() { return TestProbe.exposed(dialog.contentItem); });
+            for (const buttons of [T.Dialog.Ok, T.Dialog.Apply, T.Dialog.Cancel, T.Dialog.Close, T.Dialog.Ok]) {
+                dialog.standardButtons = buttons;
+                verify(TestProbe.render(box));
+                compare(box.hasRejectAction, buttons === T.Dialog.Cancel || buttons === T.Dialog.Close);
+                compare(close.visible, box.hasRejectAction);
+            }
+            const custom = createTemporaryObject(customButtonComponent, scene) as IAButton;
+            verify(custom !== null);
+            box.addItem(custom);
+            tryCompare(box, "hasRejectAction", true);
+            compare(close.visible, true);
+            custom.T.DialogButtonBox.buttonRole = T.DialogButtonBox.ApplyRole;
+            compare(box.hasRejectAction, false);
+            compare(close.visible, false);
+            custom.T.DialogButtonBox.buttonRole = T.DialogButtonBox.RejectRole;
+            compare(close.visible, true);
+            rejectedSpy.target = dialog;
+            rejectedSpy.clear();
+            click(close);
+            tryCompare(dialog, "visible", false);
+            compare(rejectedSpy.count, 1, "A custom RejectRole provides the same native close outcome");
+            rejectedSpy.target = null;
+            dialog.open();
+            tryCompare(dialog, "opened", true);
+            box.removeItem(custom);
+            compare(box.hasRejectAction, false);
+            compare(close.visible, false);
+            dialog.close();
         }
 
         function test_dialogApplyCancelAndModalBlock(data: var): void {

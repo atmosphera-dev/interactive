@@ -16,6 +16,8 @@ Window {
     visible: true
     title: "InterActive / Foundations"
     color: IA.Appearance.colors.canvas
+    LayoutMirroring.enabled: window.rightToLeft
+    LayoutMirroring.childrenInherit: true
 
     property string initialScene: "default"
     property bool windowPopups: false
@@ -47,8 +49,6 @@ Window {
 
     Item {
         anchors.fill: parent
-        LayoutMirroring.enabled: window.rightToLeft
-        LayoutMirroring.childrenInherit: true
         RowLayout {
             anchors.fill: parent
             spacing: 0
@@ -117,14 +117,14 @@ Window {
         modal: false
         closePolicy: T.Popup.CloseOnEscape
         width: Math.min(980, window.width - 2 * margins)
-        height: Math.min(640, window.height - 2 * margins)
         x: (window.width - width) / 2
         y: (window.height - height) / 2
         standardButtons: T.Dialog.Close
-        contentItem: AppearanceEditor {
+        AppearanceEditor {
             id: appearanceEditor
+            objectName: "appearanceEditor"
+            width: parent.width
             pickerParentWindow: window
-            maximumHeight: window.height * 0.55
         }
     }
 }

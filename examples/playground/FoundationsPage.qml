@@ -566,7 +566,6 @@ Item {
         parent: root
         anchors.centerIn: parent
         width: Math.min(440, root.width - 2 * IA.Appearance.metrics.spacingS)
-        height: Math.min(implicitHeight, root.height - 2 * margins)
         margins: IA.Appearance.metrics.spacingS
         title: "Edit profile"
         modal: true
@@ -578,51 +577,46 @@ Item {
                 accept();
         }
         onRejected: root.state.cancelDialog()
-        contentItem: IAScrollView {
-            id: dialogScroll
-            contentWidth: availableWidth
-            implicitHeight: dialogForm.implicitHeight
-            ColumnLayout {
-                id: dialogForm
-                width: dialogScroll.availableWidth
-                spacing: IA.Appearance.metrics.spacingL
-                IALabel {
+        ColumnLayout {
+            id: dialogForm
+            width: parent.width
+            spacing: IA.Appearance.metrics.spacingL
+            IALabel {
+                Layout.fillWidth: true
+                text: "Apply commits these details and the current preferences. Cancel leaves your form draft and committed profile unchanged."
+                foregroundColor: IA.Appearance.colors.secondaryText
+                wrapMode: Text.Wrap
+            }
+            IAFieldRow {
+                Layout.fillWidth: true
+                label: "Display name"
+                IATextField {
+                    objectName: "dialogNameField"
                     Layout.fillWidth: true
-                    text: "Apply commits these details and the current preferences. Cancel leaves your form draft and committed profile unchanged."
-                    foregroundColor: IA.Appearance.colors.secondaryText
-                    wrapMode: Text.Wrap
+                    text: root.state.dialogName
+                    selectByMouse: true
+                    Accessible.name: "Dialog display name"
+                    onTextEdited: root.state.dialogName = text
                 }
-                IAFieldRow {
+            }
+            IAFieldRow {
+                Layout.fillWidth: true
+                label: "Address"
+                IATextField {
+                    objectName: "dialogEmailField"
                     Layout.fillWidth: true
-                    label: "Display name"
-                    IATextField {
-                        objectName: "dialogNameField"
-                        Layout.fillWidth: true
-                        text: root.state.dialogName
-                        selectByMouse: true
-                        Accessible.name: "Dialog display name"
-                        onTextEdited: root.state.dialogName = text
-                    }
+                    text: root.state.dialogEmail
+                    selectByMouse: true
+                    Accessible.name: "Dialog example address"
+                    onTextEdited: root.state.dialogEmail = text
                 }
-                IAFieldRow {
-                    Layout.fillWidth: true
-                    label: "Address"
-                    IATextField {
-                        objectName: "dialogEmailField"
-                        Layout.fillWidth: true
-                        text: root.state.dialogEmail
-                        selectByMouse: true
-                        Accessible.name: "Dialog example address"
-                        onTextEdited: root.state.dialogEmail = text
-                    }
-                }
-                IALabel {
-                    Layout.fillWidth: true
-                    visible: !root.state.validDialog
-                    text: "Enter a display name and a name@example.test address to apply."
-                    foregroundColor: IA.Appearance.colors.errorText
-                    wrapMode: Text.Wrap
-                }
+            }
+            IALabel {
+                Layout.fillWidth: true
+                visible: !root.state.validDialog
+                text: "Enter a display name and a name@example.test address to apply."
+                foregroundColor: IA.Appearance.colors.errorText
+                wrapMode: Text.Wrap
             }
         }
     }

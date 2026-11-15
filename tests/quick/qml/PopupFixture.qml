@@ -108,7 +108,8 @@ Item {
         closePolicy: T.Popup.CloseOnEscape
         onApplied: fixture.committedName = dialogEditor.text
         onOpened: dialogEditor.forceActiveFocus(Qt.TabFocusReason)
-        contentItem: ColumnLayout {
+        ColumnLayout {
+            width: parent.width
             IALabel { text: "Display name" }
             IATextField {
                 id: dialogEditor
