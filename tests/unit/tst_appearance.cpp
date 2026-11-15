@@ -810,6 +810,21 @@ void AppearanceTests::tabTrackSurround()
     }
     source.setInput({});
     QCOMPARE(local.backgroundColor(), track.backgroundColor());
+
+    source.setInput({{QStringLiteral("scheme"), QStringLiteral("dark")}});
+    const QColor seed = source.colors()->control();
+    const qreal alpha = .9;
+    const QColor translucent = QColor::fromRgbF((seed.redF() - (1 - alpha)) / alpha,
+        (seed.greenF() - (1 - alpha)) / alpha, (seed.blueF() - (1 - alpha)) / alpha, alpha);
+    source.setInput(paletteInput(QStringLiteral("dark"), QStringLiteral("normal"),
+        {{QStringLiteral("canvas"), translucent}}));
+    const QColor visibleCanvas = opaqueOver(source.colors()->canvas(), QColor(Qt::white));
+    QVERIFY(visibleDistance(seed, visibleCanvas, visibleCanvas) < .1);
+    local.setSelectedBackgroundColor(QColor(Qt::white));
+    for (auto *control : {&track, &local}) {
+        QVERIFY(visibleDistance(control->backgroundColor(), visibleCanvas, visibleCanvas) >= 4);
+        verifyReadableContrast(control->foregroundColor(), control->backgroundColor(), visibleCanvas, 5);
+    }
 }
 
 void AppearanceTests::tabModeAndSeparatorContracts()

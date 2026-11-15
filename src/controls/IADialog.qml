@@ -37,7 +37,7 @@ T.Dialog {
             : implicitHeight;
     }
     readonly property bool _hasRejectAction: (footer as IADialogButtonBox)?.hasRejectAction ?? false
-    implicitWidth: Math.max(body.implicitWidth + scroll._lane + leftPadding + rightPadding,
+    implicitWidth: Math.max(implicitContentWidth + leftPadding + rightPadding,
                             implicitHeaderWidth, implicitFooterWidth, IA.Appearance.metrics.dialogMinWidth)
     implicitHeight: implicitContentHeight + topPadding + bottomPadding
                     + implicitHeaderHeight + implicitFooterHeight

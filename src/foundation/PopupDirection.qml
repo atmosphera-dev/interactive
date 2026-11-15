@@ -8,6 +8,17 @@ QtObject {
     required property Item source
     required property Item contentItem
     property Window _nativeWindow: null
+    // A source may be QQuickView; QtQuick's Window type is narrower.
+    readonly property var _sourceWindow: source ? source.Window.window : null
+    property list<QtObject> _hostWindows: []
+
+    function _rememberHost(): void {
+        if (_sourceWindow && _hostWindows.indexOf(_sourceWindow) < 0)
+            _hostWindows.push(_sourceWindow);
+    }
+    // Remember ownership independently of target notifications: during enter,
+    // Qt can keep replacement content in an earlier application's Item host.
+    on_SourceWindowChanged: _rememberHost()
 
     function _metadata(item: Item): var {
         const itemEnabled = item.LayoutMirroring.enabled;
@@ -35,9 +46,9 @@ QtObject {
     }
 
     function _classifyWindow(): void {
+        root._rememberHost();
         const target = root.contentItem ? root.contentItem.Window.window : null;
-        const owner = root.source ? root.source.Window.window : null;
-        root._nativeWindow = target && owner && target !== owner ? target : null;
+        root._nativeWindow = target && root._sourceWindow && root._hostWindows.indexOf(target) < 0 ? target : null;
     }
 
     // The source changes before the target during Item host migration. Only

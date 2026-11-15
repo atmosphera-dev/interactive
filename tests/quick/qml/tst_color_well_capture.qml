@@ -41,6 +41,9 @@ Rectangle {
             verify(TestProbe.captureDirectory().length>0);
             failOnWarning(/.*(TypeError|ReferenceError|Binding loop|polish loop).*/);
         }
+        function init(): void {
+            failOnWarning(/.*(TypeError|ReferenceError|Binding loop|polish loop).*/);
+        }
         function cleanupTestCase(): void { verify(TestProbe.writeCaptureManifest(manifest)); compare(count,28); }
         function test_states_data(): var {
             const rows=[];

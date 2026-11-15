@@ -184,6 +184,10 @@ Item {
             IA.Appearance.input = {};
         }
 
+        function init(): void {
+            failOnWarning(/.*(TypeError|ReferenceError|Binding loop|polish loop).*/);
+        }
+
         function cleanupTestCase(): void {
             verify(TestProbe.writeCaptureManifest(manifest), "Cannot write capture manifest");
             compare(pngCount, 60, "All 11 family sheets and four edge fixtures in all four modes");

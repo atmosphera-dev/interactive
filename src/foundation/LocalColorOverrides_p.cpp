@@ -212,7 +212,8 @@ std::shared_ptr<const StateTableData> LocalColorOverrides::buildStateTable(
         // Only this search uses that surround; text diagnostics keep backdrop.
         put(ControlColor::backgroundColor, feedback(values.value(ControlColor::backgroundColor),
             values.value(ControlColor::foregroundColor), recipe.hoverBlend,
-            {values.value(ControlColor::selectedBackgroundColor), sharedColors[size_t(StateTableColor::TabCanvas)]},
+            {values.value(ControlColor::selectedBackgroundColor),
+                ColorMath::composite(sharedColors[size_t(StateTableColor::TabCanvas)], QColor(Qt::white))},
             QStringLiteral("tabTrackColor"), 0, true, true, sharedColors[size_t(StateTableColor::TabCanvas)]));
     }
     const QColor rest = values.value(ControlColor::backgroundColor);

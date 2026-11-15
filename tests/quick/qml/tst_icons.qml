@@ -139,7 +139,10 @@ Rectangle {
             const pixels = grabImage(scene);
             verify(pixels.width > 0 && pixels.height > 0);
             const point = icon.mapToItem(scene, icon.width / 2, icon.height / 2);
-            const background = (control.background as Rectangle).color;
+            const frame = data.index === 2 ? findChild(control.background, "iaSegmentFrame") as Rectangle
+                : control.background as Rectangle;
+            verify(frame !== null);
+            const background = frame.color;
             const alpha = 128 / 255;
             const expected = data.mode === "tinted"
                 ? Qt.rgba(192 / 255 * alpha + (background.r * background.a + 1 - background.a) * (1 - alpha),

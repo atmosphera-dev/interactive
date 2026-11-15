@@ -1641,9 +1641,12 @@ Item {
             }
             const plane = findChild(dialog, "iaColorPlane");
             verify(plane !== null);
+            const planeColor = dialog.currentColor;
+            const beforePlane = Qt.rgba(planeColor.r, planeColor.g, planeColor.b, planeColor.a);
             verify(TestProbe.press(plane, plane.width * 0.8, plane.height * 0.2));
             try {
                 verify(TestProbe.move(plane, plane.width * 0.6, plane.height * 0.35));
+                tryVerify(function() { return !sameRgba(dialog.currentColor, beforePlane); });
                 tryVerify(function(){return sameRgba(IA.Appearance.colors[key],dialog.currentColor);});
                 assertSemanticConsumers();
             } finally {

@@ -35,6 +35,10 @@ Item {
             workbench.close();
         }
 
+        function init(): void {
+            failOnWarning(/.*(TypeError|ReferenceError|Binding loop|polish loop).*/);
+        }
+
         function cleanup(): void {
             const dialog = findChild(workbench, "appearanceWindow") as IADialog;
             dialog.close();

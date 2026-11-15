@@ -176,6 +176,69 @@ Item {
             compare(departed.height, 43);
             departed.destroy();
         }
+        function test_programmaticUncheck(): void {
+            const group = makeGroup({});
+            group.itemAt(0).checked = false;
+            selection(group, -1);
+            compare(group.activations, []);
+            group.itemAt(1).checked = true;
+            selection(group, 1);
+            group.itemAt(2).checked = true;
+            selection(group, 2);
+            group.setCurrentIndex(0);
+            selection(group, 0);
+            click(group.itemAt(1));
+            selection(group, 1);
+            compare(group.activations, [1]);
+        }
+        function test_focusMutation_data(): var {
+            return [{tag: "reorder", action: "reorder"}, {tag: "remove", action: "remove"},
+                {tag: "disable", action: "disable"}, {tag: "hide", action: "hide"}];
+        }
+        function test_selectionCallbackReorderActivation(): void {
+            const group = makeGroup({});
+            const destination = group.itemAt(1);
+            let handled = false;
+            const mutate = function() {
+                if (group.currentItem === destination && !handled) {
+                    handled = true;
+                    group.moveItem(group.currentIndex, 2);
+                }
+            };
+            group.currentIndexChanged.connect(mutate);
+            try {
+                click(destination);
+                verify(handled);
+                selection(group, 2);
+                compare(group.activations, [2]);
+            } finally {
+                group.currentIndexChanged.disconnect(mutate);
+            }
+        }
+        function test_focusMutation(data: var): void {
+            const group = makeGroup({});
+            const destination = group.itemAt(1);
+            let handled = false;
+            const mutate = function() {
+                if (!destination.activeFocus || handled) return;
+                handled = true;
+                if (data.action === "reorder") group.moveItem(1, 2);
+                else if (data.action === "remove") group.takeItem(1);
+                else if (data.action === "disable") destination.enabled = false;
+                else destination.visible = false;
+            };
+            destination.activeFocusChanged.connect(mutate);
+            try {
+                group.itemAt(0).forceActiveFocus(Qt.TabFocusReason);
+                verify(TestProbe.keyClick(group, Qt.Key_Right));
+                verify(handled);
+                selection(group, data.action === "reorder" ? 2 : 0);
+                compare(group.activations, data.action === "reorder" ? [2] : []);
+            } finally {
+                destination.activeFocusChanged.disconnect(mutate);
+                if (data.action === "remove") destination.destroy();
+            }
+        }
         function test_dynamicNativeIndices(): void {
             const group = makeGroup({});
             const added = createTemporaryObject(memberComponent, scene) as IASegmentedButton;

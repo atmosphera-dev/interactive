@@ -106,12 +106,28 @@ T.Container {
     function _userToggled(button: IASegmentedButton): void {
         if (_reconciling || !button || !button.checked)
             return;
+        _selectForActivation(button);
+    }
+    function _selectForActivation(button: IASegmentedButton): void {
         const index = _indexOf(button);
-        if (index < 0)
+        if (index < 0 || !button.enabled || !button.visible)
             return;
         setCurrentIndex(index);
-        if (currentItem === button && button.checked)
-            activated(index);
+        const selectedIndex = _indexOf(button);
+        if (selectedIndex >= 0 && currentItem === button && button.checked && button.enabled && button.visible)
+            activated(selectedIndex);
+    }
+    function _checkedChanged(button: IASegmentedButton): void {
+        if (!_complete || _reconciling || !button || button.checked || currentItem !== button)
+            return;
+        // Qt unchecks the old member before updating checkedButton during an
+        // exclusive transition. A checked replacement owns that transition;
+        // only a genuine programmatic clear removes the current selection.
+        for (const candidate of group.buttons) {
+            if (candidate !== button && candidate.checked)
+                return;
+        }
+        setCurrentIndex(-1);
     }
     function _moveSelection(direction: int): void {
         const step = mirrored ? -direction : direction;
@@ -122,10 +138,7 @@ T.Container {
             // ListView sets the new current item's focus with OtherFocusReason.
             // Establish keyboard focus first; its no-op setFocus then preserves it.
             button.forceActiveFocus(step > 0 ? Qt.TabFocusReason : Qt.BacktabFocusReason);
-            setCurrentIndex(index);
-            if (currentItem === button) {
-                activated(index);
-            }
+            _selectForActivation(button);
             return;
         }
     }
@@ -186,6 +199,7 @@ T.Container {
             readonly property Connections input: Connections {
                 target: member.button
                 function onToggled(): void { control._userToggled(member.button); }
+                function onCheckedChanged(): void { control._checkedChanged(member.button); }
             }
         }
     }

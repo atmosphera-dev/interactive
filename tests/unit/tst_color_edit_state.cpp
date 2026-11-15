@@ -70,10 +70,14 @@ private slots:
         state.editPlane(0.8, 0.5); QVERIFY(state.currentColor().redF() > state.currentColor().blueF());
         state.synchronize(QColor("#808080")); QCOMPARE(state.hue(), 360.0);
         state.synchronize(QColor::fromHsvF(0.5, 0, 0.3)); QCOMPARE(state.hue(), 180.0);
+        state.setMode(2);
         state.setDraft("hsvSaturation", "70.5"); QVERIFY(state.commit("hsvSaturation"));
         state.setDraft("hsvValue", "0"); QVERIFY(state.commit("hsvValue"));
+        state.editHue(240);
+        QCOMPARE(state.hue(), 240.0);
         state.setDraft("hsvValue", "50"); QVERIFY(state.commit("hsvValue"));
         QVERIFY(qAbs(state.currentColor().hsvSaturationF() - 0.705) < 0.0001);
+        QVERIFY(state.currentColor().blueF() > state.currentColor().redF());
     }
     void controlledAuthority()
     {
@@ -100,6 +104,22 @@ private slots:
         QVERIFY(!state.pending("hex"));
         QVERIFY(state.commit("hex"));
         QCOMPARE(edits.size(), 3);
+    }
+    void hsvHueAtBlackWithRgbAcknowledgement()
+    {
+        ColorEditState state;
+        state.setMode(2);
+        connect(&state, &ColorEditState::colorEdited, &state, [&state](const QColor &value) {
+            state.synchronize(value.toRgb());
+        });
+        state.synchronize(QColor::fromHsvF(.5, .7, .3, .6));
+        state.setDraft("hsvValue", "0"); QVERIFY(state.commit("hsvValue"));
+        state.editHue(240);
+        state.editOpacity(.25);
+        state.setDraft("hsvValue", "50"); QVERIFY(state.commit("hsvValue"));
+        QVERIFY(qAbs(state.currentColor().hsvSaturationF() - .7) < .0001);
+        QVERIFY(qAbs(state.currentColor().hsvHueF() - 2.0 / 3) < .0001);
+        QVERIFY(qAbs(state.currentColor().alphaF() - .25) < .0001);
     }
     void rgbAcknowledgementKeepsNativeCoordinates()
     {

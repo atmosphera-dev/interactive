@@ -26,6 +26,12 @@ Item {
     Component { id: popupComponent; PopupFixture {} }
     Component { id: buttonBoxComponent; IADialogButtonBox {} }
     Component { id: emptyDialogComponent; IADialog {} }
+    Component {
+        id: customWidthDialogComponent
+        IADialog {
+            contentItem: Item { implicitWidth: 700; implicitHeight: 80 }
+        }
+    }
     Component { id: customButtonComponent; IAButton { text: "Leave unchanged"; T.DialogButtonBox.buttonRole: T.DialogButtonBox.RejectRole } }
     Component {
         id: scrollingDialogComponent
@@ -97,6 +103,14 @@ Item {
 
         function click(item: Item): void {
             verify(TestProbe.click(item, item.width / 2, item.height / 2));
+        }
+
+        function test_replacementContentNaturalWidth(): void {
+            const dialog = createTemporaryObject(customWidthDialogComponent, scene, {parent: scene}) as IADialog;
+            verify(dialog !== null);
+            compare(dialog.implicitWidth, 700 + dialog.leftPadding + dialog.rightPadding);
+            dialog.contentItem.implicitWidth = 720;
+            compare(dialog.implicitWidth, 720 + dialog.leftPadding + dialog.rightPadding);
         }
 
         function iconIn(item: Item): IA.Icon {

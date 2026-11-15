@@ -240,6 +240,7 @@ Item {
             failOnWarning(/.*(TypeError|ReferenceError|Binding loop|polish loop|Cannot assign|Unable to assign).*/);
         }
         function init(): void {
+            failOnWarning(/.*(TypeError|ReferenceError|Binding loop|polish loop|Cannot assign|Unable to assign).*/);
             IA.Appearance.input = {};
             a.overlayOverride = false;
             b.overlayOverride = false;
@@ -535,23 +536,33 @@ Item {
             setDirection(b, true);
         }
         function test_itemMigrationDuringEnter(): void {
+            prepareMigrationHosts();
             const popup = createTemporaryObject(transitioningComponent, scene, {parent: a.anchor}) as IAPopup;
             verify(popup !== null);
             popups.push(popup);
             open(popup, a);
             verify(popup.visible && !popup.opened, "The actual enter transition is still running");
-            prepareOtherHost();
             verify(!popup.opened, "Migration still exercises the enter transition");
             compare(TestProbe.hostWindow(popup.contentItem), a);
             popup.parent = b.anchor;
             compare(TestProbe.hostWindow(popup.contentItem), a, "Qt retains the old Item target during enter");
+            const replacement = createTemporaryObject(replacementComponent, null) as IASwitch;
+            verify(replacement !== null);
+            popup.contentItem = replacement;
+            compare(TestProbe.hostWindow(replacement), a, "Replacement still uses Qt's retained Item host");
             checkHosts();
             tryCompare(popup, "opened", true);
             checkHosts();
             close(popup);
+            // The old top-level still owns the compositor keyboard focus.
+            // Retire it before dispatching the reopen through the new host.
+            a.close();
+            tryVerify(function() { return TestProbe.exposed(b.anchor); });
             open(popup, b);
             ready(popup, b, false);
             close(popup);
+            a.show();
+            tryVerify(function() { return TestProbe.exposed(a.anchor); });
         }
         function test_nestedNativeMenu(): void {
             const popup = make("menu", T.Popup.Window, a) as IAMenu;

@@ -171,7 +171,9 @@ void ColorEditState::editPlane(double saturation, double lightness)
 }
 void ColorEditState::editHue(double degrees)
 {
-    if (std::isfinite(degrees) && degrees >= 0 && degrees <= 360) publishHsl(degrees, m_hslS, m_hslL);
+    if (!std::isfinite(degrees) || degrees < 0 || degrees > 360) return;
+    if (m_mode == 2) publishHsv(degrees, m_hsvS, m_hsvV);
+    else publishHsl(degrees, m_hslS, m_hslL);
 }
 void ColorEditState::editOpacity(double alpha)
 {

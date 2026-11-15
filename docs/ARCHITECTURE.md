@@ -147,6 +147,9 @@ It reads the exact implicit-child inheritance metadata along that supplied
 overlay's Item parent chain and binds only the popup-exclusive native Window.
 Native target classification occurs on content-window change, content replacement
 and completion, not on the earlier logical-source change during host migration.
+The adapter records source-host provenance separately and excludes every observed
+application host from native targets, including an old Item host retained during
+enter when replacement content arrives after logical migration.
 Each popup root supplies its content input only after its own QML completion,
 after Qt finishes parser-status callbacks and deferred content. The binding stays
 live for later replacement; the adapter cannot eagerly execute deferred content.
