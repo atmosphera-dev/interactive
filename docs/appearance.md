@@ -643,6 +643,15 @@ proposal; caller-owned labels and surfaces are never rewritten. Exhaustion
 retains deterministic best effort and reports `low-feedback` with measured
 `distance` and `target`. These are IA trial distinction measurements, not WCAG
 criteria. Passive families, including tooltips, do not acquire hover behavior.
+After the original 1x-3x search exhausts, a finite fallback examines weaker
+strengths on the same two rays, strongest first. It enumerates the union of
+actual Qt RGB8 channel transitions (at most 765 boundaries / 766 intervals per
+ray), measures each distinct color once, and checks full/RGB8 readability at
+both interval ends. The joint-label headroom probe retains only the original
+stronger search, so weaker feedback cannot suppress its label repair. Old
+successful results stay exact; if weaker proposals also fail, the original
+best effort and warning stay exact. Interval-end checks are bounded best effort
+for unusual full-precision colored inputs, not a continuous-space optimizer.
 
 Button, tool, delegate, tab and choice tables reserve pairwise distance 4 among
 Rest, Hover, Selected and SelectedHover. An already-distinct selected seed is
@@ -729,11 +738,18 @@ selection, hover or size changes. Qt retains content ownership, implicit sizing,
 mirroring and overflow scrolling; Foundation imports no Controls.
 The `tab` family selects a raised
 `content` segment in light mode and `controlHover` in dark mode. The track is
-finalized once by the same bounded feedback recipe if its seed is too close to
-the segment. Hover reserves the raised segment before deriving its own fill, so
+finalized once by the same bounded feedback recipe, reserving both the raised
+segment and effective canvas at distance 4. Only this track search evaluates on
+canvas; ordinary text diagnostics retain their content/canvas backdrop. Explicit
+application and local backgrounds remain exact, including equal-valued and
+translucent assignments. Sparse local branches carry the same surround input,
+so live canvas changes rederive unowned tracks. Hover reserves the raised segment before deriving its own fill, so
 feedback cannot consume the current segment's color. Tab feedback and focus are evaluated against that finished track,
 not the content surface behind the group. Explicit local colors remain exact;
 Qt still owns current index, keyboard navigation and scrolling.
+The existing 3:1 focused-border rule can therefore choose the label color for
+an unselected light-high tab, or a hovered light tab, rather than the accent.
+The selected segment's focus frame and leading marker are unchanged.
 
 Current enabled tabs and segmented choices share Foundation's `SegmentBackground`,
 a shared owner of two full-size native rounded `ControlBackground` frames. A

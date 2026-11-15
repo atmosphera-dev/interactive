@@ -167,6 +167,53 @@ QColor stateFeedback(const QColor &base, const QColor &text, qreal amount, const
     return best;
 }
 
+// Independent uniform 16-bit strength scan, not a replica of production's
+// transition union. It can miss sub-1/65536 strength intervals; default and
+// colored fixtures below compare the strongest RGB8 result it observes.
+QColor sampledWeakerFeedback(const QColor &base, const QColor &text, qreal strength,
+    const QColor &backdrop, qreal floor, const QList<QColor> &reserved)
+{
+    const QColor visible = opaqueOver(base, backdrop);
+    const QColor toward = opaqueOver(text, visible);
+    const QColor away(rgbContrast(text, QColor(Qt::white)) >= rgbContrast(text, QColor(Qt::black)) ? Qt::white : Qt::black);
+    for (const auto &endpoint : {toward, away}) {
+        for (int step = 65535; step > 0; --step) {
+            const qreal amount = strength * step / 65536;
+            const auto mix = [&](qreal a, qreal b) { return a + (b - a) * amount; };
+            const QColor candidate = QColor::fromRgbF(mix(visible.redF(), endpoint.redF()),
+                mix(visible.greenF(), endpoint.greenF()), mix(visible.blueF(), endpoint.blueF()));
+            if (rgbContrast(text, candidate, backdrop) < floor
+                || rgbContrast(QColor::fromRgba(text.rgba()), QColor::fromRgb(candidate.rgb()), backdrop) < floor)
+                continue;
+            if (std::all_of(reserved.cbegin(), reserved.cend(), [&](const QColor &other) {
+                    return visibleDistance(candidate, other, backdrop) >= 4;
+                }))
+                return candidate;
+        }
+    }
+    return {};
+}
+
+void verifyFeedbackOutcome(const QColor &actual, const QColor &primary, const QColor &text,
+    const QList<QColor> &reserved, const QColor &backdrop, qreal floor, const QVariantList &diagnostics)
+{
+    const auto passes = [&](const QColor &candidate) {
+        return rgbContrast(text, candidate, backdrop) >= floor
+            && rgbContrast(QColor::fromRgba(text.rgba()), QColor::fromRgb(opaqueOver(candidate, backdrop).rgb())) >= floor
+            && std::all_of(reserved.cbegin(), reserved.cend(), [&](const QColor &other) {
+                return visibleDistance(candidate, other, backdrop) >= 4;
+            });
+    };
+    if (passes(primary)) {
+        QCOMPARE(actual, primary); // Every old success stays exact.
+    } else if (passes(actual)) {
+        QVERIFY(!hasDiagnostic(diagnostics, QStringLiteral("low-feedback"), QStringLiteral("selectedHoverBackgroundColor")));
+    } else {
+        QCOMPARE(actual, primary); // Still-infeasible best effort stays exact too.
+        QVERIFY(hasDiagnostic(diagnostics, QStringLiteral("low-feedback"), QStringLiteral("selectedHoverBackgroundColor")));
+    }
+}
+
 bool gray(const QColor &color)
 {
     return color.red() == color.green() && color.green() == color.blue();
@@ -359,6 +406,8 @@ private slots:
     void menuHighlightPairs();
     void menuHighlightLiveDependencies();
     void tabModeAndSeparatorContracts();
+    void tabTrackSurround();
+    void weakerFeedback();
     void valueAndScrollRoles();
     void stateSweepDoesNoFoundationWork();
     void appearanceMetaObjectIsPublic();
@@ -645,6 +694,124 @@ void AppearanceTests::menuHighlightLiveDependencies()
     QCOMPARE(work.count(AppearanceWork::PrivateStateTableBuild), 0);
 }
 
+void AppearanceTests::weakerFeedback()
+{
+    Appearance source;
+    ControlAppearance tab, track;
+    tab.setSource(&source);
+    tab.setFamily(QStringLiteral("tab"));
+    track.setSource(&source);
+    track.setFamily(QStringLiteral("tabBar"));
+    for (const auto *contrast : {"normal", "high"}) {
+        source.setInput({{QStringLiteral("contrast"), QLatin1String(contrast)}});
+        const auto selected = tab.stateTable().colors(Presentation::Selected);
+        const auto hover = tab.stateTable().colors(Presentation::SelectedHover);
+        const QColor backdrop = track.backgroundColor();
+        for (const auto &reserved : {tab.backgroundColor(), tab.hoverBackgroundColor(), selected.backgroundColor()})
+            QVERIFY(visibleDistance(hover.backgroundColor(), reserved, backdrop) >= 4);
+        verifyReadableContrast(hover.foregroundColor(), hover.backgroundColor(), backdrop,
+            source.contrast() == QLatin1String("high") ? 7 : 5);
+        QVERIFY(rgbLuminance(hover.backgroundColor()) > rgbLuminance(backdrop));
+        QVERIFY(tab.diagnostics().isEmpty());
+        const QList<QColor> reserved{tab.backgroundColor(), tab.hoverBackgroundColor(), selected.backgroundColor()};
+        const QColor sampled = sampledWeakerFeedback(selected.backgroundColor(), selected.foregroundColor(),
+            source.motion()->hoverBlend(), backdrop, source.contrast() == QLatin1String("high") ? 7 : 5, reserved);
+        QVERIFY(sampled.isValid());
+        QCOMPARE(hover.backgroundColor().rgb(), sampled.rgb());
+        qInfo().noquote() << contrast << "selected-hover" << hover.backgroundColor().name();
+    }
+    source.setInput({});
+    tab.setSelectedBackgroundColor(QColor("#fffeff"));
+    tab.setSelectedForegroundColor(QColor("#25282d"));
+    const QList<QColor> reserved{tab.backgroundColor(), tab.hoverBackgroundColor(), tab.selectedBackgroundColor()};
+    const QColor primary = stateFeedback(tab.selectedBackgroundColor(), tab.selectedForegroundColor(),
+        source.motion()->hoverBlend(), track.backgroundColor(), 5, reserved);
+    QVERIFY(std::any_of(reserved.cbegin(), reserved.cend(), [&](const QColor &other) {
+        return visibleDistance(primary, other, track.backgroundColor()) < 4;
+    }));
+    const QColor sampled = sampledWeakerFeedback(tab.selectedBackgroundColor(), tab.selectedForegroundColor(),
+        source.motion()->hoverBlend(), track.backgroundColor(), 5, reserved);
+    QVERIFY(sampled.isValid());
+    QCOMPARE(tab.stateTable().colors(Presentation::SelectedHover).backgroundColor().rgb(), sampled.rgb());
+    tab.setSelectedBackgroundColor(QColor(Qt::white));
+    tab.setSelectedForegroundColor(QColor(Qt::white)); // Neither ray can be readable at these strengths.
+    const QColor impossible = stateFeedback(tab.selectedBackgroundColor(), tab.selectedForegroundColor(),
+        source.motion()->hoverBlend(), track.backgroundColor(), 5,
+        {tab.backgroundColor(), tab.hoverBackgroundColor(), tab.selectedBackgroundColor()});
+    QCOMPARE(tab.stateTable().colors(Presentation::SelectedHover).backgroundColor(), impossible);
+    QVERIFY(hasDiagnostic(tab.diagnostics(), QStringLiteral("low-feedback"), QStringLiteral("selectedHoverBackgroundColor")));
+    ControlAppearance button;
+    button.setSource(&source);
+    source.setInput({{QStringLiteral("contrast"), QStringLiteral("high")}});
+    button.setBackgroundColor(QColor(Qt::white));
+    // The original stronger headroom repair still owns label finalization.
+    const QColor backdrop = source.colors()->content();
+    const QColor base(Qt::white);
+    const QColor seed = TokenSchema::contrastingText(base, {base}, backdrop, 7);
+    const auto mix = [](qreal a, qreal b) { return a + (b - a) * .24; };
+    const QColor strongestFill = QColor::fromRgbF(mix(base.redF(), 0), mix(base.greenF(), 0), mix(base.blueF(), 0));
+    const QColor expectedLabel = TokenSchema::contrastingText(seed, {base, strongestFill}, backdrop, 7);
+    QVERIFY(expectedLabel != seed);
+    QCOMPARE(button.foregroundColor(), expectedLabel);
+}
+
+void AppearanceTests::tabTrackSurround()
+{
+    Appearance source;
+    ControlAppearance track, local, tab;
+    for (auto *control : {&track, &local, &tab})
+        control->setSource(&source);
+    track.setFamily(QStringLiteral("tabBar"));
+    local.setFamily(QStringLiteral("tabBar"));
+    tab.setFamily(QStringLiteral("tab"));
+    local.setForegroundColor(source.colors()->text()); // Genuine sparse private branch.
+    for (const auto *scheme : {"light", "dark"}) {
+        for (const auto *contrast : {"normal", "high"}) {
+            source.setInput(paletteInput(QLatin1String(scheme), QLatin1String(contrast), {}));
+            const QColor canvas = opaqueOver(source.colors()->canvas(), QColor(Qt::white));
+            const QColor selected = QLatin1String(scheme) == QLatin1String("dark")
+                ? source.colors()->controlHover() : source.colors()->content();
+            const QColor expected = stateFeedback(source.colors()->control(), source.colors()->text(),
+                source.motion()->hoverBlend(), canvas, source.contrast() == QLatin1String("high") ? 7 : 5,
+                {selected, source.colors()->canvas()}, true);
+            QCOMPARE(track.backgroundColor(), expected);
+            QVERIFY(visibleDistance(track.backgroundColor(), canvas, canvas) >= 4);
+            QVERIFY(visibleDistance(track.backgroundColor(), selected, canvas) >= 4);
+            if (QLatin1String(scheme) == QLatin1String("dark"))
+                QCOMPARE(track.backgroundColor(), source.colors()->control());
+            qInfo().noquote() << scheme << contrast << "track" << track.backgroundColor().name()
+                << "hover" << tab.hoverBackgroundColor().name() << "pressed" << tab.pressedBackgroundColor().name()
+                << "focus" << tab.stateTable().colors(Presentation::Rest).focusedBorderColor().name()
+                << "hover-focus" << tab.stateTable().colors(Presentation::Hover).focusedBorderColor().name();
+        }
+    }
+    source.setInput({});
+    local.setForegroundColor(source.colors()->text());
+    QCOMPARE(local.backgroundColor(), track.backgroundColor());
+    const auto oldLocal = local.stateTable();
+    const QColor oldTrack = local.backgroundColor();
+    source.setInput(tokenInput(QStringLiteral("colors"), {{QStringLiteral("canvas"), QColor("#dedfe1")}}));
+    QVERIFY(local.stateTable() != oldLocal);
+    QVERIFY(local.backgroundColor() != oldTrack);
+    QCOMPARE(local.backgroundColor(), track.backgroundColor());
+    local.resetOverrides();
+    QCOMPARE(local.stateTable(), track.stateTable());
+    const auto contentBefore = track.stateTable();
+    source.setInput(tokenInput(QStringLiteral("colors"), {{QStringLiteral("canvas"), QColor("#dedfe1")},
+        {QStringLiteral("content"), QColor("#f8f8fa")}}));
+    QVERIFY(track.stateTable() != contentBefore);
+    for (const QColor &exact : {track.backgroundColor(), QColor("#80445566"), QColor(Qt::transparent)}) {
+        local.setBackgroundColor(exact);
+        source.setInput(tokenInput(QStringLiteral("colors"), {{QStringLiteral("control"), exact}}));
+        QCOMPARE(track.backgroundColor(), exact);
+        QCOMPARE(local.backgroundColor(), exact);
+        local.resetBackgroundColor();
+        QCOMPARE(local.backgroundColor(), exact);
+    }
+    source.setInput({});
+    QCOMPARE(local.backgroundColor(), track.backgroundColor());
+}
+
 void AppearanceTests::tabModeAndSeparatorContracts()
 {
     Appearance source;
@@ -727,7 +894,12 @@ void AppearanceTests::stateTableEquivalence()
                 : flags.down ? control.foregroundColor()
                 : flags.selected ? (flags.active ? control.selectedForegroundColor() : control.inactiveForegroundColor())
                 : control.foregroundColor();
-            QCOMPARE(entry.backgroundColor(), background);
+            if (flags.state == Presentation::SelectedHover && selectable)
+                verifyFeedbackOutcome(entry.backgroundColor(), background, foreground,
+                    {control.backgroundColor(), control.hoverBackgroundColor(), control.selectedBackgroundColor()},
+                    backdrop, source->contrast() == QLatin1String("high") ? 7 : 5, control.diagnostics());
+            else
+                QCOMPARE(entry.backgroundColor(), background);
             QCOMPARE(entry.foregroundColor(), foreground);
             QCOMPARE(entry.borderColor(), flags.enabled ? control.borderColor() : control.disabledBorderColor());
             QCOMPARE(entry.focusColor(), control.focusColor());
@@ -810,12 +982,17 @@ void AppearanceTests::neutralFocusBorder()
                     ControlAppearance control;
                     control.setSource(&source);
                     control.setFamily(QLatin1String(family));
+                    ControlAppearance track;
+                    track.setSource(&source);
+                    track.setFamily(QStringLiteral("tabBar"));
+                    const QColor familyBackdrop = control.family() == QLatin1String("tab")
+                        ? opaqueOver(track.backgroundColor(), backdrop) : backdrop;
                     for (int i = Presentation::Rest; i < Presentation::Disabled; ++i) {
                         const auto entry = control.stateTable().colors(Presentation::State(i));
-                        const QColor expected = rgbContrast(focus, entry.backgroundColor(), backdrop) >= 3
+                        const QColor expected = rgbContrast(focus, entry.backgroundColor(), familyBackdrop) >= 3
                             ? focus : entry.foregroundColor();
                         QCOMPARE(entry.focusedBorderColor(), expected);
-                        QVERIFY(rgbContrast(expected, entry.backgroundColor(), backdrop) >= 3);
+                        QVERIFY(rgbContrast(expected, entry.backgroundColor(), familyBackdrop) >= 3);
                     }
                     // Local colors still use the entry's foreground when shared
                     // focus is unreadable on the explicitly chosen fill.

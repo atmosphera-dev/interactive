@@ -4,6 +4,7 @@
 #include "TokenValidation_p.h"
 #include "AppearanceTrace_p.h"
 #include "cpp/cam/cam.h"
+#include <QHash>
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -57,12 +58,20 @@ std::shared_ptr<const StateTableData> LocalColorOverrides::buildStateTable(
     // search; runtime interaction merely indexes the completed array below.
     const auto feedback = [&](const QColor &base, const QColor &text, qreal strength,
                               const QList<QColor> &reserved, const QString &path, size_t pair,
-                              bool retainBase = false, bool report = true) {
+                              bool retainBase = false, bool report = true, const QColor &surround = {}, bool weaken = true) {
+        const QColor feedbackCanvas = surround.isValid() ? ColorMath::composite(surround, QColor(Qt::white)) : canvas;
+        const auto feedbackVisible = [&](const QColor &fill) { return ColorMath::composite(fill, feedbackCanvas); };
+        const auto feedbackCam = [&](const QColor &fill) { return mcu::CamFromInt(feedbackVisible(fill).rgb()); };
+        const auto feedbackReadable = [&](const QColor &fill) {
+            const QColor surface = feedbackVisible(fill);
+            return ColorMath::contrastRatio(text, surface) >= recipe.target
+                && ColorMath::contrastRatio(QColor::fromRgba(text.rgba()), QColor::fromRgb(surface.rgb())) >= recipe.target;
+        };
         QList<mcu::Cam> reservations;
         for (const auto &fill : reserved)
-            reservations.append(cam(fill));
+            reservations.append(feedbackCam(fill));
         const auto separation = [&](const QColor &fill) {
-            const auto candidate = cam(fill);
+            const auto candidate = feedbackCam(fill);
             qreal minimum = std::numeric_limits<qreal>::infinity();
             for (const auto &other : reservations)
                 minimum = std::min(minimum, std::sqrt(std::pow(candidate.jstar - other.jstar, 2)
@@ -71,18 +80,18 @@ std::shared_ptr<const StateTableData> LocalColorOverrides::buildStateTable(
         };
         QColor best = base;
         qreal bestDistance = separation(base);
-        bool bestReadable = readable(base, text);
+        bool bestReadable = feedbackReadable(base);
         if (retainBase && bestDistance >= 4 && bestReadable)
             return base;
-        const QColor toward = ColorMath::composite(text, visible(base));
+        const QColor toward = ColorMath::composite(text, feedbackVisible(base));
         const QColor away = ColorMath::contrastRatio(text, QColor(Qt::white))
                 >= ColorMath::contrastRatio(text, QColor(Qt::black)) ? QColor(Qt::white) : QColor(Qt::black);
         // Prefer the label direction, then the contrast-preserving endpoint.
         // Nine fixed proposals per direction, token strength through 3x.
         for (const QColor &endpoint : {toward, away}) {
             for (int step = 0; step <= 8; ++step) {
-                const QColor candidate = ColorMath::blend(visible(base), endpoint, strength * (1 + step / qreal(4)));
-                if (!readable(candidate, text))
+                const QColor candidate = ColorMath::blend(feedbackVisible(base), endpoint, strength * (1 + step / qreal(4)));
+                if (!feedbackReadable(candidate))
                     continue;
                 const qreal distance = separation(candidate);
                 if (distance >= 4)
@@ -92,6 +101,77 @@ std::shared_ptr<const StateTableData> LocalColorOverrides::buildStateTable(
                     bestDistance = distance;
                     bestReadable = true;
                 }
+            }
+        }
+        if (weaken && strength > 0) {
+            // Enumerate the union of actual Qt RGB8 channel transitions below
+            // 1x. Linear blending on this opaque backdrop makes each channel
+            // monotone: at most 765 boundaries / 766 constant-color intervals.
+            // Keep both representable sides of each boundary, not uniform
+            // samples that can miss interleaved channel transitions.
+            struct Transition { qreal before, after; };
+            QHash<QRgb, qreal> distances;
+            const QColor origin = feedbackVisible(base);
+            const qreal limit = std::min(strength, qreal(1));
+            const qreal first = std::nextafter(qreal(0), limit);
+            const qreal last = std::nextafter(limit, qreal(0));
+            for (const QColor &endpoint : {toward, away}) {
+                const auto proposal = [&](qreal amount) { return ColorMath::blend(origin, endpoint, amount); };
+                const auto measured = [&](qreal amount) { return feedbackVisible(proposal(amount)).rgb(); };
+                const auto channel = [](QRgb rgb, int index) {
+                    return index == 0 ? qRed(rgb) : index == 1 ? qGreen(rgb) : qBlue(rgb);
+                };
+                QList<Transition> transitions;
+                const QRgb start = measured(first), finish = measured(last);
+                for (int index = 0; index < 3; ++index) {
+                    const int from = channel(start, index), to = channel(finish, index);
+                    const int direction = to > from ? 1 : -1;
+                    for (int level = from; level != to;) {
+                        level += direction;
+                        qreal low = first, high = last;
+                        for (int iteration = 0; iteration < 64; ++iteration) {
+                            const qreal middle = low + (high - low) / 2;
+                            const int value = channel(measured(middle), index);
+                            if (direction > 0 ? value >= level : value <= level)
+                                high = middle;
+                            else
+                                low = middle;
+                        }
+                        transitions.append({low, high});
+                    }
+                }
+                std::sort(transitions.begin(), transitions.end(), [](const auto &a, const auto &b) {
+                    return a.after < b.after;
+                });
+                transitions.erase(std::unique(transitions.begin(), transitions.end(), [](const auto &a, const auto &b) {
+                    return a.after == b.after;
+                }), transitions.end());
+                const auto interval = [&](qreal weak, qreal strong) -> QColor {
+                    if (weak > strong || measured(weak) != measured(strong))
+                        return {}; // Never retry a non-monotone/mismatched interval.
+                    const QRgb rgb = measured(strong);
+                    auto distance = distances.constFind(rgb);
+                    if (distance == distances.cend())
+                        distance = distances.insert(rgb, separation(proposal(strong)));
+                    if (distance.value() < 4)
+                        return {};
+                    for (qreal amount : {strong, weak}) {
+                        const QColor candidate = proposal(amount);
+                        if (feedbackReadable(candidate))
+                            return candidate;
+                    }
+                    return {};
+                };
+                qreal strong = last;
+                for (auto boundary = transitions.crbegin(); boundary != transitions.crend(); ++boundary) {
+                    const QColor candidate = interval(boundary->after, strong);
+                    if (candidate.isValid())
+                        return candidate;
+                    strong = boundary->before;
+                }
+                const QColor candidate = interval(first, strong);
+                if (candidate.isValid())
+                    return candidate;
             }
         }
         if (report) {
@@ -128,11 +208,12 @@ std::shared_ptr<const StateTableData> LocalColorOverrides::buildStateTable(
         || recipe.family == ControlFamily::Delegate || recipe.family == ControlFamily::Tab
         || recipe.family == ControlFamily::Choice;
     if (recipe.family == ControlFamily::TabBar && !owned(ControlColor::backgroundColor)) {
-        // A quiet enclosing track must remain distinguishable from its raised
-        // segment in both modes. Reuse the bounded palette-time recipe.
+        // The track separates its raised segment from the effective canvas.
+        // Only this search uses that surround; text diagnostics keep backdrop.
         put(ControlColor::backgroundColor, feedback(values.value(ControlColor::backgroundColor),
             values.value(ControlColor::foregroundColor), recipe.hoverBlend,
-            {values.value(ControlColor::selectedBackgroundColor)}, QStringLiteral("tabTrackColor"), 0, true));
+            {values.value(ControlColor::selectedBackgroundColor), sharedColors[size_t(StateTableColor::TabCanvas)]},
+            QStringLiteral("tabTrackColor"), 0, true, true, sharedColors[size_t(StateTableColor::TabCanvas)]));
     }
     const QColor rest = values.value(ControlColor::backgroundColor);
     QColor text = values.value(ControlColor::foregroundColor);
@@ -141,7 +222,7 @@ std::shared_ptr<const StateTableData> LocalColorOverrides::buildStateTable(
         hoverReservations.append(values.value(ControlColor::selectedBackgroundColor));
     if (interactive) {
         if (!owned(ControlColor::foregroundColor) && !owned(ControlColor::hoverBackgroundColor)) {
-            const QColor initial = feedback(rest, text, recipe.hoverBlend, hoverReservations, {}, 1, false, false);
+            const QColor initial = feedback(rest, text, recipe.hoverBlend, hoverReservations, {}, 1, false, false, {}, false);
             const auto a = cam(rest), b = cam(initial);
             const qreal distance = std::sqrt(std::pow(a.jstar - b.jstar, 2)
                 + std::pow(a.astar - b.astar, 2) + std::pow(a.bstar - b.bstar, 2));

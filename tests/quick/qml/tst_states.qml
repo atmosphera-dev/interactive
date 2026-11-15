@@ -280,6 +280,8 @@ Item {
             const segment = findChild(first.background, "iaSegmentFrame") as IA.ControlBackground;
             compare(track.resolvedAppearance.family, "tabBar");
             compare(track.color, bar.backgroundColor);
+            compare(track.color, data.scheme === "dark" ? "#35373b"
+                : data.contrast === "high" ? "#dddfe0" : "#e0e2e4");
             compare(track.border.width, 0);
             compare(bar.leftPadding, IA.Appearance.metrics.spacingXS);
             compare(bar.topPadding, bar.leftPadding);
@@ -304,6 +306,15 @@ Item {
             tryCompare(second, "activeFocus", true);
             tryCompare(second, "visualFocus", true);
             compare((findChild(second.background, "iaSegmentFrame") as Rectangle).border.width, IA.Appearance.metrics.focusWidth);
+            const originalTrack = String(track.color);
+            IA.Appearance.input = {scheme: data.scheme, contrast: data.contrast,
+                tokens: {colors: {canvas: originalTrack}}};
+            verify(TestProbe.render(bar));
+            compare(bar.background, track);
+            compare(track.color, bar.backgroundColor);
+            verify(String(track.color) !== originalTrack);
+            compare(bar.currentIndex, 1);
+            compare(second.activeFocus, true);
         }
 
         function test_menuSlots_data(): var {

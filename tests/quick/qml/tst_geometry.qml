@@ -476,8 +476,11 @@ Item {
                 const colors = index >= 4 && index <= 6 ? (border as IA.ChoiceIndicator).colors
                     : (border as IA.ControlBackground).colors;
                 compare(border.border.color, colors.focusedBorderColor);
-                if (index !== 1) // Primary retains the readable colored-fill fallback.
-                    compare(border.border.color, IA.Appearance.colors.focus, "Neutral focus is the shared accent hue");
+                if (index !== 1) { // Primary retains the readable colored-fill fallback.
+                    const tabFallback = control instanceof IATabButton && data.scheme === "light" && data.contrast === "high";
+                    compare(border.border.color, tabFallback ? control.foregroundColor : IA.Appearance.colors.focus,
+                        "Neutral focus retains the approved contrast fallback on the finished track");
+                }
                 compare([border.x, border.y, border.width, border.height, border.radius,
                     control.width, control.height, control.implicitWidth, control.implicitHeight], bounds,
                     "Focus grows inward without changing bounds or radius");

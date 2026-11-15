@@ -369,6 +369,8 @@ Item {
             IA.Appearance.input = {scheme: data.scheme, contrast: data.contrast};
             const group = makeGroup({});
             const track = group.background;
+            compare(track.color, data.scheme === "dark" ? "#35373b"
+                : data.contrast === "high" ? "#dddfe0" : "#e0e2e4");
             const natural = group.implicitWidth;
             const view = group.contentItem as ListView;
             verify(view !== null);
@@ -399,6 +401,26 @@ Item {
             compare(group.background, track);
             selection(group, 2);
             compare(group.activations, []);
+        }
+        function test_liveCanvasAndOwnedTrack(): void {
+            const group = makeGroup({});
+            const track = group.background;
+            const original = String(group.backgroundColor);
+            group.backgroundColor = original;
+            IA.Appearance.input = {tokens: {colors: {canvas: original}}};
+            verify(TestProbe.render(group));
+            compare(track.color, original, "Equal assignment remains owned");
+            group.resetAppearance();
+            verify(TestProbe.render(group));
+            verify(String(track.color) !== original);
+            compare(track.color, group.backgroundColor);
+            group.backgroundColor = "#80445566";
+            compare(track.color, "#80445566");
+            group.backgroundColor = "transparent";
+            compare(track.color.a, 0);
+            group.resetAppearance();
+            compare(group.background, track);
+            compare(group.currentIndex, 0);
         }
         function test_switchGeometry_data(): var {
             const rows = [];
