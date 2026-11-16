@@ -1,10 +1,50 @@
 # Test input on Wayland
 
-Run verification only in the project's authorized graphical test VM. Ordinary
+Run native GUI verification only in the project's authorized graphical test VM.
+The hosted CI lane below covers build, QML lint and headless units only. Ordinary
 QTest key/pointer helpers exercise in-process semantics; they do not generate
 compositor input or a Wayland grab serial. A separate QQuickWindow alone is not
 proof of an anchored native popup. Qt 6.12 rejects a grabbing popup without the
 required native parent/input state.
+
+## Hosted build, lint and headless units
+
+`.github/workflows/ci.yml` runs on pushes and pull requests to `main`, or manual
+dispatch, in an Ubuntu 24.04 hosted VM using a digest-pinned official Arch Linux
+base-devel container. Dependencies follow Arch's rolling repositories: a full
+`pacman -Syu --noconfirm --needed git cmake ninja qt6-base qt6-declarative
+qt6-shadertools qt6-svg` avoids partial upgrades. Qt must satisfy the project's
+existing minimum of 6.12.0; hosted CI does not assert an exact rolling version.
+Package, compiler, CMake and Ninja versions are recorded with the logs.
+
+Inside that hosted VM's workspace, CI runs:
+
+```sh
+export TMPDIR="$GITHUB_WORKSPACE/build/tmp"
+mkdir -p "$TMPDIR" build/ci-logs
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+  -DINTERACTIVE_BUILD_PLAYGROUND=ON -DINTERACTIVE_BUILD_TESTS=ON
+cmake --build build --parallel 2
+cmake --build build --target all_qmllint --parallel 2
+QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure \
+  --no-tests=error -R '^interactive\.(color-edit-state|appearance|trace)$'
+```
+
+The anchored selection runs exactly `interactive.color-edit-state`,
+`interactive.appearance` and `interactive.trace`. Appearance uses unshown
+QQuickWindows and trace uses QGuiApplication; neither needs native exposure or
+input. `interactive.playground-calibration` is excluded because it launches the
+real Playground. No existing test is disabled or weakened.
+
+Configure, build, QML lint and unit logs plus CTest's `LastTest.log` are uploaded
+even on failure; logged pipelines preserve failing exit statuses. Build outputs
+are not archived. All temporary files use the workspace's disk-backed `build/tmp`,
+created before package operations and recreated after checkout.
+
+This lane is not native GUI acceptance. Wayland input, exposed-window/popup
+readiness and Playground runtime outcomes remain in `interactive-dev` on
+`ark.home`. Hosted success neither resolves nor waives existing crash/readiness
+findings. The native input setup and outcome requirements below remain unchanged.
 
 ## Input-host ownership
 
