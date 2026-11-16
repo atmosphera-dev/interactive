@@ -21,6 +21,47 @@ page, Foundations; the planned controls and pages are listed in
 See [architecture](docs/ARCHITECTURE.md), [appearance](docs/appearance.md), and
 [verification / automation](docs/playground.md) for the contracts.
 
+## Use From Source
+
+Use a source checkout or unpacked source archive as a subdirectory of an existing
+Qt Quick application. For an existing executable target `my_app`, add this after
+the application's normal Qt setup and target creation:
+
+```cmake
+set(INTERACTIVE_BUILD_PLAYGROUND OFF)
+set(INTERACTIVE_BUILD_TESTS OFF)
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/vendor/interactive"
+                 "${CMAKE_BINARY_DIR}/interactive")
+target_link_libraries(my_app PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick
+    InterActive::Foundation InterActive::Controls InterActive::Components)
+target_compile_definitions(my_app PRIVATE
+    INTERACTIVE_QML_ROOT="${CMAKE_BINARY_DIR}/interactive/qml")
+```
+
+Replace `vendor/interactive` with the source location. The library requirements
+below still apply; QtTest, QuickTest and Playground are not required when both
+options are OFF. With this subproject binary directory, the generated QML import
+root is `<consumer-build>/interactive/qml`. Before loading application QML:
+
+```cpp
+QQmlApplicationEngine engine;
+engine.addImportPath(QStringLiteral(INTERACTIVE_QML_ROOT));
+// Load the application's QML after adding this path.
+```
+
+Alternatively, add that root to `QML_IMPORT_PATH` while preserving the selected
+SDK's existing paths. Linking the CMake aliases alone does not supply runtime QML
+import discovery. Import `InterActive`, `InterActive.Foundation` and
+`InterActive.Components` as needed, using a plain Qt Quick Window or QQuickView.
+Keep the matching Qt libraries, plugins and QtQuick.Shapes module available.
+
+The recorded Qt 6.12.0 source-consumer run on 2026-11-15 built without
+QtTest/QuickTest/Playground and observed `Count: 1` plus application/editor color
+`#234567` on a subsequent rendered frame. That is build-tree consumption proof,
+not installed-package or relocation proof. `cmake --install` integration,
+exported targets and `find_package(InterActive)` support are not implemented.
+
 ## Appearance
 
 ```qml
@@ -71,9 +112,10 @@ The desktop application ID is `interactive-playground`.
 
 On Wayland, non-automated `--scene menu --popup window` prints a stderr prompt
 and waits for **Left Shift in the focused playground window** before opening.
-Qt 6.8 needs native input to create an anchored menu popup; activation alone is
-not sufficient. The default scene's ordinary Collection actions button needs no
-bootstrap because its real click supplies that input.
+Supported Qt versions require native Wayland input and its grab serial to create
+an anchored menu popup; activation alone is not sufficient. The default scene's
+ordinary Collection actions button needs no bootstrap because its real click
+supplies that input.
 
 Edit Maya Chen's local `example.test` profile, Apply to update the separate
 committed summary, or Reset to restore the committed draft. The dialog has its
@@ -204,8 +246,10 @@ The launcher has a 15-second render deadline.
 ## Build And Test
 
 Requirements: CMake 3.21+, a C++17 compiler, and Qt 6.12.0+ with Core, Gui, Qml,
-Quick, QuickControls2, Svg, and ShaderTools. Tests also require Test and QuickTest
-and a working graphical session.
+Quick, QuickControls2, Svg, and ShaderTools. Optional test builds also require
+Test and QuickTest. Native GUI suites need a working graphical session; the
+[hosted CI selection](tests/README.md#hosted-build-lint-and-headless-units) runs
+only three headless unit suites after the full build and QML lint.
 
 Qt 6.12.0 is the supported minimum because it includes the native popup sizing
 fix on both axes ([QTBUG-147847](https://bugreports.qt.io/browse/QTBUG-147847)),
@@ -239,6 +283,20 @@ CTest; no separate orchestration tool is required.
 
 See [the verification contract](docs/playground.md) for suite coverage, runtime
 requirements, and the distinction between automated results and visual review.
+
+## Known Limits
+
+This 0.1.0 source preview has no stable API, complete control/gallery coverage,
+install/export/package configuration, or AT-SPI/Orca proof. See
+[control coverage](docs/control-coverage.md) for the outstanding work and
+[CHANGELOG](CHANGELOG.md) for the history-derived release notes.
+
+Native verification retains two accepted Item-dialog footer-bottom pixel
+failures and older high-DPR icon fixture/oracle failures. A Playground SIGSEGV
+and dialog/window input-readiness failures remain unresolved and unwaived.
+Later passing scoped runs do not identify their cause or establish a correction.
+Headless CI success is not native GUI acceptance or an all-tests-green claim;
+these findings and verification obligations remain open.
 
 ## License
 

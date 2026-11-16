@@ -36,6 +36,13 @@ Build options `INTERACTIVE_BUILD_PLAYGROUND` and `INTERACTIVE_BUILD_TESTS` defau
 to ON. The `interactive.playground` test is included when the playground is built.
 Both options must remain ON for the complete overview test set.
 
+The separate [hosted CI lane](../tests/README.md#hosted-build-lint-and-headless-units)
+builds all targets and runs QML lint, but executes only `interactive.appearance`,
+`interactive.trace` and `interactive.color-edit-state` headlessly. It does not
+run the native GUI overview, capture or performance suites. Exact Qt 6.12.0
+scoped native evidence does not establish full current-Qt verification or resolve
+the [known native failures](../README.md#known-limits).
+
 ## Test Coverage
 
 Tests are registered directly with CTest under the `interactive-overview` label.
@@ -64,6 +71,9 @@ skipped, blacklisted, or expected-failure cases do not satisfy a required check.
 | 16 | `interactive.color-edit-state` | Same production state source: full-precision channels, user-only notifications, feedback, domains/drafts, ARGB and HSL/HSV hue memory. |
 | 17 | `interactive.color-picker` | Real shared editor/dialog, live plane/rails, four formats, persistent drafts/modes, native dismissal, public accessible interfaces and square/responsive geometry. AT-SPI/Orca is not exercised. |
 | 18 | `interactive.segment-marker` | Native tab/segmented consumer pixels, persistent leading cap across hover/press/focus, unchanged finished fills and complete native focus frame, LTR/RTL, light/dark normal/high, live accent/contrast/direction, touch density, resize and local radius. Run at actual DPR 1, 1.25 and 2; source coverage alone is not rendered proof. |
+| 19 | `interactive.dialog-header` | Plain and color dialogs in Item/Window hosting: square corner target, title/icon centerline and body-edge alignment, elision, focus/hover corner pixels and Close click; LTR/RTL, touch and enlarged text, plus absent/replaced headers. |
+| 20 | `interactive.popup-direction` | All four popup roots in Item/Window hosting: first native-frame mirroring, live overlay inheritance, custom/deferred/replaced content, modal/type changes, reopen/destruction, opposite-direction host migration and nested menus, without writes to application hosts. |
+| 21 | `interactive.dialogbuttonbox` | Native model/index ownership, horizontal alignment and mirroring with narrow/custom widths, geometry publication after model mutation, native vertical invalidation, Tab/Space role signals, live RejectRole and Item/Window dialog footers. |
 
 Amber and Danger in Appearance use label-plus-`IAColorWell` rows bound to the
 resolved warning/error colors. Both reuse the existing twelve Accent preset
@@ -472,7 +482,8 @@ process exit rather than infer success from an open process.
 
 ### Native-Input Bootstrap
 
-On Wayland, Qt 6.8 needs native input before opening an anchored Window menu.
+On Wayland, supported Qt versions need native input and its grab serial before
+opening an anchored Window menu; activation alone is insufficient.
 For startup `--scene menu --popup window`, the application waits until its parent
 is active, exposed and has submitted a frame, then emits:
 
